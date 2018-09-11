@@ -13,9 +13,9 @@ import (
 	utilflag "k8s.io/apiserver/pkg/util/flag"
 	"k8s.io/apiserver/pkg/util/logs"
 
-	"github.com/openshift/service-serving-cert-signer/pkg/cmd/apiservicecabundle"
-	"github.com/openshift/service-serving-cert-signer/pkg/cmd/operator"
-	"github.com/openshift/service-serving-cert-signer/pkg/cmd/servingcertsigner"
+	"github.com/openshift/service-ca-operator/pkg/cmd/apiservicecabundle"
+	"github.com/openshift/service-ca-operator/pkg/cmd/operator"
+	"github.com/openshift/service-ca-operator/pkg/cmd/servingcertsigner"
 )
 
 func main() {
@@ -36,7 +36,7 @@ func main() {
 
 func NewSSCSCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "service-serving-cert-signer",
+		Use:   "service-ca",
 		Short: "OpenShift service serving cert signer",
 		Run: func(cmd *cobra.Command, args []string) {
 			cmd.Help()

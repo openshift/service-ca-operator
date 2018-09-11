@@ -15,7 +15,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/library-go/pkg/operator/resource/resourcecread"
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
-	"github.com/openshift/service-serving-cert-signer/pkg/operator/v310_00_assets"
+	"github.com/openshift/service-ca-operator/pkg/operator/v310_00_assets"
 )
 
 // syncAPIServiceController_v311_00_to_latest takes care of synchronizing (not upgrading) the thing we're managing.
@@ -116,7 +116,7 @@ func manageSigningCABundle(client coreclientv1.CoreV1Interface) (*corev1.ConfigM
 		return existing, false, err
 	}
 
-	secret := resourceread.ReadSecretV1OrDie(v310_00_assets.MustAsset("v3.10.0/service-serving-cert-signer-controller/signing-secret.yaml"))
+	secret := resourceread.ReadSecretV1OrDie(v310_00_assets.MustAsset("v3.10.0/service-ca-controller/signing-secret.yaml"))
 	currentSigningKeySecret, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return existing, false, err

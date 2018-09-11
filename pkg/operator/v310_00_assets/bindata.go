@@ -9,15 +9,15 @@
 // manifests/v3.10.0/apiservice-cabundle-controller/sa.yaml
 // manifests/v3.10.0/apiservice-cabundle-controller/signing-cabundle.yaml
 // manifests/v3.10.0/apiservice-cabundle-controller/svc.yaml
-// manifests/v3.10.0/service-serving-cert-signer-controller/clusterrole.yaml
-// manifests/v3.10.0/service-serving-cert-signer-controller/clusterrolebinding.yaml
-// manifests/v3.10.0/service-serving-cert-signer-controller/cm.yaml
-// manifests/v3.10.0/service-serving-cert-signer-controller/defaultconfig.yaml
-// manifests/v3.10.0/service-serving-cert-signer-controller/deployment.yaml
-// manifests/v3.10.0/service-serving-cert-signer-controller/ns.yaml
-// manifests/v3.10.0/service-serving-cert-signer-controller/sa.yaml
-// manifests/v3.10.0/service-serving-cert-signer-controller/signing-secret.yaml
-// manifests/v3.10.0/service-serving-cert-signer-controller/svc.yaml
+// manifests/v3.10.0/service-ca-controller/clusterrole.yaml
+// manifests/v3.10.0/service-ca-controller/clusterrolebinding.yaml
+// manifests/v3.10.0/service-ca-controller/cm.yaml
+// manifests/v3.10.0/service-ca-controller/defaultconfig.yaml
+// manifests/v3.10.0/service-ca-controller/deployment.yaml
+// manifests/v3.10.0/service-ca-controller/ns.yaml
+// manifests/v3.10.0/service-ca-controller/sa.yaml
+// manifests/v3.10.0/service-ca-controller/signing-secret.yaml
+// manifests/v3.10.0/service-ca-controller/svc.yaml
 // DO NOT EDIT!
 
 package v310_00_assets
@@ -102,7 +102,7 @@ roleRef:
   name: system:openshift:controller:apiservice-cabundle-injector
 subjects:
 - kind: ServiceAccount
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector-sa
 `)
 
@@ -124,7 +124,7 @@ func v3100ApiserviceCabundleControllerClusterrolebindingYaml() (*asset, error) {
 var _v3100ApiserviceCabundleControllerCmYaml = []byte(`apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector-config
 data:
   controller-config.yaml:
@@ -168,7 +168,7 @@ func v3100ApiserviceCabundleControllerDefaultconfigYaml() (*asset, error) {
 var _v3100ApiserviceCabundleControllerDeploymentYaml = []byte(`apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector
   labels:
     app: openshift-apiservice-cabundle-injector
@@ -192,7 +192,7 @@ spec:
       - name: apiservice-cabundle-injector-controller
         image: ${IMAGE}
         imagePullPolicy: IfNotPresent
-        command: ["service-serving-cert-signer", "apiservice-cabundle-injector"]
+        command: ["service-ca", "apiservice-cabundle-injector"]
         args:
         - "--config=/var/run/configmaps/config/controller-config.yaml"
         ports:
@@ -238,7 +238,7 @@ func v3100ApiserviceCabundleControllerDeploymentYaml() (*asset, error) {
 var _v3100ApiserviceCabundleControllerNsYaml = []byte(`apiVersion: v1
 kind: Namespace
 metadata:
-  name: openshift-service-cert-signer
+  name: openshift-service-ca
   labels:
     openshift.io/run-level: "1"`)
 
@@ -260,7 +260,7 @@ func v3100ApiserviceCabundleControllerNsYaml() (*asset, error) {
 var _v3100ApiserviceCabundleControllerSaYaml = []byte(`apiVersion: v1
 kind: ServiceAccount
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector-sa
 `)
 
@@ -282,7 +282,7 @@ func v3100ApiserviceCabundleControllerSaYaml() (*asset, error) {
 var _v3100ApiserviceCabundleControllerSigningCabundleYaml = []byte(`apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: signing-cabundle
 data:
   cabundle.crt:
@@ -306,15 +306,15 @@ func v3100ApiserviceCabundleControllerSigningCabundleYaml() (*asset, error) {
 var _v3100ApiserviceCabundleControllerSvcYaml = []byte(`apiVersion: v1
 kind: Service
 metadata:
-  namespace: openshift-service-cert-signer
-  name: service-serving-cert-signer
+  namespace: openshift-service-ca
+  name: service-ca
   annotations:
-    service.alpha.openshift.io/serving-cert-secret-name: service-serving-cert-signer-serving-cert
+    service.alpha.openshift.io/serving-cert-secret-name: service-ca-serving-cert
     prometheus.io/scrape: "true"
     prometheus.io/scheme: https
 spec:
   selector:
-    service-serving-cert-signer: "true"
+    service-ca: "true"
   ports:
   - name: https
     port: 443
@@ -336,10 +336,10 @@ func v3100ApiserviceCabundleControllerSvcYaml() (*asset, error) {
 	return a, nil
 }
 
-var _v3100ServiceServingCertSignerControllerClusterroleYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+var _v3100ServiceCaControllerClusterroleYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: system:openshift:controller:service-serving-cert-signer
+  name: system:openshift:controller:service-ca
 rules:
 - apiGroups:
   - ""
@@ -366,123 +366,123 @@ rules:
   - patch
 `)
 
-func v3100ServiceServingCertSignerControllerClusterroleYamlBytes() ([]byte, error) {
-	return _v3100ServiceServingCertSignerControllerClusterroleYaml, nil
+func v3100ServiceCaControllerClusterroleYamlBytes() ([]byte, error) {
+	return _v3100ServiceCaControllerClusterroleYaml, nil
 }
 
-func v3100ServiceServingCertSignerControllerClusterroleYaml() (*asset, error) {
-	bytes, err := v3100ServiceServingCertSignerControllerClusterroleYamlBytes()
+func v3100ServiceCaControllerClusterroleYaml() (*asset, error) {
+	bytes, err := v3100ServiceCaControllerClusterroleYamlBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "v3.10.0/service-serving-cert-signer-controller/clusterrole.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	info := bindataFileInfo{name: "v3.10.0/service-ca-controller/clusterrole.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
 
-var _v3100ServiceServingCertSignerControllerClusterrolebindingYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+var _v3100ServiceCaControllerClusterrolebindingYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: system:openshift:controller:service-serving-cert-signer
+  name: system:openshift:controller:service-ca
 roleRef:
   kind: ClusterRole
-  name: system:openshift:controller:service-serving-cert-signer
+  name: system:openshift:controller:service-ca
 subjects:
 - kind: ServiceAccount
-  namespace: openshift-service-cert-signer
-  name: service-serving-cert-signer-sa
+  namespace: openshift-service-ca
+  name: service-ca-sa
 `)
 
-func v3100ServiceServingCertSignerControllerClusterrolebindingYamlBytes() ([]byte, error) {
-	return _v3100ServiceServingCertSignerControllerClusterrolebindingYaml, nil
+func v3100ServiceCaControllerClusterrolebindingYamlBytes() ([]byte, error) {
+	return _v3100ServiceCaControllerClusterrolebindingYaml, nil
 }
 
-func v3100ServiceServingCertSignerControllerClusterrolebindingYaml() (*asset, error) {
-	bytes, err := v3100ServiceServingCertSignerControllerClusterrolebindingYamlBytes()
+func v3100ServiceCaControllerClusterrolebindingYaml() (*asset, error) {
+	bytes, err := v3100ServiceCaControllerClusterrolebindingYamlBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "v3.10.0/service-serving-cert-signer-controller/clusterrolebinding.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	info := bindataFileInfo{name: "v3.10.0/service-ca-controller/clusterrolebinding.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
 
-var _v3100ServiceServingCertSignerControllerCmYaml = []byte(`apiVersion: v1
+var _v3100ServiceCaControllerCmYaml = []byte(`apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: openshift-service-cert-signer
-  name: service-serving-cert-signer-config
+  namespace: openshift-service-ca
+  name: service-ca-config
 data:
   controller-config.yaml:
 `)
 
-func v3100ServiceServingCertSignerControllerCmYamlBytes() ([]byte, error) {
-	return _v3100ServiceServingCertSignerControllerCmYaml, nil
+func v3100ServiceCaControllerCmYamlBytes() ([]byte, error) {
+	return _v3100ServiceCaControllerCmYaml, nil
 }
 
-func v3100ServiceServingCertSignerControllerCmYaml() (*asset, error) {
-	bytes, err := v3100ServiceServingCertSignerControllerCmYamlBytes()
+func v3100ServiceCaControllerCmYaml() (*asset, error) {
+	bytes, err := v3100ServiceCaControllerCmYamlBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "v3.10.0/service-serving-cert-signer-controller/cm.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	info := bindataFileInfo{name: "v3.10.0/service-ca-controller/cm.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
 
-var _v3100ServiceServingCertSignerControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
+var _v3100ServiceCaControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
 kind: ServiceServingCertSignerConfig
 signer:
   certFile: /var/run/secrets/signing-key/tls.crt
   keyFile: /var/run/secrets/signing-key/tls.key
 `)
 
-func v3100ServiceServingCertSignerControllerDefaultconfigYamlBytes() ([]byte, error) {
-	return _v3100ServiceServingCertSignerControllerDefaultconfigYaml, nil
+func v3100ServiceCaControllerDefaultconfigYamlBytes() ([]byte, error) {
+	return _v3100ServiceCaControllerDefaultconfigYaml, nil
 }
 
-func v3100ServiceServingCertSignerControllerDefaultconfigYaml() (*asset, error) {
-	bytes, err := v3100ServiceServingCertSignerControllerDefaultconfigYamlBytes()
+func v3100ServiceCaControllerDefaultconfigYaml() (*asset, error) {
+	bytes, err := v3100ServiceCaControllerDefaultconfigYamlBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "v3.10.0/service-serving-cert-signer-controller/defaultconfig.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	info := bindataFileInfo{name: "v3.10.0/service-ca-controller/defaultconfig.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
 
-var _v3100ServiceServingCertSignerControllerDeploymentYaml = []byte(`apiVersion: apps/v1
+var _v3100ServiceCaControllerDeploymentYaml = []byte(`apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: openshift-service-cert-signer
-  name: service-serving-cert-signer
+  namespace: openshift-service-ca
+  name: service-ca
   labels:
-    app: openshift-service-serving-cert-signer
-    service-serving-cert-signer: "true"
+    app: openshift-service-ca
+    service-ca: "true"
 spec:
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: openshift-service-serving-cert-signer
-      service-serving-cert-signer: "true"
+      app: openshift-service-ca
+      service-ca: "true"
   template:
     metadata:
-      name: service-serving-cert-signer
+      name: service-ca
       labels:
-        app: openshift-service-serving-cert-signer
-        service-serving-cert-signer: "true"
+        app: openshift-service-ca
+        service-ca: "true"
     spec:
-      serviceAccountName: service-serving-cert-signer-sa
+      serviceAccountName: service-ca-sa
       containers:
-      - name: service-serving-cert-signer-controller
+      - name: service-ca-controller
         image: ${IMAGE}
         imagePullPolicy: IfNotPresent
-        command: ["service-serving-cert-signer", "serving-cert-signer"]
+        command: ["service-ca", "serving-cert-signer"]
         args:
         - "--config=/var/run/configmaps/config/controller-config.yaml"
         ports:
@@ -497,133 +497,133 @@ spec:
       volumes:
       - name: serving-cert
         secret:
-          secretName: service-serving-cert-signer-serving-cert
+          secretName: service-ca-serving-cert
           optional: true
       - name: signing-key
         secret:
-          secretName: service-serving-cert-signer-signing-key
+          secretName: service-ca-signing-key
       - name: config
         configMap:
-          name: service-serving-cert-signer-config
+          name: service-ca-config
 
 
 
 `)
 
-func v3100ServiceServingCertSignerControllerDeploymentYamlBytes() ([]byte, error) {
-	return _v3100ServiceServingCertSignerControllerDeploymentYaml, nil
+func v3100ServiceCaControllerDeploymentYamlBytes() ([]byte, error) {
+	return _v3100ServiceCaControllerDeploymentYaml, nil
 }
 
-func v3100ServiceServingCertSignerControllerDeploymentYaml() (*asset, error) {
-	bytes, err := v3100ServiceServingCertSignerControllerDeploymentYamlBytes()
+func v3100ServiceCaControllerDeploymentYaml() (*asset, error) {
+	bytes, err := v3100ServiceCaControllerDeploymentYamlBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "v3.10.0/service-serving-cert-signer-controller/deployment.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	info := bindataFileInfo{name: "v3.10.0/service-ca-controller/deployment.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
 
-var _v3100ServiceServingCertSignerControllerNsYaml = []byte(`apiVersion: v1
+var _v3100ServiceCaControllerNsYaml = []byte(`apiVersion: v1
 kind: Namespace
 metadata:
-  name: openshift-service-cert-signer
+  name: openshift-service-ca
   labels:
     openshift.io/run-level: "1"`)
 
-func v3100ServiceServingCertSignerControllerNsYamlBytes() ([]byte, error) {
-	return _v3100ServiceServingCertSignerControllerNsYaml, nil
+func v3100ServiceCaControllerNsYamlBytes() ([]byte, error) {
+	return _v3100ServiceCaControllerNsYaml, nil
 }
 
-func v3100ServiceServingCertSignerControllerNsYaml() (*asset, error) {
-	bytes, err := v3100ServiceServingCertSignerControllerNsYamlBytes()
+func v3100ServiceCaControllerNsYaml() (*asset, error) {
+	bytes, err := v3100ServiceCaControllerNsYamlBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "v3.10.0/service-serving-cert-signer-controller/ns.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	info := bindataFileInfo{name: "v3.10.0/service-ca-controller/ns.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
 
-var _v3100ServiceServingCertSignerControllerSaYaml = []byte(`apiVersion: v1
+var _v3100ServiceCaControllerSaYaml = []byte(`apiVersion: v1
 kind: ServiceAccount
 metadata:
-  namespace: openshift-service-cert-signer
-  name: service-serving-cert-signer-sa
+  namespace: openshift-service-ca
+  name: service-ca-sa
 `)
 
-func v3100ServiceServingCertSignerControllerSaYamlBytes() ([]byte, error) {
-	return _v3100ServiceServingCertSignerControllerSaYaml, nil
+func v3100ServiceCaControllerSaYamlBytes() ([]byte, error) {
+	return _v3100ServiceCaControllerSaYaml, nil
 }
 
-func v3100ServiceServingCertSignerControllerSaYaml() (*asset, error) {
-	bytes, err := v3100ServiceServingCertSignerControllerSaYamlBytes()
+func v3100ServiceCaControllerSaYaml() (*asset, error) {
+	bytes, err := v3100ServiceCaControllerSaYamlBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "v3.10.0/service-serving-cert-signer-controller/sa.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	info := bindataFileInfo{name: "v3.10.0/service-ca-controller/sa.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
 
-var _v3100ServiceServingCertSignerControllerSigningSecretYaml = []byte(`apiVersion: v1
+var _v3100ServiceCaControllerSigningSecretYaml = []byte(`apiVersion: v1
 kind: Secret
 metadata:
-  namespace: openshift-service-cert-signer
-  name: service-serving-cert-signer-signing-key
+  namespace: openshift-service-ca
+  name: service-ca-signing-key
 type: kubernetes.io/tls
 data:
   tls.crt:
   tls.key:
 `)
 
-func v3100ServiceServingCertSignerControllerSigningSecretYamlBytes() ([]byte, error) {
-	return _v3100ServiceServingCertSignerControllerSigningSecretYaml, nil
+func v3100ServiceCaControllerSigningSecretYamlBytes() ([]byte, error) {
+	return _v3100ServiceCaControllerSigningSecretYaml, nil
 }
 
-func v3100ServiceServingCertSignerControllerSigningSecretYaml() (*asset, error) {
-	bytes, err := v3100ServiceServingCertSignerControllerSigningSecretYamlBytes()
+func v3100ServiceCaControllerSigningSecretYaml() (*asset, error) {
+	bytes, err := v3100ServiceCaControllerSigningSecretYamlBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "v3.10.0/service-serving-cert-signer-controller/signing-secret.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	info := bindataFileInfo{name: "v3.10.0/service-ca-controller/signing-secret.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
 
-var _v3100ServiceServingCertSignerControllerSvcYaml = []byte(`apiVersion: v1
+var _v3100ServiceCaControllerSvcYaml = []byte(`apiVersion: v1
 kind: Service
 metadata:
-  namespace: openshift-service-cert-signer
-  name: service-serving-cert-signer
+  namespace: openshift-service-ca
+  name: service-ca
   annotations:
-    service.alpha.openshift.io/serving-cert-secret-name: service-serving-cert-signer-serving-cert
+    service.alpha.openshift.io/serving-cert-secret-name: service-ca-serving-cert
     prometheus.io/scrape: "true"
     prometheus.io/scheme: https
 spec:
   selector:
-    service-serving-cert-signer: "true"
+    service-ca: "true"
   ports:
   - name: https
     port: 443
     targetPort: 8443
 `)
 
-func v3100ServiceServingCertSignerControllerSvcYamlBytes() ([]byte, error) {
-	return _v3100ServiceServingCertSignerControllerSvcYaml, nil
+func v3100ServiceCaControllerSvcYamlBytes() ([]byte, error) {
+	return _v3100ServiceCaControllerSvcYaml, nil
 }
 
-func v3100ServiceServingCertSignerControllerSvcYaml() (*asset, error) {
-	bytes, err := v3100ServiceServingCertSignerControllerSvcYamlBytes()
+func v3100ServiceCaControllerSvcYaml() (*asset, error) {
+	bytes, err := v3100ServiceCaControllerSvcYamlBytes()
 	if err != nil {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "v3.10.0/service-serving-cert-signer-controller/svc.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	info := bindataFileInfo{name: "v3.10.0/service-ca-controller/svc.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
@@ -689,15 +689,15 @@ var _bindata = map[string]func() (*asset, error){
 	"v3.10.0/apiservice-cabundle-controller/sa.yaml": v3100ApiserviceCabundleControllerSaYaml,
 	"v3.10.0/apiservice-cabundle-controller/signing-cabundle.yaml": v3100ApiserviceCabundleControllerSigningCabundleYaml,
 	"v3.10.0/apiservice-cabundle-controller/svc.yaml": v3100ApiserviceCabundleControllerSvcYaml,
-	"v3.10.0/service-serving-cert-signer-controller/clusterrole.yaml": v3100ServiceServingCertSignerControllerClusterroleYaml,
-	"v3.10.0/service-serving-cert-signer-controller/clusterrolebinding.yaml": v3100ServiceServingCertSignerControllerClusterrolebindingYaml,
-	"v3.10.0/service-serving-cert-signer-controller/cm.yaml": v3100ServiceServingCertSignerControllerCmYaml,
-	"v3.10.0/service-serving-cert-signer-controller/defaultconfig.yaml": v3100ServiceServingCertSignerControllerDefaultconfigYaml,
-	"v3.10.0/service-serving-cert-signer-controller/deployment.yaml": v3100ServiceServingCertSignerControllerDeploymentYaml,
-	"v3.10.0/service-serving-cert-signer-controller/ns.yaml": v3100ServiceServingCertSignerControllerNsYaml,
-	"v3.10.0/service-serving-cert-signer-controller/sa.yaml": v3100ServiceServingCertSignerControllerSaYaml,
-	"v3.10.0/service-serving-cert-signer-controller/signing-secret.yaml": v3100ServiceServingCertSignerControllerSigningSecretYaml,
-	"v3.10.0/service-serving-cert-signer-controller/svc.yaml": v3100ServiceServingCertSignerControllerSvcYaml,
+	"v3.10.0/service-ca-controller/clusterrole.yaml": v3100ServiceCaControllerClusterroleYaml,
+	"v3.10.0/service-ca-controller/clusterrolebinding.yaml": v3100ServiceCaControllerClusterrolebindingYaml,
+	"v3.10.0/service-ca-controller/cm.yaml": v3100ServiceCaControllerCmYaml,
+	"v3.10.0/service-ca-controller/defaultconfig.yaml": v3100ServiceCaControllerDefaultconfigYaml,
+	"v3.10.0/service-ca-controller/deployment.yaml": v3100ServiceCaControllerDeploymentYaml,
+	"v3.10.0/service-ca-controller/ns.yaml": v3100ServiceCaControllerNsYaml,
+	"v3.10.0/service-ca-controller/sa.yaml": v3100ServiceCaControllerSaYaml,
+	"v3.10.0/service-ca-controller/signing-secret.yaml": v3100ServiceCaControllerSigningSecretYaml,
+	"v3.10.0/service-ca-controller/svc.yaml": v3100ServiceCaControllerSvcYaml,
 }
 
 // AssetDir returns the file names below a certain
@@ -752,16 +752,16 @@ var _bintree = &bintree{nil, map[string]*bintree{
 			"signing-cabundle.yaml": &bintree{v3100ApiserviceCabundleControllerSigningCabundleYaml, map[string]*bintree{}},
 			"svc.yaml": &bintree{v3100ApiserviceCabundleControllerSvcYaml, map[string]*bintree{}},
 		}},
-		"service-serving-cert-signer-controller": &bintree{nil, map[string]*bintree{
-			"clusterrole.yaml": &bintree{v3100ServiceServingCertSignerControllerClusterroleYaml, map[string]*bintree{}},
-			"clusterrolebinding.yaml": &bintree{v3100ServiceServingCertSignerControllerClusterrolebindingYaml, map[string]*bintree{}},
-			"cm.yaml": &bintree{v3100ServiceServingCertSignerControllerCmYaml, map[string]*bintree{}},
-			"defaultconfig.yaml": &bintree{v3100ServiceServingCertSignerControllerDefaultconfigYaml, map[string]*bintree{}},
-			"deployment.yaml": &bintree{v3100ServiceServingCertSignerControllerDeploymentYaml, map[string]*bintree{}},
-			"ns.yaml": &bintree{v3100ServiceServingCertSignerControllerNsYaml, map[string]*bintree{}},
-			"sa.yaml": &bintree{v3100ServiceServingCertSignerControllerSaYaml, map[string]*bintree{}},
-			"signing-secret.yaml": &bintree{v3100ServiceServingCertSignerControllerSigningSecretYaml, map[string]*bintree{}},
-			"svc.yaml": &bintree{v3100ServiceServingCertSignerControllerSvcYaml, map[string]*bintree{}},
+		"service-ca-controller": &bintree{nil, map[string]*bintree{
+			"clusterrole.yaml": &bintree{v3100ServiceCaControllerClusterroleYaml, map[string]*bintree{}},
+			"clusterrolebinding.yaml": &bintree{v3100ServiceCaControllerClusterrolebindingYaml, map[string]*bintree{}},
+			"cm.yaml": &bintree{v3100ServiceCaControllerCmYaml, map[string]*bintree{}},
+			"defaultconfig.yaml": &bintree{v3100ServiceCaControllerDefaultconfigYaml, map[string]*bintree{}},
+			"deployment.yaml": &bintree{v3100ServiceCaControllerDeploymentYaml, map[string]*bintree{}},
+			"ns.yaml": &bintree{v3100ServiceCaControllerNsYaml, map[string]*bintree{}},
+			"sa.yaml": &bintree{v3100ServiceCaControllerSaYaml, map[string]*bintree{}},
+			"signing-secret.yaml": &bintree{v3100ServiceCaControllerSigningSecretYaml, map[string]*bintree{}},
+			"svc.yaml": &bintree{v3100ServiceCaControllerSvcYaml, map[string]*bintree{}},
 		}},
 	}},
 }}

@@ -49,9 +49,9 @@
 %global golang_version 1.8.1
 %{!?version: %global version 0.0.1}
 %{!?release: %global release 1}
-%global package_name origin-service-serving-cert-signer
+%global package_name origin-service-ca
 %global product_name OpenShift Service Serving Cert Signer
-%global import_path github.com/openshift/service-serving-cert-signer
+%global import_path github.com/openshift/service-ca-operator
 
 Name:           %{package_name}
 Version:        %{version}
@@ -112,7 +112,7 @@ PLATFORM="$(go env GOHOSTOS)/$(go env GOHOSTARCH)"
 install -d %{buildroot}%{_bindir}
 
 # Install linux components
-for bin in service-serving-cert-signer
+for bin in service-ca
 do
   echo "+++ INSTALLING ${bin}"
   install -p -m 755 _output/local/bin/${PLATFORM}/${bin} %{buildroot}%{_bindir}/${bin}
@@ -128,7 +128,7 @@ done
 %files
 %doc README.md
 %license LICENSE
-%{_bindir}/service-serving-cert-signer
+%{_bindir}/service-ca
 # EXAMPLE: Managing configuration
 # %defattr(-,root,root,0700)
 # %dir %config(noreplace) %{_sysconfdir}/origin

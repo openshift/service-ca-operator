@@ -1,4 +1,4 @@
-# service-serving-cert-signer
+# service-ca
 Coming soon...
 
 Controller to mint and manage serving certificates for Kubernetes services.

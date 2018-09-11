@@ -13,4 +13,4 @@ items:
   subjects:
   - kind: ServiceAccount
     namespace: openshift-core-operators
-    name: openshift-service-cert-signer-operator
+    name: openshift-service-ca-operator

@@ -16,12 +16,12 @@ import (
 	servicecertsignerv1alpha1 "github.com/openshift/api/servicecertsigner/v1alpha1"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/serviceability"
-	"github.com/openshift/service-serving-cert-signer/pkg/controller/servingcert"
-	"github.com/openshift/service-serving-cert-signer/pkg/version"
+	"github.com/openshift/service-ca-operator/pkg/controller/servingcert"
+	"github.com/openshift/service-ca-operator/pkg/version"
 )
 
 var (
-	componentName = "openshift-service-serving-cert-signer"
+	componentName = "openshift-service-ca"
 	configScheme  = runtime.NewScheme()
 )
 

@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector
   labels:
     app: openshift-apiservice-cabundle-injector
@@ -25,7 +25,7 @@ spec:
       - name: apiservice-cabundle-injector-controller
         image: ${IMAGE}
         imagePullPolicy: IfNotPresent
-        command: ["service-serving-cert-signer", "apiservice-cabundle-injector"]
+        command: ["service-ca", "apiservice-cabundle-injector"]
         args:
         - "--config=/var/run/configmaps/config/controller-config.yaml"
         ports:
