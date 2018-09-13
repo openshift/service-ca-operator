@@ -38,9 +38,9 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 			startingConfigMaps: []runtime.Object{
 				&v1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: "foo",
+						Name:        "foo",
 						Annotations: map[string]string{InjectCABundleAnnotation: "true"},
-						Namespace: "foo",
+						Namespace:   "foo",
 					},
 					Data: map[string]string{},
 				},
@@ -65,9 +65,9 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 			startingConfigMaps: []runtime.Object{
 				&v1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: "foo",
+						Name:        "foo",
 						Annotations: map[string]string{InjectCABundleAnnotation: "true"},
-						Namespace: "foo",
+						Namespace:   "foo",
 					},
 					Data: map[string]string{
 						InjectionDataKey: "foo",
@@ -94,9 +94,9 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 			startingConfigMaps: []runtime.Object{
 				&v1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: "foo",
+						Name:        "foo",
 						Annotations: map[string]string{InjectCABundleAnnotation: "true"},
-						Namespace: "foo",
+						Namespace:   "foo",
 					},
 					Data: map[string]string{
 						InjectionDataKey: "content",
@@ -111,7 +111,6 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 				}
 			},
 		},
-
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -123,7 +122,7 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 			c := &ConfigMapCABundleInjectionController{
 				configMapLister: listers.NewConfigMapLister(index),
 				configMapClient: fakeClient.CoreV1(),
-				ca:              tc.caBundle,
+				ca:              string(tc.caBundle),
 			}
 			err := c.syncConfigMap(tc.key)
 			if err != nil {
