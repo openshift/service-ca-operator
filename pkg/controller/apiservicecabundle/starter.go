@@ -10,10 +10,12 @@ import (
 	apiserviceinformer "k8s.io/kube-aggregator/pkg/client/informers/externalversions"
 
 	servicecertsignerv1alpha1 "github.com/openshift/api/servicecertsigner/v1alpha1"
+	configv1 "github.com/openshift/api/config/v1"
 )
 
 type APIServiceCABundleInjectorOptions struct {
 	Config *servicecertsignerv1alpha1.APIServiceCABundleInjectorConfig
+	LeaderElection configv1.LeaderElection
 }
 
 func (o *APIServiceCABundleInjectorOptions) RunAPIServiceCABundleInjector(clientConfig *rest.Config, stopCh <-chan struct{}) error {

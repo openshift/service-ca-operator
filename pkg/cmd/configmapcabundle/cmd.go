@@ -18,6 +18,7 @@ import (
 	"github.com/openshift/library-go/pkg/serviceability"
 	"github.com/openshift/service-ca-operator/pkg/controller/configmapcainjector"
 	"github.com/openshift/service-ca-operator/pkg/version"
+	configv1 "github.com/openshift/api/config/v1"
 )
 
 var (
@@ -81,9 +82,9 @@ func (o *ControllerCommandOptions) StartController() error {
 		return fmt.Errorf("unexpected config: %T", uncastConfig)
 	}
 
-	return controllercmd.NewController(componentName, (&configmapcainjector.ConfigMapCABundleInjectorOptions{Config: config}).RunConfigMapCABundleInjector).
+	opts := &configmapcainjector.ConfigMapCABundleInjectorOptions{Config: config, LeaderElection: configv1.LeaderElection{}}
+	return controllercmd.NewController(componentName, opts.RunConfigMapCABundleInjector).
 		WithKubeConfigFile(o.basicFlags.KubeConfigFile, nil).
-		// TODO we can update the API with leader election
-		//WithLeaderElection(config.LeaderElection, "", componentName+"-lock").
+		WithLeaderElection(opts.LeaderElection, "", componentName+"-lock").
 		Run()
 }

@@ -14,10 +14,12 @@ import (
 	"github.com/golang/glog"
 	servicecertsignerv1alpha1 "github.com/openshift/api/servicecertsigner/v1alpha1"
 	"k8s.io/client-go/informers"
+	configv1 "github.com/openshift/api/config/v1"
 )
 
 type ConfigMapCABundleInjectorOptions struct {
 	Config *servicecertsignerv1alpha1.ConfigMapCABundleInjectorConfig
+	LeaderElection configv1.LeaderElection
 }
 
 // These might need adjustment

@@ -85,6 +85,22 @@ rules:
   - watch
   - update
   - patch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
 `)
 
 func v3100ApiserviceCabundleControllerClusterroleYamlBytes() ([]byte, error) {
@@ -359,6 +375,22 @@ rules:
   - list
   - watch
   - update
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
 `)
 
 func v3100ConfigmapCabundleControllerClusterroleYamlBytes() ([]byte, error) {
@@ -648,6 +680,22 @@ rules:
   - watch
   - update
   - patch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
 `)
 
 func v3100ServiceCaControllerClusterroleYamlBytes() ([]byte, error) {
