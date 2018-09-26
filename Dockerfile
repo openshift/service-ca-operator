@@ -9,3 +9,6 @@ RUN cd /go/src/github.com/openshift/service-ca-operator && go build ./cmd/servic
 
 FROM centos:7
 COPY --from=0 /go/src/github.com/openshift/service-ca-operator/service-ca /usr/bin/service-ca
+
+COPY manifests /manifests
+LABEL io.openshift.release.operator=true
