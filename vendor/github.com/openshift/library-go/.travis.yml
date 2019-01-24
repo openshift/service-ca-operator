@@ -1,10 +1,10 @@
 language: go
 
 go:
-  - 1.9
+  - "1.10"
 
 install:
-  - go get -u github.com/golang/lint/golint
+  - go get -u golang.org/x/lint/golint
 
 script:
   - make verify build test

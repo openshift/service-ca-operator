@@ -15,11 +15,6 @@ if [[ -z "$@" ]]; then
 	build_targets=("${OS_CROSS_COMPILE_TARGETS[@]}")
 fi
 
-OS_GIT_MAJOR=${OS_GIT_MAJOR-}
-OS_GIT_MINOR=${OS_GIT_MINOR-}
-OS_GIT_VERSION=${OS_GIT_VERSION-}
-OS_GIT_COMMIT=${OS_GIT_COMMIT-}
-
 platform="$(os::build::host_platform)"
 OS_BUILD_PLATFORMS=("${OS_BUILD_PLATFORMS[@]:-${platform}}")
 os::build::build_binaries "${build_targets[@]}"

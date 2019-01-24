@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/openshift/service-ca-operator/tools/junitreport/pkg/api"
-	"github.com/openshift/service-ca-operator/tools/junitreport/pkg/builder"
+	"github.com/openshift/service-serving-cert-signer/tools/junitreport/pkg/api"
+	"github.com/openshift/service-serving-cert-signer/tools/junitreport/pkg/builder"
 )
 
 // NewTestSuitesBuilder returns a new nested test suites builder. All test suites consumed by
@@ -32,7 +32,7 @@ const (
 
 // nestedTestSuitesBuilder is a test suites builder that nests suites under a root suite
 type nestedTestSuitesBuilder struct {
-	// restrictedRoots is the service-caal set of roots created by the constructor, and is populated only
+	// restrictedRoots is the service-serving-cert-signeral set of roots created by the constructor, and is populated only
 	// if the builder is not able to add new roots to the tree, instead needing to add all nodes as
 	// children of these restricted roots
 	restrictedRoots []*treeNode

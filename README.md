@@ -1,11 +1,12 @@
-# OpenShift Service CA Operator
+# OpenShift Service Serving Cert Signer Operator
 
 This operator runs the following OpenShift controllers:
 * **service-ca controller:**
   * Issues a signed serving certificate/key pair to services annotated with 'service.alpha.openshift.io/serving-cert-secret-name' via a secret. [See the current OKD documentation for usage.](https://docs.okd.io/latest/dev_guide/secrets.html#service-serving-certificate-secrets)
 
 * **configmap-cabundle-injector controller:**
-  * Watches for configmaps annotated with 'service.alpha.openshift.io/inject-cabundle=true' and adds or updates a data item (key "cabundle.crt") containing the PEM-encoded CA signing bundle. Consumers of the configmap can then trust cabundle.crt in their TLS client configuration, allowing connections to services that utilize service-serving certificates.
+  * Watches for configmaps annotated with 'service.alpha.openshift.io/inject-cabundle=true' and adds or updates a data item (key "service-ca.crt") containing the PEM-encoded CA signing bundle. Consumers of the configmap can then trust service-ca.crt in their TLS client configuration, allowing connections to services that utilize service-serving certificates.
+  * Note: Explicitly referencing the "service-ca.crt" key in a volumeMount will prevent a pod from starting until the configMap has been injected with the CA bundle (https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#restrictions). This behavior helps ensure that pods start with the CA bundle data available.
 
 ```
 $ oc create configmap foobar --from-literal=key1=foo
