@@ -11,6 +11,16 @@ import (
 	"testing"
 )
 
+func init() {
+	thisFile, thisPackage = derivePackage()
+	functionNameTests = []FunctionNameTest{
+		{0, thisPackage, "TestFunctionName"},
+		{1, "testing", "tRunner"},
+		{2, "runtime", "goexit"},
+		{100, "", ""},
+	}
+}
+
 type FunctionNameTest struct {
 	skip int
 	pack string
@@ -37,6 +47,31 @@ func TestFunctionName(t *testing.T) {
 	}
 }
 
+func TestSplitFunctionName(t *testing.T) {
+	tests := []struct {
+		in         string
+		pack, name string
+	}{
+		{"", "", ""},
+		{"main.main", "main", "main"},
+		{"main.main.func1", "main", "main.func1"},
+		{"cmd/main.main", "cmd/main", "main"},
+		{"cmd/main.main.func1", "cmd/main", "main.func1"},
+		{"cmd/main.main.func1.1", "cmd/main", "main.func1.1"},
+		{"cmd/main.main.func1.1.1", "cmd/main", "main.func1.1.1"},
+		{"cmd/main.(*T).Do", "cmd/main", "(*T).Do"},
+		{"cmd/main.*T.Do", "cmd/main", "*T.Do"},
+		{`github.com/getsentry/dot%2epackage.*T.Do`, "github.com/getsentry/dot.package", "*T.Do"},
+	}
+
+	for _, test := range tests {
+		pack, name := splitFunctionName(test.in)
+		if pack != test.pack || name != test.name {
+			t.Errorf("wrong answer from splitFunctionName(%q); got (%q, %q), but want (%q, %q)", test.in, test.pack, test.name, pack, name)
+		}
+	}
+}
+
 func TestStacktrace(t *testing.T) {
 	st := trace()
 	if st == nil {
@@ -59,7 +94,7 @@ func TestStacktrace(t *testing.T) {
 	if f.Module != thisPackage {
 		t.Error("incorrect Module:", f.Module)
 	}
-	if f.Lineno != 87 {
+	if f.Lineno != 122 {
 		t.Error("incorrect Lineno:", f.Lineno)
 	}
 	if f.ContextLine != "\treturn NewStacktrace(0, 2, []string{thisPackage})" {
@@ -116,16 +151,6 @@ func derivePackage() (file, pack string) {
 	return
 }
 
-func init() {
-	thisFile, thisPackage = derivePackage()
-	functionNameTests = []FunctionNameTest{
-		{0, thisPackage, "TestFunctionName"},
-		{1, "testing", "tRunner"},
-		{2, "runtime", "goexit"},
-		{100, "", ""},
-	}
-}
-
 // TestNewStacktrace_outOfBounds verifies that a context exceeding the number
 // of lines in a file does not cause a panic.
 func TestNewStacktrace_outOfBounds(t *testing.T) {
@@ -145,7 +170,7 @@ func TestNewStacktrace_noFrames(t *testing.T) {
 
 func TestFileContext(t *testing.T) {
 	// reset the cache
-	fileCache = make(map[string][][]byte)
+	sourceCodeLoader = &fsLoader{cache: make(map[string][][]byte)}
 
 	tempdir, err := ioutil.TempDir("", "")
 	if err != nil {
@@ -176,13 +201,14 @@ func TestFileContext(t *testing.T) {
 		{noPermissionPath, 0, 0},
 	}
 	for i, test := range tests {
-		lines, index := fileContext(test.path, 1, 0)
+		lines, index := sourceCodeLoader.Load(test.path, 1, 0)
 		if !(len(lines) == test.expectedLines && index == test.expectedIndex) {
 			t.Errorf("%d: fileContext(%#v, 1, 0) = %v, %v; expected len()=%d, %d",
 				i, test.path, lines, index, test.expectedLines, test.expectedIndex)
 		}
-		if len(fileCache) != i+1 {
-			t.Errorf("%d: result was not cached; len(fileCached)=%d", i, len(fileCache))
+		cacheLen := len(sourceCodeLoader.(*fsLoader).cache)
+		if cacheLen != i+1 {
+			t.Errorf("%d: result was not cached; len=%d", i, cacheLen)
 		}
 	}
 }
