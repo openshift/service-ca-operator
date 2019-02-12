@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"time"
 
-	"k8s.io/client-go/rest"
 	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 	apiserviceinformer "k8s.io/kube-aggregator/pkg/client/informers/externalversions"
 
@@ -32,8 +31,8 @@ type apiServiceCABundleInjectorOptions struct {
 	caBundleContent []byte
 }
 
-func (o *apiServiceCABundleInjectorOptions) runAPIServiceCABundleInjector(clientConfig *rest.Config, stopCh <-chan struct{}) error {
-	apiServiceClient, err := apiserviceclient.NewForConfig(clientConfig)
+func (o *apiServiceCABundleInjectorOptions) runAPIServiceCABundleInjector(ctx *controllercmd.ControllerContext) error {
+	apiServiceClient, err := apiserviceclient.NewForConfig(ctx.KubeConfig)
 	if err != nil {
 		return err
 	}
@@ -45,11 +44,11 @@ func (o *apiServiceCABundleInjectorOptions) runAPIServiceCABundleInjector(client
 		o.caBundleContent,
 	)
 
-	apiServiceInformers.Start(stopCh)
+	apiServiceInformers.Start(ctx.Context.Done())
 
-	go servingCertUpdateController.Run(5, stopCh)
+	go servingCertUpdateController.Run(5, ctx.Context.Done())
 
-	<-stopCh
+	<-ctx.Context.Done()
 
 	return fmt.Errorf("stopped")
 }

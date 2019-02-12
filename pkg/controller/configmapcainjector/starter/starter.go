@@ -9,7 +9,6 @@ import (
 
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	servicecertsignerv1alpha1 "github.com/openshift/api/servicecertsigner/v1alpha1"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
@@ -43,8 +42,8 @@ type configMapCABundleInjectorOptions struct {
 	ca string
 }
 
-func (o *configMapCABundleInjectorOptions) runConfigMapCABundleInjector(clientConfig *rest.Config, stopCh <-chan struct{}) error {
-	kubeClient, err := kubernetes.NewForConfig(clientConfig)
+func (o *configMapCABundleInjectorOptions) runConfigMapCABundleInjector(ctx *controllercmd.ControllerContext) error {
+	kubeClient, err := kubernetes.NewForConfig(ctx.KubeConfig)
 	if err != nil {
 		return err
 	}
@@ -56,11 +55,11 @@ func (o *configMapCABundleInjectorOptions) runConfigMapCABundleInjector(clientCo
 		o.ca,
 	)
 
-	kubeInformers.Start(stopCh)
+	kubeInformers.Start(ctx.Context.Done())
 
-	go configMapInjectorController.Run(5, stopCh)
+	go configMapInjectorController.Run(5, ctx.Context.Done())
 
-	<-stopCh
+	<-ctx.Context.Done()
 
 	return fmt.Errorf("stopped")
 }

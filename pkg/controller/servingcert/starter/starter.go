@@ -6,7 +6,6 @@ import (
 
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	servicecertsignerv1alpha1 "github.com/openshift/api/servicecertsigner/v1alpha1"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
@@ -28,8 +27,8 @@ type servingCertOptions struct {
 	ca *crypto.CA
 }
 
-func (o *servingCertOptions) runServingCert(clientConfig *rest.Config, stopCh <-chan struct{}) error {
-	kubeClient, err := kubernetes.NewForConfig(clientConfig)
+func (o *servingCertOptions) runServingCert(ctx *controllercmd.ControllerContext) error {
+	kubeClient, err := kubernetes.NewForConfig(ctx.KubeConfig)
 	if err != nil {
 		return err
 	}
@@ -53,12 +52,12 @@ func (o *servingCertOptions) runServingCert(clientConfig *rest.Config, stopCh <-
 		"cluster.local",
 	)
 
-	kubeInformers.Start(stopCh)
+	kubeInformers.Start(ctx.Context.Done())
 
-	go servingCertController.Run(5, stopCh)
-	go servingCertUpdateController.Run(5, stopCh)
+	go servingCertController.Run(5, ctx.Context.Done())
+	go servingCertUpdateController.Run(5, ctx.Context.Done())
 
-	<-stopCh
+	<-ctx.Context.Done()
 
 	return fmt.Errorf("stopped")
 }

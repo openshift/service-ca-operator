@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"github.com/openshift/library-go/pkg/operator/events"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	appsclientv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
@@ -22,6 +23,8 @@ type serviceCertSignerOperator struct {
 	appsv1Client appsclientv1.AppsV1Interface
 	corev1Client coreclientv1.CoreV1Interface
 	rbacv1Client rbacclientv1.RbacV1Interface
+
+	eventRecorder events.Recorder
 }
 
 func NewServiceCertSignerOperator(
@@ -31,6 +34,7 @@ func NewServiceCertSignerOperator(
 	appsv1Client appsclientv1.AppsV1Interface,
 	corev1Client coreclientv1.CoreV1Interface,
 	rbacv1Client rbacclientv1.RbacV1Interface,
+	eventRecorder events.Recorder,
 ) operator.Runner {
 	c := &serviceCertSignerOperator{
 		operatorConfigClient: operatorConfigClient,
@@ -38,6 +42,8 @@ func NewServiceCertSignerOperator(
 		appsv1Client: appsv1Client,
 		corev1Client: corev1Client,
 		rbacv1Client: rbacv1Client,
+
+		eventRecorder: eventRecorder,
 	}
 
 	configEvents := operator.FilterByNames(api.OperatorConfigInstanceName)

@@ -7,10 +7,9 @@ import (
 	//"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	//"k8s.io/client-go/tools/cache"
+	"github.com/openshift/library-go/pkg/controller/controllercmd"
 
-	//"github.com/openshift/library-go/pkg/operator/v1alpha1helpers"
 	//servicecav1 "github.com/openshift/service-ca-operator/pkg/apis/serviceca/v1"
 	scsclient "github.com/openshift/service-ca-operator/pkg/generated/clientset/versioned"
 	scsinformers "github.com/openshift/service-ca-operator/pkg/generated/informers/externalversions"
@@ -30,19 +29,15 @@ spec:
 `
 )
 
-func RunOperator(clientConfig *rest.Config, stopCh <-chan struct{}) error {
-	kubeClient, err := kubernetes.NewForConfig(clientConfig)
+func RunOperator(ctx *controllercmd.ControllerContext) error {
+	kubeClient, err := kubernetes.NewForConfig(ctx.KubeConfig)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	scsClient, err := scsclient.NewForConfig(clientConfig)
+	scsClient, err := scsclient.NewForConfig(ctx.KubeConfig)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	//dynamicClient, err := dynamic.NewForConfig(clientConfig)
-	//if err != nil {
-	//	return err
-	//}
 
 	operatorInformers := scsinformers.NewSharedInformerFactory(scsClient, 10*time.Minute)
 	kubeInformersNamespaced := informers.NewFilteredSharedInformerFactory(kubeClient, 10*time.Minute, targetNamespaceName, nil)
@@ -70,16 +65,17 @@ func RunOperator(clientConfig *rest.Config, stopCh <-chan struct{}) error {
 		kubeClient.AppsV1(),
 		kubeClient.CoreV1(),
 		kubeClient.RbacV1(),
+		ctx.EventRecorder,
 	)
 
-	operatorInformers.Start(stopCh)
-	kubeInformersNamespaced.Start(stopCh)
+	operatorInformers.Start(ctx.Context.Done())
+	kubeInformersNamespaced.Start(ctx.Context.Done())
 
-	go operator.Run(stopCh)
+	go operator.Run(ctx.Context.Done())
 	// TODO: Uncomment when we get a library bump and use v1 for status.
 	//go clusterOperatorStatus.Run(1, stopCh)
 
-	<-stopCh
+	<-ctx.Context.Done()
 	return fmt.Errorf("stopped")
 }
 
