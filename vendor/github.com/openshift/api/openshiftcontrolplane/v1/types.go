@@ -16,6 +16,9 @@ type OpenShiftAPIServerConfig struct {
 	// provides the standard apiserver configuration
 	configv1.GenericAPIServerConfig `json:",inline"`
 
+	// aggregatorConfig contains information about how to verify the aggregator front proxy
+	AggregatorConfig FrontProxyConfig `json:"aggregatorConfig"`
+
 	// imagePolicyConfig feeds the image policy admission plugin
 	ImagePolicyConfig ImagePolicyConfig `json:"imagePolicyConfig"`
 
@@ -40,6 +43,20 @@ type OpenShiftAPIServerConfig struct {
 
 	// TODO this needs to be removed.
 	APIServerArguments map[string][]string `json:"apiServerArguments"`
+}
+
+type FrontProxyConfig struct {
+	// clientCA is a path to the CA bundle to use to verify the common name of the front proxy's client cert
+	ClientCA string `json:"clientCA"`
+	// allowedNames is an optional list of common names to require a match from.
+	AllowedNames []string `json:"allowedNames"`
+
+	// usernameHeaders is the set of headers to check for the username
+	UsernameHeaders []string `json:"usernameHeaders"`
+	// groupHeaders is the set of headers to check for groups
+	GroupHeaders []string `json:"groupHeaders"`
+	// extraHeaderPrefixes is the set of header prefixes to check for user extra
+	ExtraHeaderPrefixes []string `json:"extraHeaderPrefixes"`
 }
 
 type GrantHandlerType string
@@ -79,11 +96,11 @@ type ImagePolicyConfig struct {
 	// For backward compatibility, users can still use OPENSHIFT_DEFAULT_REGISTRY
 	// environment variable but this setting overrides the environment variable.
 	InternalRegistryHostname string `json:"internalRegistryHostname"`
-	// externalRegistryHostname sets the hostname for the default external image
+	// externalRegistryHostnames provides the hostnames for the default external image
 	// registry. The external hostname should be set only when the image registry
-	// is exposed externally. The value is used in 'publicDockerImageRepository'
+	// is exposed externally. The first value is used in 'publicDockerImageRepository'
 	// field in ImageStreams. The value must be in "hostname[:port]" format.
-	ExternalRegistryHostname string `json:"externalRegistryHostname"`
+	ExternalRegistryHostnames []string `json:"externalRegistryHostnames"`
 
 	// additionalTrustedCA is a path to a pem bundle file containing additional CAs that
 	// should be trusted during imagestream import.
@@ -177,6 +194,10 @@ type BuildControllerConfig struct {
 
 	BuildDefaults  *BuildDefaultsConfig  `json:"buildDefaults"`
 	BuildOverrides *BuildOverridesConfig `json:"buildOverrides"`
+
+	// additionalTrustedCA is a path to a pem bundle file containing additional CAs that
+	// should be trusted for image pushes and pulls during builds.
+	AdditionalTrustedCA string `json:"additionalTrustedCA"`
 }
 
 type ResourceQuotaControllerConfig struct {
@@ -211,6 +232,11 @@ type ServiceAccountControllerConfig struct {
 type DockerPullSecretControllerConfig struct {
 	// registryURLs is a list of urls that the docker pull secrets should be valid for.
 	RegistryURLs []string `json:"registryURLs"`
+
+	// internalRegistryHostname is the hostname for the default internal image
+	// registry. The value must be in "hostname[:port]" format.  Docker pull secrets
+	// will be generated for this registry.
+	InternalRegistryHostname string `json:"internalRegistryHostname"`
 }
 
 type ImageImportControllerConfig struct {
