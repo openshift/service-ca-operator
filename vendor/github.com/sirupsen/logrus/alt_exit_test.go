@@ -6,8 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 	"time"
 )
@@ -21,9 +19,6 @@ func TestRegister(t *testing.T) {
 }
 
 func TestHandler(t *testing.T) {
-	testprog := testprogleader
-	testprog = append(testprog, getPackage()...)
-	testprog = append(testprog, testprogtrailer...)
 	tempDir, err := ioutil.TempDir("", "test_handler")
 	if err != nil {
 		log.Fatalf("can't create temp dir. %q", err)
@@ -52,24 +47,13 @@ func TestHandler(t *testing.T) {
 	}
 }
 
-// getPackage returns the name of the current package, which makes running this
-// test in a fork simpler
-func getPackage() []byte {
-	pc, _, _, _ := runtime.Caller(0)
-	fullFuncName := runtime.FuncForPC(pc).Name()
-	idx := strings.LastIndex(fullFuncName, ".")
-	return []byte(fullFuncName[:idx]) // trim off function details
-}
-
-var testprogleader = []byte(`
+var testprog = []byte(`
 // Test program for atexit, gets output file and data as arguments and writes
 // data to output file in atexit handler.
 package main
 
 import (
-	"`)
-var testprogtrailer = []byte(
-	`"
+	"github.com/sirupsen/logrus"
 	"flag"
 	"fmt"
 	"io/ioutil"

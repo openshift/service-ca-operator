@@ -37,8 +37,38 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=config.openshift.io, Version=v1
+	case v1.SchemeGroupVersion.WithResource("apiservers"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().APIServers().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("authentications"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Authentications().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("builds"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Builds().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("clusteroperators"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().ClusterOperators().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("clusterversions"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().ClusterVersions().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("consoles"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Consoles().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("dnss"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().DNSs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("features"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Features().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("images"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Images().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("infrastructures"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Infrastructures().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("ingresses"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Ingresses().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("networks"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Networks().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("oauths"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().OAuths().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("projects"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Projects().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("proxies"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Proxies().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("schedulings"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1().Schedulings().Informer()}, nil
 
 	}
 
