@@ -5,79 +5,26 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// +genclient
-// +genclient:nonNamespaced
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// Image holds cluster-wide information about how to handle images.  The canonical name is `cluster`
-type Image struct {
-	metav1.TypeMeta `json:",inline"`
-	// Standard object's metadata.
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	// spec holds user settable values for configuration
-	Spec ImageSpec `json:"spec"`
-	// status holds observed values from the cluster. They may not be overridden.
-	Status ImageStatus `json:"status"`
-}
-
-type ImageSpec struct {
-	// AllowedRegistriesForImport limits the container image registries that normal users may import
-	// images from. Set this list to the registries that you trust to contain valid Docker
-	// images and that you want applications to be able to import from. Users with
-	// permission to create Images or ImageStreamMappings via the API are not affected by
-	// this policy - typically only administrators or system integrations will have those
-	// permissions.
-	AllowedRegistriesForImport []RegistryLocation `json:"allowedRegistriesForImport,omitempty"`
-
-	// ExternalRegistryHostname sets the hostname for the default external image
-	// registry. The external hostname should be set only when the image registry
-	// is exposed externally. The value is used in 'publicDockerImageRepository'
-	// field in ImageStreams. The value must be in "hostname[:port]" format.
-	ExternalRegistryHostname string `json:"externalRegistryHostname,omitempty"`
-
-	// AdditionalTrustedCA is a reference to a ConfigMap containing additional CAs that
-	// should be trusted during imagestream import.
-	AdditionalTrustedCA ConfigMapReference `json:"additionalTrustedCA,omitempty"`
-}
-
-type ImageStatus struct {
-
-	// this value is set by the image registry operator which controls the internal registry hostname
-	// InternalRegistryHostname sets the hostname for the default internal image
-	// registry. The value must be in "hostname[:port]" format.
-	// For backward compatibility, users can still use OPENSHIFT_DEFAULT_REGISTRY
-	// environment variable but this setting overrides the environment variable.
-	InternalRegistryHostname string `json:"internalRegistryHostname,omitempty"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-type ImageList struct {
-	metav1.TypeMeta `json:",inline"`
-	// Standard object's metadata.
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Image `json:"items"`
-}
-
-// RegistryLocation contains a location of the registry specified by the registry domain
-// name. The domain name might include wildcards, like '*' or '??'.
-type RegistryLocation struct {
-	// DomainName specifies a domain name for the registry
-	// In case the registry use non-standard (80 or 443) port, the port should be included
-	// in the domain name as well.
-	DomainName string `json:"domainName"`
-	// Insecure indicates whether the registry is secure (https) or insecure (http)
-	// By default (if not specified) the registry is assumed as secure.
-	Insecure bool `json:"insecure,omitempty"`
-}
-
-// ConfigMapReference references the location of a configmap.
-type ConfigMapReference struct {
-	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
+// ConfigMapFileReference references a config map in a specific namespace.
+// The namespace must be specified at the point of use.
+type ConfigMapFileReference struct {
+	Name string `json:"name"`
 	// Key allows pointing to a specific key/value inside of the configmap.  This is useful for logical file references.
-	Key string `json:"filename,omitempty"`
+	Key string `json:"key,omitempty"`
+}
+
+// ConfigMapNameReference references a config map in a specific namespace.
+// The namespace must be specified at the point of use.
+type ConfigMapNameReference struct {
+	// name is the metadata.name of the referenced config map
+	Name string `json:"name"`
+}
+
+// SecretNameReference references a secret in a specific namespace.
+// The namespace must be specified at the point of use.
+type SecretNameReference struct {
+	// name is the metadata.name of the referenced secret
+	Name string `json:"name"`
 }
 
 // HTTPServingInfo holds configuration for serving HTTP
@@ -190,6 +137,19 @@ type RemoteConnectionInfo struct {
 	CertInfo `json:",inline"`
 }
 
+type AdmissionConfig struct {
+	PluginConfig map[string]AdmissionPluginConfig `json:"pluginConfig"`
+
+	// enabledPlugins is a list of admission plugins that must be on in addition to the default list.
+	// Some admission plugins are disabled by default, but certain configurations require them.  This is fairly uncommon
+	// and can result in performance penalties and unexpected behavior.
+	EnabledAdmissionPlugins []string `json:"enabledPlugins"`
+
+	// disabledPlugins is a list of admission plugins that must be off.  Putting something in this list
+	// is almost always a mistake and likely to result in cluster instability.
+	DisabledAdmissionPlugins []string `json:"disabledPlugins"`
+}
+
 // AdmissionPluginConfig holds the necessary configuration options for admission plugins
 type AdmissionPluginConfig struct {
 	// Location is the path to a configuration file that contains the plugin's
@@ -273,18 +233,22 @@ type EtcdStorageConfig struct {
 
 // GenericAPIServerConfig is an inline-able struct for aggregated apiservers that need to store data in etcd
 type GenericAPIServerConfig struct {
-	// ServingInfo describes how to start serving
+	// servingInfo describes how to start serving
 	ServingInfo HTTPServingInfo `json:"servingInfo"`
 
-	// CORSAllowedOrigins
+	// corsAllowedOrigins
 	CORSAllowedOrigins []string `json:"corsAllowedOrigins"`
 
-	// AuditConfig describes how to configure audit information
+	// auditConfig describes how to configure audit information
 	AuditConfig AuditConfig `json:"auditConfig"`
 
-	// StorageConfig contains information about how to use
+	// storageConfig contains information about how to use
 	StorageConfig EtcdStorageConfig `json:"storageConfig"`
 
+	// admissionConfig holds information about how to configure admission.
+	AdmissionConfig AdmissionConfig `json:"admission"`
+
+	// TODO remove this.  We need a cut-over or we'll have a gap.
 	AdmissionPluginConfig map[string]AdmissionPluginConfig `json:"admissionPluginConfig"`
 
 	KubeClientConfig KubeClientConfig `json:"kubeClientConfig"`
@@ -310,4 +274,30 @@ type ClientConnectionOverrides struct {
 	QPS float32 `json:"qps"`
 	// burst allows extra queries to accumulate when a client is exceeding its rate.
 	Burst int32 `json:"burst"`
+}
+
+// GenericControllerConfig provides information to configure a controller
+type GenericControllerConfig struct {
+	// ServingInfo is the HTTP serving information for the controller's endpoints
+	ServingInfo HTTPServingInfo `json:"servingInfo,omitempty"`
+
+	// leaderElection provides information to elect a leader. Only override this if you have a specific need
+	LeaderElection LeaderElection `json:"leaderElection,omitempty"`
+
+	// authentication allows configuration of authentication for the endpoints
+	Authentication DelegatedAuthentication `json:"authentication,omitempty"`
+	// authorization allows configuration of authentication for the endpoints
+	Authorization DelegatedAuthorization `json:"authorization,omitempty"`
+}
+
+// DelegatedAuthentication allows authentication to be disabled.
+type DelegatedAuthentication struct {
+	// disabled indicates that authentication should be disabled.  By default it will use delegated authentication.
+	Disabled bool `json:"disabled,omitempty"`
+}
+
+// DelegatedAuthorization allows authorization to be disabled.
+type DelegatedAuthorization struct {
+	// disabled indicates that authorization should be disabled.  By default it will use delegated authorization.
+	Disabled bool `json:"disabled,omitempty"`
 }

@@ -9,6 +9,7 @@ import (
 func main() {
 	d := diskv.New(diskv.Options{
 		BasePath:     "my-diskv-data-directory",
+		Transform:    func(s string) []string { return []string{} },
 		CacheSizeMax: 1024 * 1024, // 1MB
 	})
 
