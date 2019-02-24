@@ -99,7 +99,7 @@ func manageSigningSecret_v4_00_to_latest(client coreclientv1.SecretsGetter, even
 		return existing, false, err
 	}
 
-	ca, err := crypto.MakeSelfSignedCAConfig(serviceServingCertSignerName(), 10)
+	ca, err := crypto.MakeSelfSignedCAConfig(serviceServingCertSignerName(), 365)
 	if err != nil {
 		return existing, false, err
 	}
