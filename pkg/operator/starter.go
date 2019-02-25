@@ -110,6 +110,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		ctx.EventRecorder,
 	)
 
+	scsInformers.Start(ctx.Done())
 	operatorConfigInformers.Start(ctx.Done())
 	kubeInformersNamespaced.Start(ctx.Done())
 	kubeInformersForNamespaces.Start(ctx.Done())
