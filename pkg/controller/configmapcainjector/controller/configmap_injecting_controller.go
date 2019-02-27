@@ -46,20 +46,21 @@ func (ic *configMapCABundleInjectionController) Sync(obj v1.Object) error {
 	if !api.HasInjectCABundleAnnotation(sharedConfigMap) {
 		return nil
 	}
+	// ensure data of configmap
+	return ic.ensureConfigMapCABundleInjection(sharedConfigMap)
+}
+
+// ensureConfigMapCABundleInjection will create or update configmap for the
+// CA bundle injection as appropriate.
+func (ic *configMapCABundleInjectionController) ensureConfigMapCABundleInjection(current *corev1.ConfigMap) error {
 	// skip updating when the CA bundle is already there
-	if data, ok := sharedConfigMap.Data[api.InjectionDataKey]; ok && data == ic.ca {
+	if data, ok := current.Data[api.InjectionDataKey]; ok &&
+		data == ic.ca && len(current.Data) == 1 {
 		return nil
 	}
-
 	// make a copy to avoid mutating cache state
-	configMapCopy := sharedConfigMap.DeepCopy()
-
-	if configMapCopy.Data == nil {
-		configMapCopy.Data = map[string]string{}
-	}
-
-	configMapCopy.Data[api.InjectionDataKey] = ic.ca
-
-	_, err := ic.configMapClient.ConfigMaps(configMapCopy.Namespace).Update(configMapCopy)
+	configMapCopy := current.DeepCopy()
+	configMapCopy.Data = map[string]string{api.InjectionDataKey: ic.ca}
+	_, err := ic.configMapClient.ConfigMaps(current.Namespace).Update(configMapCopy)
 	return err
 }
