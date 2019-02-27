@@ -6,6 +6,8 @@
 // bindata/v4.0.0/apiservice-cabundle-controller/defaultconfig.yaml
 // bindata/v4.0.0/apiservice-cabundle-controller/deployment.yaml
 // bindata/v4.0.0/apiservice-cabundle-controller/ns.yaml
+// bindata/v4.0.0/apiservice-cabundle-controller/role.yaml
+// bindata/v4.0.0/apiservice-cabundle-controller/rolebinding.yaml
 // bindata/v4.0.0/apiservice-cabundle-controller/sa.yaml
 // bindata/v4.0.0/apiservice-cabundle-controller/signing-cabundle.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/clusterrole.yaml
@@ -14,6 +16,8 @@
 // bindata/v4.0.0/configmap-cabundle-controller/defaultconfig.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/deployment.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/ns.yaml
+// bindata/v4.0.0/configmap-cabundle-controller/role.yaml
+// bindata/v4.0.0/configmap-cabundle-controller/rolebinding.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/sa.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/signing-cabundle.yaml
 // bindata/v4.0.0/service-ca-operator/operator-config.yaml
@@ -23,6 +27,8 @@
 // bindata/v4.0.0/service-serving-cert-signer-controller/defaultconfig.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/deployment.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/ns.yaml
+// bindata/v4.0.0/service-serving-cert-signer-controller/role.yaml
+// bindata/v4.0.0/service-serving-cert-signer-controller/rolebinding.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/sa.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml
 // DO NOT EDIT!
@@ -83,22 +89,6 @@ rules:
   - watch
   - update
   - patch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-  - update
-  - create
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
 `)
 
 func v400ApiserviceCabundleControllerClusterroleYamlBytes() ([]byte, error) {
@@ -171,6 +161,10 @@ func v400ApiserviceCabundleControllerCmYaml() (*asset, error) {
 var _v400ApiserviceCabundleControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
 kind: APIServiceCABundleInjectorConfig
 caBundleFile: /var/run/configmaps/signing-cabundle/cabundle.crt
+authentication:
+  disabled: true
+authorization:
+  disabled: true
 `)
 
 func v400ApiserviceCabundleControllerDefaultconfigYamlBytes() ([]byte, error) {
@@ -275,6 +269,91 @@ func v400ApiserviceCabundleControllerNsYaml() (*asset, error) {
 	return a, nil
 }
 
+var _v400ApiserviceCabundleControllerRoleYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: system:openshift:controller:apiservice-cabundle-injector
+  namespace: openshift-service-cert-signer
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "apps"
+  resources:
+  - replicasets
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+`)
+
+func v400ApiserviceCabundleControllerRoleYamlBytes() ([]byte, error) {
+	return _v400ApiserviceCabundleControllerRoleYaml, nil
+}
+
+func v400ApiserviceCabundleControllerRoleYaml() (*asset, error) {
+	bytes, err := v400ApiserviceCabundleControllerRoleYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/apiservice-cabundle-controller/role.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400ApiserviceCabundleControllerRolebindingYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: system:openshift:controller:apiservice-cabundle-injector
+  namespace: openshift-service-cert-signer
+roleRef:
+  kind: Role
+  name: system:openshift:controller:apiservice-cabundle-injector
+subjects:
+- kind: ServiceAccount
+  namespace: openshift-service-cert-signer
+  name: apiservice-cabundle-injector-sa
+`)
+
+func v400ApiserviceCabundleControllerRolebindingYamlBytes() ([]byte, error) {
+	return _v400ApiserviceCabundleControllerRolebindingYaml, nil
+}
+
+func v400ApiserviceCabundleControllerRolebindingYaml() (*asset, error) {
+	bytes, err := v400ApiserviceCabundleControllerRolebindingYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/apiservice-cabundle-controller/rolebinding.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
 var _v400ApiserviceCabundleControllerSaYaml = []byte(`apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -335,22 +414,6 @@ rules:
   - list
   - watch
   - update
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-  - update
-  - create
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
 `)
 
 func v400ConfigmapCabundleControllerClusterroleYamlBytes() ([]byte, error) {
@@ -423,6 +486,10 @@ func v400ConfigmapCabundleControllerCmYaml() (*asset, error) {
 var _v400ConfigmapCabundleControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
 kind: ConfigMapCABundleInjectorConfig
 caBundleFile: /var/run/configmaps/signing-cabundle/cabundle.crt
+authentication:
+  disabled: true
+authorization:
+  disabled: true
 `)
 
 func v400ConfigmapCabundleControllerDefaultconfigYamlBytes() ([]byte, error) {
@@ -528,6 +595,91 @@ func v400ConfigmapCabundleControllerNsYaml() (*asset, error) {
 	return a, nil
 }
 
+var _v400ConfigmapCabundleControllerRoleYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: system:openshift:controller:configmap-cabundle-injector
+  namespace: openshift-service-cert-signer
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "apps"
+  resources:
+  - replicasets
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+`)
+
+func v400ConfigmapCabundleControllerRoleYamlBytes() ([]byte, error) {
+	return _v400ConfigmapCabundleControllerRoleYaml, nil
+}
+
+func v400ConfigmapCabundleControllerRoleYaml() (*asset, error) {
+	bytes, err := v400ConfigmapCabundleControllerRoleYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/configmap-cabundle-controller/role.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400ConfigmapCabundleControllerRolebindingYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: system:openshift:controller:configmap-cabundle-injector
+  namespace: openshift-service-cert-signer
+roleRef:
+  kind: Role
+  name: system:openshift:controller:configmap-cabundle-injector
+subjects:
+- kind: ServiceAccount
+  namespace: openshift-service-cert-signer
+  name: configmap-cabundle-injector-sa
+`)
+
+func v400ConfigmapCabundleControllerRolebindingYamlBytes() ([]byte, error) {
+	return _v400ConfigmapCabundleControllerRolebindingYaml, nil
+}
+
+func v400ConfigmapCabundleControllerRolebindingYaml() (*asset, error) {
+	bytes, err := v400ConfigmapCabundleControllerRolebindingYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/configmap-cabundle-controller/rolebinding.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
 var _v400ConfigmapCabundleControllerSaYaml = []byte(`apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -613,8 +765,6 @@ rules:
   - create
   - update
   - patch
-  - delete
-  - deletecollection
 - apiGroups:
   - ""
   resources:
@@ -625,22 +775,6 @@ rules:
   - watch
   - update
   - patch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-  - update
-  - create
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
 `)
 
 func v400ServiceServingCertSignerControllerClusterroleYamlBytes() ([]byte, error) {
@@ -715,6 +849,10 @@ kind: ServiceServingCertSignerConfig
 signer:
   certFile: /var/run/secrets/signing-key/tls.crt
   keyFile: /var/run/secrets/signing-key/tls.key
+authentication:
+  disabled: true
+authorization:
+  disabled: true
 `)
 
 func v400ServiceServingCertSignerControllerDefaultconfigYamlBytes() ([]byte, error) {
@@ -815,6 +953,91 @@ func v400ServiceServingCertSignerControllerNsYaml() (*asset, error) {
 	}
 
 	info := bindataFileInfo{name: "v4.0.0/service-serving-cert-signer-controller/ns.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400ServiceServingCertSignerControllerRoleYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: system:openshift:controller:service-serving-cert-signer
+  namespace: openshift-service-cert-signer
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "apps"
+  resources:
+  - replicasets
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+`)
+
+func v400ServiceServingCertSignerControllerRoleYamlBytes() ([]byte, error) {
+	return _v400ServiceServingCertSignerControllerRoleYaml, nil
+}
+
+func v400ServiceServingCertSignerControllerRoleYaml() (*asset, error) {
+	bytes, err := v400ServiceServingCertSignerControllerRoleYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/service-serving-cert-signer-controller/role.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400ServiceServingCertSignerControllerRolebindingYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: system:openshift:controller:service-serving-cert-signer
+  namespace: openshift-service-cert-signer
+roleRef:
+  kind: Role
+  name: system:openshift:controller:service-serving-cert-signer
+subjects:
+- kind: ServiceAccount
+  namespace: openshift-service-cert-signer
+  name: service-serving-cert-signer-sa
+`)
+
+func v400ServiceServingCertSignerControllerRolebindingYamlBytes() ([]byte, error) {
+	return _v400ServiceServingCertSignerControllerRolebindingYaml, nil
+}
+
+func v400ServiceServingCertSignerControllerRolebindingYaml() (*asset, error) {
+	bytes, err := v400ServiceServingCertSignerControllerRolebindingYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/service-serving-cert-signer-controller/rolebinding.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
 	a := &asset{bytes: bytes, info: info}
 	return a, nil
 }
@@ -925,6 +1148,8 @@ var _bindata = map[string]func() (*asset, error){
 	"v4.0.0/apiservice-cabundle-controller/defaultconfig.yaml": v400ApiserviceCabundleControllerDefaultconfigYaml,
 	"v4.0.0/apiservice-cabundle-controller/deployment.yaml": v400ApiserviceCabundleControllerDeploymentYaml,
 	"v4.0.0/apiservice-cabundle-controller/ns.yaml": v400ApiserviceCabundleControllerNsYaml,
+	"v4.0.0/apiservice-cabundle-controller/role.yaml": v400ApiserviceCabundleControllerRoleYaml,
+	"v4.0.0/apiservice-cabundle-controller/rolebinding.yaml": v400ApiserviceCabundleControllerRolebindingYaml,
 	"v4.0.0/apiservice-cabundle-controller/sa.yaml": v400ApiserviceCabundleControllerSaYaml,
 	"v4.0.0/apiservice-cabundle-controller/signing-cabundle.yaml": v400ApiserviceCabundleControllerSigningCabundleYaml,
 	"v4.0.0/configmap-cabundle-controller/clusterrole.yaml": v400ConfigmapCabundleControllerClusterroleYaml,
@@ -933,6 +1158,8 @@ var _bindata = map[string]func() (*asset, error){
 	"v4.0.0/configmap-cabundle-controller/defaultconfig.yaml": v400ConfigmapCabundleControllerDefaultconfigYaml,
 	"v4.0.0/configmap-cabundle-controller/deployment.yaml": v400ConfigmapCabundleControllerDeploymentYaml,
 	"v4.0.0/configmap-cabundle-controller/ns.yaml": v400ConfigmapCabundleControllerNsYaml,
+	"v4.0.0/configmap-cabundle-controller/role.yaml": v400ConfigmapCabundleControllerRoleYaml,
+	"v4.0.0/configmap-cabundle-controller/rolebinding.yaml": v400ConfigmapCabundleControllerRolebindingYaml,
 	"v4.0.0/configmap-cabundle-controller/sa.yaml": v400ConfigmapCabundleControllerSaYaml,
 	"v4.0.0/configmap-cabundle-controller/signing-cabundle.yaml": v400ConfigmapCabundleControllerSigningCabundleYaml,
 	"v4.0.0/service-ca-operator/operator-config.yaml": v400ServiceCaOperatorOperatorConfigYaml,
@@ -942,6 +1169,8 @@ var _bindata = map[string]func() (*asset, error){
 	"v4.0.0/service-serving-cert-signer-controller/defaultconfig.yaml": v400ServiceServingCertSignerControllerDefaultconfigYaml,
 	"v4.0.0/service-serving-cert-signer-controller/deployment.yaml": v400ServiceServingCertSignerControllerDeploymentYaml,
 	"v4.0.0/service-serving-cert-signer-controller/ns.yaml": v400ServiceServingCertSignerControllerNsYaml,
+	"v4.0.0/service-serving-cert-signer-controller/role.yaml": v400ServiceServingCertSignerControllerRoleYaml,
+	"v4.0.0/service-serving-cert-signer-controller/rolebinding.yaml": v400ServiceServingCertSignerControllerRolebindingYaml,
 	"v4.0.0/service-serving-cert-signer-controller/sa.yaml": v400ServiceServingCertSignerControllerSaYaml,
 	"v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml": v400ServiceServingCertSignerControllerSigningSecretYaml,
 }
@@ -994,6 +1223,8 @@ var _bintree = &bintree{nil, map[string]*bintree{
 			"defaultconfig.yaml": &bintree{v400ApiserviceCabundleControllerDefaultconfigYaml, map[string]*bintree{}},
 			"deployment.yaml": &bintree{v400ApiserviceCabundleControllerDeploymentYaml, map[string]*bintree{}},
 			"ns.yaml": &bintree{v400ApiserviceCabundleControllerNsYaml, map[string]*bintree{}},
+			"role.yaml": &bintree{v400ApiserviceCabundleControllerRoleYaml, map[string]*bintree{}},
+			"rolebinding.yaml": &bintree{v400ApiserviceCabundleControllerRolebindingYaml, map[string]*bintree{}},
 			"sa.yaml": &bintree{v400ApiserviceCabundleControllerSaYaml, map[string]*bintree{}},
 			"signing-cabundle.yaml": &bintree{v400ApiserviceCabundleControllerSigningCabundleYaml, map[string]*bintree{}},
 		}},
@@ -1004,6 +1235,8 @@ var _bintree = &bintree{nil, map[string]*bintree{
 			"defaultconfig.yaml": &bintree{v400ConfigmapCabundleControllerDefaultconfigYaml, map[string]*bintree{}},
 			"deployment.yaml": &bintree{v400ConfigmapCabundleControllerDeploymentYaml, map[string]*bintree{}},
 			"ns.yaml": &bintree{v400ConfigmapCabundleControllerNsYaml, map[string]*bintree{}},
+			"role.yaml": &bintree{v400ConfigmapCabundleControllerRoleYaml, map[string]*bintree{}},
+			"rolebinding.yaml": &bintree{v400ConfigmapCabundleControllerRolebindingYaml, map[string]*bintree{}},
 			"sa.yaml": &bintree{v400ConfigmapCabundleControllerSaYaml, map[string]*bintree{}},
 			"signing-cabundle.yaml": &bintree{v400ConfigmapCabundleControllerSigningCabundleYaml, map[string]*bintree{}},
 		}},
@@ -1017,6 +1250,8 @@ var _bintree = &bintree{nil, map[string]*bintree{
 			"defaultconfig.yaml": &bintree{v400ServiceServingCertSignerControllerDefaultconfigYaml, map[string]*bintree{}},
 			"deployment.yaml": &bintree{v400ServiceServingCertSignerControllerDeploymentYaml, map[string]*bintree{}},
 			"ns.yaml": &bintree{v400ServiceServingCertSignerControllerNsYaml, map[string]*bintree{}},
+			"role.yaml": &bintree{v400ServiceServingCertSignerControllerRoleYaml, map[string]*bintree{}},
+			"rolebinding.yaml": &bintree{v400ServiceServingCertSignerControllerRolebindingYaml, map[string]*bintree{}},
 			"sa.yaml": &bintree{v400ServiceServingCertSignerControllerSaYaml, map[string]*bintree{}},
 			"signing-secret.yaml": &bintree{v400ServiceServingCertSignerControllerSigningSecretYaml, map[string]*bintree{}},
 		}},
