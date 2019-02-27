@@ -101,10 +101,10 @@ func (sc *serviceServingCertUpdateController) requiresRegeneration(secret *v1.Se
 		return false, nil
 	}
 
-	if sharedService.Annotations[api.ServingCertSecretAnnotation] != secret.Name {
+	if sharedService.Annotations[api.BetaServingCertSecretAnnotation] != secret.Name && sharedService.Annotations[api.ServingCertSecretAnnotation] != secret.Name {
 		return false, nil
 	}
-	if secret.Annotations[api.ServiceUIDAnnotation] != string(sharedService.UID) {
+	if secret.Annotations[api.BetaServiceUIDAnnotation] != string(sharedService.UID) && secret.Annotations[api.ServiceUIDAnnotation] != string(sharedService.UID) {
 		return false, nil
 	}
 
@@ -116,9 +116,12 @@ func (sc *serviceServingCertUpdateController) requiresRegeneration(secret *v1.Se
 
 	// if we don't have the annotation for expiry, just go ahead and regenerate.  It's easier than writing a
 	// secondary logic flow that creates the expiry dates
-	expiryString, ok := secret.Annotations[api.ServingCertExpiryAnnotation]
+	expiryString, ok := secret.Annotations[api.BetaServingCertExpiryAnnotation]
 	if !ok {
-		return true, sharedService
+		expiryString, ok = secret.Annotations[api.ServingCertExpiryAnnotation]
+		if !ok {
+			return true, sharedService
+		}
 	}
 	expiry, err := time.Parse(time.RFC3339, expiryString)
 	if err != nil {
@@ -133,6 +136,9 @@ func (sc *serviceServingCertUpdateController) requiresRegeneration(secret *v1.Se
 }
 
 func toServiceName(secret *v1.Secret) (string, bool) {
-	serviceName := secret.Annotations[api.ServiceNameAnnotation]
+	serviceName := secret.Annotations[api.BetaServiceNameAnnotation]
+	if len(serviceName) == 0 {
+		serviceName = secret.Annotations[api.ServiceNameAnnotation]
+	}
 	return serviceName, len(serviceName) != 0
 }
