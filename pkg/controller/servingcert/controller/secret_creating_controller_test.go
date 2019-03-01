@@ -136,13 +136,13 @@ func TestBasicControllerFlow(t *testing.T) {
 	serviceName := "svc-name"
 	serviceUID := "some-uid"
 	expectedServiceAnnotations := map[string]string{
-		api.ServingCertSecretAnnotation:        expectedSecretName,
-		api.ServingCertCreatedByAnnotation:     caName,
-		api.BetaServingCertCreatedByAnnotation: caName,
+		api.AlphaServingCertSecretAnnotation:    expectedSecretName,
+		api.AlphaServingCertCreatedByAnnotation: caName,
+		api.ServingCertCreatedByAnnotation:      caName,
 	}
 	expectedSecretAnnotations := map[string]string{
-		api.ServiceUIDAnnotation:  serviceUID,
-		api.ServiceNameAnnotation: serviceName,
+		api.AlphaServiceUIDAnnotation:  serviceUID,
+		api.AlphaServiceNameAnnotation: serviceName,
 	}
 	namespace := "ns"
 
@@ -150,7 +150,7 @@ func TestBasicControllerFlow(t *testing.T) {
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -175,8 +175,8 @@ func TestBasicControllerFlow(t *testing.T) {
 				t.Errorf("expected %v, got %v", namespace, newSecret.Namespace)
 				continue
 			}
+			delete(newSecret.Annotations, api.AlphaServingCertExpiryAnnotation)
 			delete(newSecret.Annotations, api.ServingCertExpiryAnnotation)
-			delete(newSecret.Annotations, api.BetaServingCertExpiryAnnotation)
 			if !reflect.DeepEqual(newSecret.Annotations, expectedSecretAnnotations) {
 				t.Errorf("expected %v, got %v", expectedSecretAnnotations, newSecret.Annotations)
 				continue
@@ -228,13 +228,13 @@ func TestBasicControllerFlowBetaAnnotation(t *testing.T) {
 	serviceName := "svc-name"
 	serviceUID := "some-uid"
 	expectedServiceAnnotations := map[string]string{
-		api.BetaServingCertSecretAnnotation:    expectedSecretName,
-		api.ServingCertCreatedByAnnotation:     caName,
-		api.BetaServingCertCreatedByAnnotation: caName,
+		api.ServingCertSecretAnnotation:         expectedSecretName,
+		api.AlphaServingCertCreatedByAnnotation: caName,
+		api.ServingCertCreatedByAnnotation:      caName,
 	}
 	expectedSecretAnnotations := map[string]string{
-		api.BetaServiceUIDAnnotation:  serviceUID,
-		api.BetaServiceNameAnnotation: serviceName,
+		api.ServiceUIDAnnotation:  serviceUID,
+		api.ServiceNameAnnotation: serviceName,
 	}
 	namespace := "ns"
 
@@ -242,7 +242,7 @@ func TestBasicControllerFlowBetaAnnotation(t *testing.T) {
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.BetaServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -267,8 +267,8 @@ func TestBasicControllerFlowBetaAnnotation(t *testing.T) {
 				t.Errorf("expected %v, got %v", namespace, newSecret.Namespace)
 				continue
 			}
+			delete(newSecret.Annotations, api.AlphaServingCertExpiryAnnotation)
 			delete(newSecret.Annotations, api.ServingCertExpiryAnnotation)
-			delete(newSecret.Annotations, api.BetaServingCertExpiryAnnotation)
 			if !reflect.DeepEqual(newSecret.Annotations, expectedSecretAnnotations) {
 				t.Errorf("expected %v, got %v", expectedSecretAnnotations, newSecret.Annotations)
 				continue
@@ -305,7 +305,7 @@ func TestAlreadyExistingSecretControllerFlow(t *testing.T) {
 	expectedSecretName := "new-secret"
 	serviceName := "svc-name"
 	serviceUID := "some-uid"
-	expectedSecretAnnotations := map[string]string{api.ServiceUIDAnnotation: serviceUID, api.ServiceNameAnnotation: serviceName}
+	expectedSecretAnnotations := map[string]string{api.AlphaServiceUIDAnnotation: serviceUID, api.AlphaServiceNameAnnotation: serviceName}
 	namespace := "ns"
 
 	existingSecret := &v1.Secret{}
@@ -332,16 +332,16 @@ func TestAlreadyExistingSecretControllerFlow(t *testing.T) {
 	go controller.Run(1, stopChannel)
 
 	expectedServiceAnnotations := map[string]string{
-		api.ServingCertSecretAnnotation:        expectedSecretName,
-		api.ServingCertCreatedByAnnotation:     caName,
-		api.BetaServingCertCreatedByAnnotation: caName,
+		api.AlphaServingCertSecretAnnotation:    expectedSecretName,
+		api.AlphaServingCertCreatedByAnnotation: caName,
+		api.ServingCertCreatedByAnnotation:      caName,
 	}
 
 	serviceToAdd := &v1.Service{}
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -387,7 +387,7 @@ func TestAlreadyExistingSecretControllerFlowBetaAnnotation(t *testing.T) {
 	expectedSecretName := "new-secret"
 	serviceName := "svc-name"
 	serviceUID := "some-uid"
-	expectedSecretAnnotations := map[string]string{api.ServiceUIDAnnotation: serviceUID, api.ServiceNameAnnotation: serviceName}
+	expectedSecretAnnotations := map[string]string{api.AlphaServiceUIDAnnotation: serviceUID, api.AlphaServiceNameAnnotation: serviceName}
 	namespace := "ns"
 
 	existingSecret := &v1.Secret{}
@@ -414,16 +414,16 @@ func TestAlreadyExistingSecretControllerFlowBetaAnnotation(t *testing.T) {
 	go controller.Run(1, stopChannel)
 
 	expectedServiceAnnotations := map[string]string{
-		api.BetaServingCertSecretAnnotation:    expectedSecretName,
-		api.ServingCertCreatedByAnnotation:     caName,
-		api.BetaServingCertCreatedByAnnotation: caName,
+		api.ServingCertSecretAnnotation:         expectedSecretName,
+		api.AlphaServingCertCreatedByAnnotation: caName,
+		api.ServingCertCreatedByAnnotation:      caName,
 	}
 
 	serviceToAdd := &v1.Service{}
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.BetaServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -477,9 +477,9 @@ func TestAlreadyExistingSecretForDifferentUIDControllerFlow(t *testing.T) {
 	existingSecret.Namespace = namespace
 	existingSecret.Type = v1.SecretTypeTLS
 	existingSecret.Annotations = map[string]string{
-		api.ServiceUIDAnnotation:     "wrong-uid",
-		api.BetaServiceUIDAnnotation: "wrong-uid",
-		api.ServiceNameAnnotation:    serviceName,
+		api.AlphaServiceUIDAnnotation:  "wrong-uid",
+		api.ServiceUIDAnnotation:       "wrong-uid",
+		api.AlphaServiceNameAnnotation: serviceName,
 	}
 
 	_, kubeclient, fakeWatch, _, controller, informerFactory := controllerSetup([]runtime.Object{existingSecret}, t)
@@ -500,18 +500,18 @@ func TestAlreadyExistingSecretForDifferentUIDControllerFlow(t *testing.T) {
 	go controller.Run(1, stopChannel)
 
 	expectedServiceAnnotations := map[string]string{
-		api.ServingCertSecretAnnotation:       expectedSecretName,
-		api.ServingCertErrorAnnotation:        expectedError,
-		api.BetaServingCertErrorAnnotation:    expectedError,
-		api.ServingCertErrorNumAnnotation:     "1",
-		api.BetaServingCertErrorNumAnnotation: "1",
+		api.AlphaServingCertSecretAnnotation:   expectedSecretName,
+		api.AlphaServingCertErrorAnnotation:    expectedError,
+		api.ServingCertErrorAnnotation:         expectedError,
+		api.AlphaServingCertErrorNumAnnotation: "1",
+		api.ServingCertErrorNumAnnotation:      "1",
 	}
 
 	serviceToAdd := &v1.Service{}
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -564,9 +564,9 @@ func TestAlreadyExistingSecretForDifferentUIDControllerFlowBetaAnnotation(t *tes
 	existingSecret.Namespace = namespace
 	existingSecret.Type = v1.SecretTypeTLS
 	existingSecret.Annotations = map[string]string{
-		api.ServiceUIDAnnotation:     "wrong-uid",
-		api.BetaServiceUIDAnnotation: "wrong-uid",
-		api.ServiceNameAnnotation:    serviceName,
+		api.AlphaServiceUIDAnnotation:  "wrong-uid",
+		api.ServiceUIDAnnotation:       "wrong-uid",
+		api.AlphaServiceNameAnnotation: serviceName,
 	}
 
 	_, kubeclient, fakeWatch, _, controller, informerFactory := controllerSetup([]runtime.Object{existingSecret}, t)
@@ -587,18 +587,18 @@ func TestAlreadyExistingSecretForDifferentUIDControllerFlowBetaAnnotation(t *tes
 	go controller.Run(1, stopChannel)
 
 	expectedServiceAnnotations := map[string]string{
-		api.BetaServingCertSecretAnnotation:   expectedSecretName,
-		api.ServingCertErrorAnnotation:        expectedError,
-		api.BetaServingCertErrorAnnotation:    expectedError,
-		api.ServingCertErrorNumAnnotation:     "1",
-		api.BetaServingCertErrorNumAnnotation: "1",
+		api.ServingCertSecretAnnotation:        expectedSecretName,
+		api.AlphaServingCertErrorAnnotation:    expectedError,
+		api.ServingCertErrorAnnotation:         expectedError,
+		api.AlphaServingCertErrorNumAnnotation: "1",
+		api.ServingCertErrorNumAnnotation:      "1",
 	}
 
 	serviceToAdd := &v1.Service{}
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.BetaServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -664,18 +664,18 @@ func TestSecretCreationErrorControllerFlow(t *testing.T) {
 	go controller.Run(1, stopChannel)
 
 	expectedServiceAnnotations := map[string]string{
-		api.ServingCertSecretAnnotation:       expectedSecretName,
-		api.ServingCertErrorAnnotation:        expectedError,
-		api.BetaServingCertErrorAnnotation:    expectedError,
-		api.ServingCertErrorNumAnnotation:     "1",
-		api.BetaServingCertErrorNumAnnotation: "1",
+		api.AlphaServingCertSecretAnnotation:   expectedSecretName,
+		api.AlphaServingCertErrorAnnotation:    expectedError,
+		api.ServingCertErrorAnnotation:         expectedError,
+		api.AlphaServingCertErrorNumAnnotation: "1",
+		api.ServingCertErrorNumAnnotation:      "1",
 	}
 
 	serviceToAdd := &v1.Service{}
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -734,18 +734,18 @@ func TestSecretCreationErrorControllerFlowBetaAnnotation(t *testing.T) {
 	go controller.Run(1, stopChannel)
 
 	expectedServiceAnnotations := map[string]string{
-		api.BetaServingCertSecretAnnotation:   expectedSecretName,
-		api.ServingCertErrorAnnotation:        expectedError,
-		api.BetaServingCertErrorAnnotation:    expectedError,
-		api.ServingCertErrorNumAnnotation:     "1",
-		api.BetaServingCertErrorNumAnnotation: "1",
+		api.ServingCertSecretAnnotation:        expectedSecretName,
+		api.AlphaServingCertErrorAnnotation:    expectedError,
+		api.ServingCertErrorAnnotation:         expectedError,
+		api.AlphaServingCertErrorNumAnnotation: "1",
+		api.ServingCertErrorNumAnnotation:      "1",
 	}
 
 	serviceToAdd := &v1.Service{}
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.BetaServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -776,6 +776,85 @@ func TestSecretCreationErrorControllerFlowBetaAnnotation(t *testing.T) {
 }
 
 func TestSkipGenerationControllerFlow(t *testing.T) {
+	stopChannel := make(chan struct{})
+	defer close(stopChannel)
+	received := make(chan bool)
+
+	expectedSecretName := "new-secret"
+	serviceName := "svc-name"
+	serviceUID := "some-uid"
+	namespace := "ns"
+
+	caName, kubeclient, fakeWatch, fakeSecretWatch, controller, informerFactory := controllerSetup([]runtime.Object{}, t)
+	kubeclient.PrependReactor("update", "service", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		return true, &v1.Service{}, kapierrors.NewForbidden(v1.Resource("fdsa"), "new-service", fmt.Errorf("any service reason"))
+	})
+	kubeclient.PrependReactor("create", "secret", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		return true, &v1.Secret{}, kapierrors.NewForbidden(v1.Resource("asdf"), "new-secret", fmt.Errorf("any reason"))
+	})
+	kubeclient.PrependReactor("update", "secret", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		return true, &v1.Secret{}, kapierrors.NewForbidden(v1.Resource("asdf"), "new-secret", fmt.Errorf("any reason"))
+	})
+	controller.syncHandler = func(obj metav1.Object) error {
+		defer func() { received <- true }()
+
+		err := controller.syncService(obj)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+
+		return err
+	}
+
+	secretToAdd := &v1.Secret{}
+	secretToAdd.Name = expectedSecretName
+	secretToAdd.Namespace = namespace
+	fakeSecretWatch.Add(secretToAdd)
+
+	informerFactory.Start(stopChannel)
+	go controller.Run(1, stopChannel)
+
+	serviceToAdd := &v1.Service{}
+	serviceToAdd.Name = serviceName
+	serviceToAdd.Namespace = namespace
+	serviceToAdd.UID = types.UID(serviceUID)
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName, api.AlphaServingCertErrorAnnotation: "any-error", api.AlphaServingCertErrorNumAnnotation: "11"}
+	fakeWatch.Add(serviceToAdd)
+
+	t.Log("waiting to reach syncHandler")
+	select {
+	case <-received:
+	case <-time.After(time.Duration(30 * time.Second)):
+		t.Fatalf("failed to call into syncService")
+	}
+
+	for _, action := range kubeclient.Actions() {
+		switch action.GetVerb() {
+		case "update", "create":
+			t.Errorf("no mutation expected, but we got %v", action)
+		}
+	}
+
+	kubeclient.ClearActions()
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName, api.AlphaServingCertCreatedByAnnotation: caName}
+	fakeWatch.Add(serviceToAdd)
+
+	t.Log("waiting to reach syncHandler")
+	select {
+	case <-received:
+	case <-time.After(time.Duration(30 * time.Second)):
+		t.Fatalf("failed to call into syncService")
+	}
+
+	for _, action := range kubeclient.Actions() {
+		switch action.GetVerb() {
+		case "update", "create":
+			t.Errorf("no mutation expected, but we got %v", action)
+		}
+	}
+}
+
+func TestSkipGenerationControllerFlowBetaAnnotation(t *testing.T) {
 	stopChannel := make(chan struct{})
 	defer close(stopChannel)
 	received := make(chan bool)
@@ -854,85 +933,6 @@ func TestSkipGenerationControllerFlow(t *testing.T) {
 	}
 }
 
-func TestSkipGenerationControllerFlowBetaAnnotation(t *testing.T) {
-	stopChannel := make(chan struct{})
-	defer close(stopChannel)
-	received := make(chan bool)
-
-	expectedSecretName := "new-secret"
-	serviceName := "svc-name"
-	serviceUID := "some-uid"
-	namespace := "ns"
-
-	caName, kubeclient, fakeWatch, fakeSecretWatch, controller, informerFactory := controllerSetup([]runtime.Object{}, t)
-	kubeclient.PrependReactor("update", "service", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-		return true, &v1.Service{}, kapierrors.NewForbidden(v1.Resource("fdsa"), "new-service", fmt.Errorf("any service reason"))
-	})
-	kubeclient.PrependReactor("create", "secret", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-		return true, &v1.Secret{}, kapierrors.NewForbidden(v1.Resource("asdf"), "new-secret", fmt.Errorf("any reason"))
-	})
-	kubeclient.PrependReactor("update", "secret", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-		return true, &v1.Secret{}, kapierrors.NewForbidden(v1.Resource("asdf"), "new-secret", fmt.Errorf("any reason"))
-	})
-	controller.syncHandler = func(obj metav1.Object) error {
-		defer func() { received <- true }()
-
-		err := controller.syncService(obj)
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-
-		return err
-	}
-
-	secretToAdd := &v1.Secret{}
-	secretToAdd.Name = expectedSecretName
-	secretToAdd.Namespace = namespace
-	fakeSecretWatch.Add(secretToAdd)
-
-	informerFactory.Start(stopChannel)
-	go controller.Run(1, stopChannel)
-
-	serviceToAdd := &v1.Service{}
-	serviceToAdd.Name = serviceName
-	serviceToAdd.Namespace = namespace
-	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.BetaServingCertSecretAnnotation: expectedSecretName, api.BetaServingCertErrorAnnotation: "any-error", api.BetaServingCertErrorNumAnnotation: "11"}
-	fakeWatch.Add(serviceToAdd)
-
-	t.Log("waiting to reach syncHandler")
-	select {
-	case <-received:
-	case <-time.After(time.Duration(30 * time.Second)):
-		t.Fatalf("failed to call into syncService")
-	}
-
-	for _, action := range kubeclient.Actions() {
-		switch action.GetVerb() {
-		case "update", "create":
-			t.Errorf("no mutation expected, but we got %v", action)
-		}
-	}
-
-	kubeclient.ClearActions()
-	serviceToAdd.Annotations = map[string]string{api.BetaServingCertSecretAnnotation: expectedSecretName, api.BetaServingCertCreatedByAnnotation: caName}
-	fakeWatch.Add(serviceToAdd)
-
-	t.Log("waiting to reach syncHandler")
-	select {
-	case <-received:
-	case <-time.After(time.Duration(30 * time.Second)):
-		t.Fatalf("failed to call into syncService")
-	}
-
-	for _, action := range kubeclient.Actions() {
-		switch action.GetVerb() {
-		case "update", "create":
-			t.Errorf("no mutation expected, but we got %v", action)
-		}
-	}
-}
-
 func TestRecreateSecretControllerFlow(t *testing.T) {
 	stopChannel := make(chan struct{})
 	defer close(stopChannel)
@@ -956,11 +956,11 @@ func TestRecreateSecretControllerFlow(t *testing.T) {
 	serviceName := "svc-name"
 	serviceUID := "some-uid"
 	expectedServiceAnnotations := map[string]string{
-		api.ServingCertSecretAnnotation:        expectedSecretName,
-		api.ServingCertCreatedByAnnotation:     caName,
-		api.BetaServingCertCreatedByAnnotation: caName,
+		api.AlphaServingCertSecretAnnotation:    expectedSecretName,
+		api.AlphaServingCertCreatedByAnnotation: caName,
+		api.ServingCertCreatedByAnnotation:      caName,
 	}
-	expectedSecretAnnotations := map[string]string{api.ServiceUIDAnnotation: serviceUID, api.ServiceNameAnnotation: serviceName}
+	expectedSecretAnnotations := map[string]string{api.AlphaServiceUIDAnnotation: serviceUID, api.AlphaServiceNameAnnotation: serviceName}
 	expectedOwnerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Service", Name: serviceName, UID: types.UID(serviceUID)}}
 	namespace := "ns"
 
@@ -968,13 +968,13 @@ func TestRecreateSecretControllerFlow(t *testing.T) {
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	secretToDelete := &v1.Secret{}
 	secretToDelete.Name = expectedSecretName
 	secretToDelete.Namespace = namespace
-	secretToDelete.Annotations = map[string]string{api.ServiceNameAnnotation: serviceName}
+	secretToDelete.Annotations = map[string]string{api.AlphaServiceNameAnnotation: serviceName}
 
 	t.Log("waiting to reach syncHandler")
 	select {
@@ -998,8 +998,8 @@ func TestRecreateSecretControllerFlow(t *testing.T) {
 				t.Errorf("expected %v, got %v", namespace, newSecret.Namespace)
 				continue
 			}
+			delete(newSecret.Annotations, api.AlphaServingCertExpiryAnnotation)
 			delete(newSecret.Annotations, api.ServingCertExpiryAnnotation)
-			delete(newSecret.Annotations, api.BetaServingCertExpiryAnnotation)
 			if !reflect.DeepEqual(newSecret.Annotations, expectedSecretAnnotations) {
 				t.Errorf("expected %v, got %v", expectedSecretAnnotations, newSecret.Annotations)
 				continue
@@ -1055,8 +1055,8 @@ func TestRecreateSecretControllerFlow(t *testing.T) {
 				t.Errorf("expected %v, got %v", namespace, newSecret.Namespace)
 				continue
 			}
+			delete(newSecret.Annotations, api.AlphaServingCertExpiryAnnotation)
 			delete(newSecret.Annotations, api.ServingCertExpiryAnnotation)
-			delete(newSecret.Annotations, api.BetaServingCertExpiryAnnotation)
 			if !reflect.DeepEqual(newSecret.Annotations, expectedSecretAnnotations) {
 				t.Errorf("expected %v, got %v", expectedSecretAnnotations, newSecret.Annotations)
 				continue
@@ -1101,11 +1101,11 @@ func TestRecreateSecretControllerFlowBetaAnnotation(t *testing.T) {
 	serviceName := "svc-name"
 	serviceUID := "some-uid"
 	expectedServiceAnnotations := map[string]string{
-		api.BetaServingCertSecretAnnotation:    expectedSecretName,
-		api.ServingCertCreatedByAnnotation:     caName,
-		api.BetaServingCertCreatedByAnnotation: caName,
+		api.ServingCertSecretAnnotation:         expectedSecretName,
+		api.AlphaServingCertCreatedByAnnotation: caName,
+		api.ServingCertCreatedByAnnotation:      caName,
 	}
-	expectedSecretAnnotations := map[string]string{api.BetaServiceUIDAnnotation: serviceUID, api.BetaServiceNameAnnotation: serviceName}
+	expectedSecretAnnotations := map[string]string{api.ServiceUIDAnnotation: serviceUID, api.ServiceNameAnnotation: serviceName}
 	expectedOwnerRef := []metav1.OwnerReference{{APIVersion: "v1", Kind: "Service", Name: serviceName, UID: types.UID(serviceUID)}}
 	namespace := "ns"
 
@@ -1113,13 +1113,13 @@ func TestRecreateSecretControllerFlowBetaAnnotation(t *testing.T) {
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.BetaServingCertSecretAnnotation: expectedSecretName}
+	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	secretToDelete := &v1.Secret{}
 	secretToDelete.Name = expectedSecretName
 	secretToDelete.Namespace = namespace
-	secretToDelete.Annotations = map[string]string{api.ServiceNameAnnotation: serviceName}
+	secretToDelete.Annotations = map[string]string{api.AlphaServiceNameAnnotation: serviceName}
 
 	t.Log("waiting to reach syncHandler")
 	select {
@@ -1143,8 +1143,8 @@ func TestRecreateSecretControllerFlowBetaAnnotation(t *testing.T) {
 				t.Errorf("expected %v, got %v", namespace, newSecret.Namespace)
 				continue
 			}
+			delete(newSecret.Annotations, api.AlphaServingCertExpiryAnnotation)
 			delete(newSecret.Annotations, api.ServingCertExpiryAnnotation)
-			delete(newSecret.Annotations, api.BetaServingCertExpiryAnnotation)
 			if !reflect.DeepEqual(newSecret.Annotations, expectedSecretAnnotations) {
 				t.Errorf("expected %v, got %v", expectedSecretAnnotations, newSecret.Annotations)
 				continue
@@ -1200,8 +1200,8 @@ func TestRecreateSecretControllerFlowBetaAnnotation(t *testing.T) {
 				t.Errorf("expected %v, got %v", namespace, newSecret.Namespace)
 				continue
 			}
+			delete(newSecret.Annotations, api.AlphaServingCertExpiryAnnotation)
 			delete(newSecret.Annotations, api.ServingCertExpiryAnnotation)
-			delete(newSecret.Annotations, api.BetaServingCertExpiryAnnotation)
 			if !reflect.DeepEqual(newSecret.Annotations, expectedSecretAnnotations) {
 				t.Errorf("expected %v, got %v", expectedSecretAnnotations, newSecret.Annotations)
 				continue

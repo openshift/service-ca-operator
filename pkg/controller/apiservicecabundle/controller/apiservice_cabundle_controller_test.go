@@ -51,7 +51,7 @@ func TestSyncAPIService(t *testing.T) {
 			name: "requested and empty",
 			startingAPIServices: []runtime.Object{
 				&apiregistrationapiv1.APIService{
-					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"}},
+					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.AlphaInjectCABundleAnnotationName: "true"}},
 				},
 			},
 			key:                "foo",
@@ -62,7 +62,7 @@ func TestSyncAPIService(t *testing.T) {
 			name: "requested and nochange",
 			startingAPIServices: []runtime.Object{
 				&apiregistrationapiv1.APIService{
-					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"}},
+					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.AlphaInjectCABundleAnnotationName: "true"}},
 					Spec: apiregistrationapiv1.APIServiceSpec{
 						CABundle: []byte("content"),
 					},
@@ -76,7 +76,7 @@ func TestSyncAPIService(t *testing.T) {
 			name: "requested and different",
 			startingAPIServices: []runtime.Object{
 				&apiregistrationapiv1.APIService{
-					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"}},
+					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.AlphaInjectCABundleAnnotationName: "true"}},
 					Spec: apiregistrationapiv1.APIServiceSpec{
 						CABundle: []byte("old"),
 					},
@@ -90,7 +90,7 @@ func TestSyncAPIService(t *testing.T) {
 			name: "requested and empty beta",
 			startingAPIServices: []runtime.Object{
 				&apiregistrationapiv1.APIService{
-					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.BetaInjectCABundleAnnotationName: "true"}},
+					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"}},
 				},
 			},
 			key:                "foo",
@@ -101,7 +101,7 @@ func TestSyncAPIService(t *testing.T) {
 			name: "requested and nochange beta",
 			startingAPIServices: []runtime.Object{
 				&apiregistrationapiv1.APIService{
-					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.BetaInjectCABundleAnnotationName: "true"}},
+					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"}},
 					Spec: apiregistrationapiv1.APIServiceSpec{
 						CABundle: []byte("content"),
 					},
@@ -115,7 +115,7 @@ func TestSyncAPIService(t *testing.T) {
 			name: "requested and different beta",
 			startingAPIServices: []runtime.Object{
 				&apiregistrationapiv1.APIService{
-					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.BetaInjectCABundleAnnotationName: "true"}},
+					ObjectMeta: metav1.ObjectMeta{Name: "foo", Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"}},
 					Spec: apiregistrationapiv1.APIServiceSpec{
 						CABundle: []byte("old"),
 					},

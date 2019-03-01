@@ -58,7 +58,7 @@ func createServingCertAnnotatedService(client *kubernetes.Clientset, secretName,
 		ObjectMeta: metav1.ObjectMeta{
 			Name: serviceName,
 			Annotations: map[string]string{
-				api.ServingCertSecretAnnotation: secretName,
+				api.AlphaServingCertSecretAnnotation: secretName,
 			},
 		},
 		Spec: v1.ServiceSpec{

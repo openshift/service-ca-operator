@@ -55,7 +55,7 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 				&v1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:        "foo",
-						Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"},
+						Annotations: map[string]string{api.AlphaInjectCABundleAnnotationName: "true"},
 						Namespace:   "foo",
 					},
 					Data: map[string]string{},
@@ -72,7 +72,7 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 				&v1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:        "foo",
-						Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"},
+						Annotations: map[string]string{api.AlphaInjectCABundleAnnotationName: "true"},
 						Namespace:   "foo",
 					},
 					Data: map[string]string{
@@ -91,7 +91,7 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 				&v1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:        "foo",
-						Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"},
+						Annotations: map[string]string{api.AlphaInjectCABundleAnnotationName: "true"},
 						Namespace:   "foo",
 					},
 					Data: map[string]string{
@@ -110,7 +110,7 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 				&v1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:        "foo",
-						Annotations: map[string]string{api.BetaInjectCABundleAnnotationName: "true"},
+						Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"},
 						Namespace:   "foo",
 					},
 					Data: map[string]string{},
@@ -127,7 +127,7 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 				&v1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:        "foo",
-						Annotations: map[string]string{api.BetaInjectCABundleAnnotationName: "true"},
+						Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"},
 						Namespace:   "foo",
 					},
 					Data: map[string]string{
@@ -146,7 +146,7 @@ func TestSyncConfigMapCABundle(t *testing.T) {
 				&v1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:        "foo",
-						Annotations: map[string]string{api.BetaInjectCABundleAnnotationName: "true"},
+						Annotations: map[string]string{api.InjectCABundleAnnotationName: "true"},
 						Namespace:   "foo",
 					},
 					Data: map[string]string{
