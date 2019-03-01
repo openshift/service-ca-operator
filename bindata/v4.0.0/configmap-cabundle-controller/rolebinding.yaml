@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: system:openshift:controller:configmap-cabundle-injector
+  namespace: openshift-service-cert-signer
+roleRef:
+  kind: Role
+  name: system:openshift:controller:configmap-cabundle-injector
+subjects:
+- kind: ServiceAccount
+  namespace: openshift-service-cert-signer
+  name: configmap-cabundle-injector-sa
