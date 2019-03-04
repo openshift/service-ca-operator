@@ -128,7 +128,7 @@ func manageSigningCABundle(client coreclientv1.CoreV1Interface, eventRecorder ev
 		return existing, false, err
 	}
 
-	configMap.Data["cabundle.crt"] = string(currentSigningKeySecret.Data["tls.crt"])
+	configMap.Data["ca-bundle.crt"] = string(currentSigningKeySecret.Data["tls.crt"])
 
 	return resourceapply.ApplyConfigMap(client, eventRecorder, configMap)
 }
