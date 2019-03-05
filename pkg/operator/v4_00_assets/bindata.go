@@ -115,7 +115,7 @@ roleRef:
   name: system:openshift:controller:apiservice-cabundle-injector
 subjects:
 - kind: ServiceAccount
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector-sa
 `)
 
@@ -137,7 +137,7 @@ func v400ApiserviceCabundleControllerClusterrolebindingYaml() (*asset, error) {
 var _v400ApiserviceCabundleControllerCmYaml = []byte(`apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector-config
 data:
   controller-config.yaml:
@@ -185,7 +185,7 @@ func v400ApiserviceCabundleControllerDefaultconfigYaml() (*asset, error) {
 var _v400ApiserviceCabundleControllerDeploymentYaml = []byte(`apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector
   labels:
     app: openshift-apiservice-cabundle-injector
@@ -250,7 +250,7 @@ func v400ApiserviceCabundleControllerDeploymentYaml() (*asset, error) {
 var _v400ApiserviceCabundleControllerNsYaml = []byte(`apiVersion: v1
 kind: Namespace
 metadata:
-  name: openshift-service-cert-signer
+  name: openshift-service-ca
   labels:
     openshift.io/run-level: "1"`)
 
@@ -273,7 +273,7 @@ var _v400ApiserviceCabundleControllerRoleYaml = []byte(`apiVersion: rbac.authori
 kind: Role
 metadata:
   name: system:openshift:controller:apiservice-cabundle-injector
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
 rules:
 - apiGroups:
   - ""
@@ -329,13 +329,13 @@ var _v400ApiserviceCabundleControllerRolebindingYaml = []byte(`apiVersion: rbac.
 kind: RoleBinding
 metadata:
   name: system:openshift:controller:apiservice-cabundle-injector
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
 roleRef:
   kind: Role
   name: system:openshift:controller:apiservice-cabundle-injector
 subjects:
 - kind: ServiceAccount
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector-sa
 `)
 
@@ -357,7 +357,7 @@ func v400ApiserviceCabundleControllerRolebindingYaml() (*asset, error) {
 var _v400ApiserviceCabundleControllerSaYaml = []byte(`apiVersion: v1
 kind: ServiceAccount
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: apiservice-cabundle-injector-sa
 `)
 
@@ -379,7 +379,7 @@ func v400ApiserviceCabundleControllerSaYaml() (*asset, error) {
 var _v400ApiserviceCabundleControllerSigningCabundleYaml = []byte(`apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: signing-cabundle
 data:
   ca-bundle.crt:
@@ -440,7 +440,7 @@ roleRef:
   name: system:openshift:controller:configmap-cabundle-injector
 subjects:
 - kind: ServiceAccount
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: configmap-cabundle-injector-sa
 `)
 
@@ -462,7 +462,7 @@ func v400ConfigmapCabundleControllerClusterrolebindingYaml() (*asset, error) {
 var _v400ConfigmapCabundleControllerCmYaml = []byte(`apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: configmap-cabundle-injector-config
 data:
   controller-config.yaml:
@@ -510,7 +510,7 @@ func v400ConfigmapCabundleControllerDefaultconfigYaml() (*asset, error) {
 var _v400ConfigmapCabundleControllerDeploymentYaml = []byte(`apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: configmap-cabundle-injector
   labels:
     app: openshift-configmap-cabundle-injector
@@ -575,7 +575,7 @@ func v400ConfigmapCabundleControllerDeploymentYaml() (*asset, error) {
 var _v400ConfigmapCabundleControllerNsYaml = []byte(`apiVersion: v1
 kind: Namespace
 metadata:
-  name: openshift-service-cert-signer
+  name: openshift-service-ca
   labels:
     openshift.io/run-level: "1"
 `)
@@ -599,7 +599,7 @@ var _v400ConfigmapCabundleControllerRoleYaml = []byte(`apiVersion: rbac.authoriz
 kind: Role
 metadata:
   name: system:openshift:controller:configmap-cabundle-injector
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
 rules:
 - apiGroups:
   - ""
@@ -655,13 +655,13 @@ var _v400ConfigmapCabundleControllerRolebindingYaml = []byte(`apiVersion: rbac.a
 kind: RoleBinding
 metadata:
   name: system:openshift:controller:configmap-cabundle-injector
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
 roleRef:
   kind: Role
   name: system:openshift:controller:configmap-cabundle-injector
 subjects:
 - kind: ServiceAccount
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: configmap-cabundle-injector-sa
 `)
 
@@ -683,7 +683,7 @@ func v400ConfigmapCabundleControllerRolebindingYaml() (*asset, error) {
 var _v400ConfigmapCabundleControllerSaYaml = []byte(`apiVersion: v1
 kind: ServiceAccount
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: configmap-cabundle-injector-sa
 `)
 
@@ -705,7 +705,7 @@ func v400ConfigmapCabundleControllerSaYaml() (*asset, error) {
 var _v400ConfigmapCabundleControllerSigningCabundleYaml = []byte(`apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: signing-cabundle
 data:
   ca-bundle.crt:
@@ -801,7 +801,7 @@ roleRef:
   name: system:openshift:controller:service-serving-cert-signer
 subjects:
 - kind: ServiceAccount
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: service-serving-cert-signer-sa
 `)
 
@@ -823,7 +823,7 @@ func v400ServiceServingCertSignerControllerClusterrolebindingYaml() (*asset, err
 var _v400ServiceServingCertSignerControllerCmYaml = []byte(`apiVersion: v1
 kind: ConfigMap
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: service-serving-cert-signer-config
 data:
   controller-config.yaml:
@@ -873,7 +873,7 @@ func v400ServiceServingCertSignerControllerDefaultconfigYaml() (*asset, error) {
 var _v400ServiceServingCertSignerControllerDeploymentYaml = []byte(`apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: service-serving-cert-signer
   labels:
     app: openshift-service-serving-cert-signer
@@ -938,7 +938,7 @@ func v400ServiceServingCertSignerControllerDeploymentYaml() (*asset, error) {
 var _v400ServiceServingCertSignerControllerNsYaml = []byte(`apiVersion: v1
 kind: Namespace
 metadata:
-  name: openshift-service-cert-signer
+  name: openshift-service-ca
   labels:
     openshift.io/run-level: "1"`)
 
@@ -961,7 +961,7 @@ var _v400ServiceServingCertSignerControllerRoleYaml = []byte(`apiVersion: rbac.a
 kind: Role
 metadata:
   name: system:openshift:controller:service-serving-cert-signer
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
 rules:
 - apiGroups:
   - ""
@@ -1017,13 +1017,13 @@ var _v400ServiceServingCertSignerControllerRolebindingYaml = []byte(`apiVersion:
 kind: RoleBinding
 metadata:
   name: system:openshift:controller:service-serving-cert-signer
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
 roleRef:
   kind: Role
   name: system:openshift:controller:service-serving-cert-signer
 subjects:
 - kind: ServiceAccount
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: service-serving-cert-signer-sa
 `)
 
@@ -1045,7 +1045,7 @@ func v400ServiceServingCertSignerControllerRolebindingYaml() (*asset, error) {
 var _v400ServiceServingCertSignerControllerSaYaml = []byte(`apiVersion: v1
 kind: ServiceAccount
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: service-serving-cert-signer-sa
 `)
 
@@ -1067,7 +1067,7 @@ func v400ServiceServingCertSignerControllerSaYaml() (*asset, error) {
 var _v400ServiceServingCertSignerControllerSigningSecretYaml = []byte(`apiVersion: v1
 kind: Secret
 metadata:
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
   name: service-serving-cert-signer-signing-key
 type: kubernetes.io/tls
 data:

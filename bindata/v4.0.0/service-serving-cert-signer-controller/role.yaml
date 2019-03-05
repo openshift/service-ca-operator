@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: system:openshift:controller:service-serving-cert-signer
-  namespace: openshift-service-cert-signer
+  namespace: openshift-service-ca
 rules:
 - apiGroups:
   - ""

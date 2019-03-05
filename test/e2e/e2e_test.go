@@ -19,7 +19,7 @@ import (
 
 const (
 	serviceCAOperatorNamespace   = "openshift-service-ca-operator"
-	serviceCAControllerNamespace = "openshift-service-cert-signer"
+	serviceCAControllerNamespace = "openshift-service-ca"
 	serviceCAOperatorPodPrefix   = "service-ca-operator"
 	apiInjectorPodPrefix         = "apiservice-cabundle-injector"
 	configMapInjectorPodPrefix   = "configmap-cabundle-injector"
