@@ -4,4 +4,4 @@ metadata:
   namespace: openshift-service-cert-signer
   name: signing-cabundle
 data:
-  cabundle.crt:
+  ca-bundle.crt:

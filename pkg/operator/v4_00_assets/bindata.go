@@ -160,7 +160,7 @@ func v400ApiserviceCabundleControllerCmYaml() (*asset, error) {
 
 var _v400ApiserviceCabundleControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
 kind: APIServiceCABundleInjectorConfig
-caBundleFile: /var/run/configmaps/signing-cabundle/cabundle.crt
+caBundleFile: /var/run/configmaps/signing-cabundle/ca-bundle.crt
 authentication:
   disabled: true
 authorization:
@@ -382,7 +382,7 @@ metadata:
   namespace: openshift-service-cert-signer
   name: signing-cabundle
 data:
-  cabundle.crt:
+  ca-bundle.crt:
 `)
 
 func v400ApiserviceCabundleControllerSigningCabundleYamlBytes() ([]byte, error) {
@@ -485,7 +485,7 @@ func v400ConfigmapCabundleControllerCmYaml() (*asset, error) {
 
 var _v400ConfigmapCabundleControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
 kind: ConfigMapCABundleInjectorConfig
-caBundleFile: /var/run/configmaps/signing-cabundle/cabundle.crt
+caBundleFile: /var/run/configmaps/signing-cabundle/ca-bundle.crt
 authentication:
   disabled: true
 authorization:
@@ -708,7 +708,7 @@ metadata:
   namespace: openshift-service-cert-signer
   name: signing-cabundle
 data:
-  cabundle.crt:
+  ca-bundle.crt:
 `)
 
 func v400ConfigmapCabundleControllerSigningCabundleYamlBytes() ([]byte, error) {
