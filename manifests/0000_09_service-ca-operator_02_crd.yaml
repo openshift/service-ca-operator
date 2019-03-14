@@ -3,12 +3,13 @@ kind: CustomResourceDefinition
 metadata:
   name: servicecas.operator.openshift.io
 spec:
+  scope: Cluster
   group: operator.openshift.io
+  version: v1
   names:
     kind: ServiceCA
     plural: servicecas
     singular: serviceca
-  scope: Cluster
   validation:
     openAPIV3Schema:
       properties:
@@ -92,10 +93,3 @@ spec:
           type: object
         status:
           type: object
-  version: v1
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: []
-  storedVersions: []
