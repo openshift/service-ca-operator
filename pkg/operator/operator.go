@@ -9,17 +9,17 @@ import (
 
 	"github.com/openshift/library-go/pkg/operator/events"
 
-	scsv1 "github.com/openshift/service-ca-operator/pkg/apis/serviceca/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
+	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
+	operatorv1informers "github.com/openshift/client-go/operator/informers/externalversions/operator/v1"
 	"github.com/openshift/service-ca-operator/pkg/boilerplate/operator"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
-	scsclientv1 "github.com/openshift/service-ca-operator/pkg/generated/clientset/versioned/typed/serviceca/v1"
-	scsinformerv1 "github.com/openshift/service-ca-operator/pkg/generated/informers/externalversions/serviceca/v1"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 )
 
 type serviceCAOperator struct {
-	operatorConfigClient   scsclientv1.ServiceCAsGetter
-	operatorConfigInformer scsinformerv1.ServiceCAInformer
+	operatorConfigClient   operatorv1client.ServiceCAsGetter
+	operatorConfigInformer operatorv1informers.ServiceCAInformer
 
 	appsv1Client appsclientv1.AppsV1Interface
 	corev1Client coreclientv1.CoreV1Interface
@@ -29,9 +29,9 @@ type serviceCAOperator struct {
 }
 
 func NewServiceCAOperator(
-	operatorConfigInformer scsinformerv1.ServiceCAInformer,
+	operatorConfigInformer operatorv1informers.ServiceCAInformer,
 	namespacedKubeInformers informers.SharedInformerFactory,
-	operatorConfigClient scsclientv1.ServiceCAsGetter,
+	operatorConfigClient operatorv1client.ServiceCAsGetter,
 	appsv1Client appsclientv1.AppsV1Interface,
 	corev1Client coreclientv1.CoreV1Interface,
 	rbacv1Client rbacclientv1.RbacV1Interface,
@@ -84,10 +84,10 @@ func (c serviceCAOperator) Key() (metav1.Object, error) {
 }
 
 func (c serviceCAOperator) Sync(obj metav1.Object) error {
-	operatorConfig := obj.(*scsv1.ServiceCA)
+	operatorConfig := obj.(*operatorv1.ServiceCA)
 
 	switch operatorConfig.Spec.ManagementState {
-	case scsv1.Unmanaged, scsv1.Removed, "Paused":
+	case operatorv1.Unmanaged, operatorv1.Removed, "Paused":
 		// Totally disable the sync loop in these states until we bump deps and replace sscs.
 		return nil
 	}
