@@ -20,8 +20,6 @@ import (
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
-	scsclient "github.com/openshift/service-ca-operator/pkg/generated/clientset/versioned"
-	scsinformers "github.com/openshift/service-ca-operator/pkg/generated/informers/externalversions"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
@@ -32,10 +30,6 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 
 	// This kube client uses protobuf, do not use it for CRs
 	kubeClient, err := kubernetes.NewForConfig(ctx.ProtoKubeConfig)
-	if err != nil {
-		return err
-	}
-	scsClient, err := scsclient.NewForConfig(ctx.KubeConfig)
 	if err != nil {
 		return err
 	}
@@ -53,7 +47,6 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 	}
 	configInformers := configv1informers.NewSharedInformerFactory(configClient, 10*time.Minute)
 	operatorConfigInformers := operatorv1informers.NewSharedInformerFactory(operatorConfigClient, resyncDuration)
-	scsInformers := scsinformers.NewSharedInformerFactory(scsClient, resyncDuration)
 	kubeInformersNamespaced := informers.NewFilteredSharedInformerFactory(kubeClient, resyncDuration, operatorclient.TargetNamespace, nil)
 	kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(kubeClient,
 		"",
@@ -103,16 +96,15 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 	}
 
 	operator := NewServiceCAOperator(
-		scsInformers.Operator().V1().ServiceCAs(),
+		operatorConfigInformers.Operator().V1().ServiceCAs(),
 		kubeInformersNamespaced,
-		scsClient.OperatorV1(),
+		operatorClient.Client,
 		kubeClient.AppsV1(),
 		kubeClient.CoreV1(),
 		kubeClient.RbacV1(),
 		ctx.EventRecorder,
 	)
 
-	scsInformers.Start(ctx.Done())
 	operatorConfigInformers.Start(ctx.Done())
 	configInformers.Start(ctx.Done())
 	kubeInformersNamespaced.Start(ctx.Done())

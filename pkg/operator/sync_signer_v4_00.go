@@ -19,14 +19,14 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
 
-	scsv1 "github.com/openshift/service-ca-operator/pkg/apis/serviceca/v1"
+	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
 
 // syncSigningController_v4_00_to_latest takes care of synchronizing (not upgrading) the thing we're managing.
 // most of the time the sync method will be good for a large span of minor versions
-func syncSigningController_v4_00_to_latest(c serviceCAOperator, operatorConfig *scsv1.ServiceCA) error {
+func syncSigningController_v4_00_to_latest(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) error {
 	var err error
 
 	requiredNamespace := resourceread.ReadNamespaceV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/ns.yaml"))
@@ -66,7 +66,7 @@ func syncSigningController_v4_00_to_latest(c serviceCAOperator, operatorConfig *
 	}
 
 	// TODO create a new configmap whenever the data value changes
-	_, configMapModified, err := manageSigningConfigMap_v4_00_to_latest(c.corev1Client, c.eventRecorder, operatorConfig)
+	_, configMapModified, err := manageSigningConfigMap_v4_00_to_latest(c.corev1Client, c.eventRecorder)
 	if err != nil {
 		return fmt.Errorf("%q: %v", "configmap", err)
 	}
@@ -93,10 +93,10 @@ func syncSigningController_v4_00_to_latest(c serviceCAOperator, operatorConfig *
 	return err
 }
 
-func manageSigningConfigMap_v4_00_to_latest(client coreclientv1.ConfigMapsGetter, eventRecorder events.Recorder, operatorConfig *scsv1.ServiceCA) (*corev1.ConfigMap, bool, error) {
+func manageSigningConfigMap_v4_00_to_latest(client coreclientv1.ConfigMapsGetter, eventRecorder events.Recorder) (*corev1.ConfigMap, bool, error) {
 	configMap := resourceread.ReadConfigMapV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/cm.yaml"))
 	defaultConfig := v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/defaultconfig.yaml")
-	requiredConfigMap, _, err := resourcemerge.MergeConfigMap(configMap, "controller-config.yaml", nil, defaultConfig, operatorConfig.Spec.ServiceServingCertSignerConfig.Raw)
+	requiredConfigMap, _, err := resourcemerge.MergeConfigMap(configMap, "controller-config.yaml", nil, defaultConfig)
 	if err != nil {
 		return nil, false, err
 	}
@@ -128,7 +128,7 @@ func manageSigningSecret_v4_00_to_latest(client coreclientv1.SecretsGetter, even
 	return resourceapply.ApplySecret(client, eventRecorder, secret)
 }
 
-func manageSignerDeployment_v4_00_to_latest(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *scsv1.ServiceCA, forceDeployment bool) (*appsv1.Deployment, bool, error) {
+func manageSignerDeployment_v4_00_to_latest(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, forceDeployment bool) (*appsv1.Deployment, bool, error) {
 	required := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/deployment.yaml"))
 	required.Spec.Template.Spec.Containers[0].Image = os.Getenv("CONTROLLER_IMAGE")
 	required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, fmt.Sprintf("-v=%s", options.Spec.LogLevel))
