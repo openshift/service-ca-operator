@@ -24,7 +24,16 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
 
-const resyncDuration = 10 * time.Minute
+const (
+	resyncDuration      = 10 * time.Minute
+	clusterOperatorName = "service-ca"
+)
+
+var deploymentNames []string = []string{
+	api.SignerControllerDeploymentName,
+	api.APIServiceInjectorDeploymentName,
+	api.ConfigMapInjectorDeploymentName,
+}
 
 func RunOperator(ctx *controllercmd.ControllerContext) error {
 
@@ -65,8 +74,10 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		Client:    operatorConfigClient.OperatorV1(),
 	}
 
+	versionGetter := status.NewVersionGetter()
+
 	clusterOperatorStatus := status.NewClusterOperatorStatusController(
-		"service-ca",
+		clusterOperatorName,
 		[]configv1.ObjectReference{
 			{Group: operatorv1.GroupName, Resource: "servicecas", Name: api.OperatorConfigInstanceName},
 			{Resource: "namespaces", Name: operatorclient.GlobalUserSpecifiedConfigNamespace},
@@ -77,7 +88,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		configClient.ConfigV1(),
 		configInformers.Config().V1().ClusterOperators(),
 		operatorClient,
-		status.NewVersionGetter(),
+		versionGetter,
 		ctx.EventRecorder,
 	)
 
@@ -89,7 +100,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		ctx.EventRecorder,
 	)
 	if err := resourceSyncController.SyncConfigMap(
-		resourcesynccontroller.ResourceLocation{Namespace: operatorclient.GlobalMachineSpecifiedConfigNamespace, Name: "service-ca"},
+		resourcesynccontroller.ResourceLocation{Namespace: operatorclient.GlobalMachineSpecifiedConfigNamespace, Name: clusterOperatorName},
 		resourcesynccontroller.ResourceLocation{Namespace: operatorclient.TargetNamespace, Name: api.SigningCABundleConfigMapName},
 	); err != nil {
 		return err
@@ -102,6 +113,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		kubeClient.AppsV1(),
 		kubeClient.CoreV1(),
 		kubeClient.RbacV1(),
+		versionGetter,
 		ctx.EventRecorder,
 	)
 

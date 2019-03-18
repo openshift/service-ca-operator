@@ -1,6 +1,10 @@
 package operator
 
 import (
+	"os"
+
+	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	appsclientv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
@@ -8,6 +12,7 @@ import (
 	rbacclientv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 
 	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/library-go/pkg/operator/status"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
@@ -25,6 +30,7 @@ type serviceCAOperator struct {
 	corev1Client coreclientv1.CoreV1Interface
 	rbacv1Client rbacclientv1.RbacV1Interface
 
+	versionGetter status.VersionGetter
 	eventRecorder events.Recorder
 }
 
@@ -35,6 +41,7 @@ func NewServiceCAOperator(
 	appsv1Client appsclientv1.AppsV1Interface,
 	corev1Client coreclientv1.CoreV1Interface,
 	rbacv1Client rbacclientv1.RbacV1Interface,
+	versionGetter status.VersionGetter,
 	eventRecorder events.Recorder,
 ) operator.Runner {
 	c := &serviceCAOperator{
@@ -45,6 +52,7 @@ func NewServiceCAOperator(
 		rbacv1Client: rbacv1Client,
 
 		eventRecorder: eventRecorder,
+		versionGetter: versionGetter,
 	}
 
 	configEvents := operator.FilterByNames(api.OperatorConfigInstanceName)
@@ -85,15 +93,40 @@ func (c serviceCAOperator) Key() (metav1.Object, error) {
 
 func (c serviceCAOperator) Sync(obj metav1.Object) error {
 	operatorConfig := obj.(*operatorv1.ServiceCA)
+	setOperatorVersion := false
 
-	switch operatorConfig.Spec.ManagementState {
+	operatorConfigCopy := operatorConfig.DeepCopy()
+	switch operatorConfigCopy.Spec.ManagementState {
 	case operatorv1.Unmanaged, operatorv1.Removed, "Paused":
 		// Totally disable the sync loop in these states until we bump deps and replace sscs.
 		return nil
+	case operatorv1.Managed:
+		// This is to push out deployments but does not handle deployment generation like it used to. It may need tweaking.
+		err := sync_v4_00_to_latest(c, operatorConfigCopy)
+		if err != nil {
+			c.setFailingStatus(operatorConfigCopy, "OperatorSyncLoopError", err.Error())
+		} else {
+			setOperatorVersion, err = c.syncStatus(operatorConfigCopy, deploymentNames)
+			if err != nil {
+				return err
+			}
+		}
+		if setOperatorVersion {
+			version := os.Getenv("OPERATOR_IMAGE_VERSION")
+			if c.versionGetter.GetVersions()["operator"] != version {
+				glog.Infof("Updating clusteroperator %s version: %v", clusterOperatorName, version)
+				// Set current version
+				c.versionGetter.SetVersion("operator", version)
+			}
+		}
 	}
-	// This is to push out deployments but does not handle deployment generation like it used to. It may need tweaking.
-	err := sync_v4_00_to_latest(c, operatorConfig)
-	return err
+	// update status to be available, progressing or failing
+	if !equality.Semantic.DeepEqual(operatorConfig, operatorConfigCopy) {
+		if _, err := c.operatorConfigClient.ServiceCAs().UpdateStatus(operatorConfigCopy); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func getGeneration(client appsclientv1.AppsV1Interface, ns, name string) int64 {
