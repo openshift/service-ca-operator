@@ -11,6 +11,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned"
+	configv1informers "github.com/openshift/client-go/config/informers/externalversions"
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	operatorv1informers "github.com/openshift/client-go/operator/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
@@ -50,7 +51,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 	if err != nil {
 		return err
 	}
-
+	configInformers := configv1informers.NewSharedInformerFactory(configClient, 10*time.Minute)
 	operatorConfigInformers := operatorv1informers.NewSharedInformerFactory(operatorConfigClient, resyncDuration)
 	scsInformers := scsinformers.NewSharedInformerFactory(scsClient, resyncDuration)
 	kubeInformersNamespaced := informers.NewFilteredSharedInformerFactory(kubeClient, resyncDuration, operatorclient.TargetNamespace, nil)
@@ -74,13 +75,14 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 	clusterOperatorStatus := status.NewClusterOperatorStatusController(
 		"service-ca",
 		[]configv1.ObjectReference{
-			{Group: "operator.openshift.io", Resource: "servicecas", Name: api.OperatorConfigInstanceName},
+			{Group: operatorv1.GroupName, Resource: "servicecas", Name: api.OperatorConfigInstanceName},
 			{Resource: "namespaces", Name: operatorclient.GlobalUserSpecifiedConfigNamespace},
 			{Resource: "namespaces", Name: operatorclient.GlobalMachineSpecifiedConfigNamespace},
 			{Resource: "namespaces", Name: operatorclient.OperatorNamespace},
 			{Resource: "namespaces", Name: operatorclient.TargetNamespace},
 		},
 		configClient.ConfigV1(),
+		configInformers.Config().V1().ClusterOperators(),
 		operatorClient,
 		status.NewVersionGetter(),
 		ctx.EventRecorder,
@@ -112,6 +114,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 
 	scsInformers.Start(ctx.Done())
 	operatorConfigInformers.Start(ctx.Done())
+	configInformers.Start(ctx.Done())
 	kubeInformersNamespaced.Start(ctx.Done())
 	kubeInformersForNamespaces.Start(ctx.Done())
 
