@@ -19,22 +19,25 @@ import (
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
-	scsclient "github.com/openshift/service-ca-operator/pkg/generated/clientset/versioned"
-	scsinformers "github.com/openshift/service-ca-operator/pkg/generated/informers/externalversions"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
 
-const resyncDuration = 10 * time.Minute
+const (
+	resyncDuration      = 10 * time.Minute
+	clusterOperatorName = "service-ca"
+)
+
+var deploymentNames []string = []string{
+	api.SignerControllerDeploymentName,
+	api.APIServiceInjectorDeploymentName,
+	api.ConfigMapInjectorDeploymentName,
+}
 
 func RunOperator(ctx *controllercmd.ControllerContext) error {
 
 	// This kube client uses protobuf, do not use it for CRs
 	kubeClient, err := kubernetes.NewForConfig(ctx.ProtoKubeConfig)
-	if err != nil {
-		return err
-	}
-	scsClient, err := scsclient.NewForConfig(ctx.KubeConfig)
 	if err != nil {
 		return err
 	}
@@ -52,7 +55,6 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 	}
 
 	operatorConfigInformers := operatorv1informers.NewSharedInformerFactory(operatorConfigClient, resyncDuration)
-	scsInformers := scsinformers.NewSharedInformerFactory(scsClient, resyncDuration)
 	kubeInformersNamespaced := informers.NewFilteredSharedInformerFactory(kubeClient, resyncDuration, operatorclient.TargetNamespace, nil)
 	kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(kubeClient,
 		"",
@@ -71,10 +73,12 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		Client:    operatorConfigClient.OperatorV1(),
 	}
 
+	versionGetter := status.NewVersionGetter()
+
 	clusterOperatorStatus := status.NewClusterOperatorStatusController(
-		"service-ca",
+		clusterOperatorName,
 		[]configv1.ObjectReference{
-			{Group: "operator.openshift.io", Resource: "servicecas", Name: api.OperatorConfigInstanceName},
+			{Group: operatorv1.GroupName, Resource: "servicecas", Name: api.OperatorConfigInstanceName},
 			{Resource: "namespaces", Name: operatorclient.GlobalUserSpecifiedConfigNamespace},
 			{Resource: "namespaces", Name: operatorclient.GlobalMachineSpecifiedConfigNamespace},
 			{Resource: "namespaces", Name: operatorclient.OperatorNamespace},
@@ -82,7 +86,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		},
 		configClient.ConfigV1(),
 		operatorClient,
-		status.NewVersionGetter(),
+		versionGetter,
 		ctx.EventRecorder,
 	)
 
@@ -94,23 +98,23 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		ctx.EventRecorder,
 	)
 	if err := resourceSyncController.SyncConfigMap(
-		resourcesynccontroller.ResourceLocation{Namespace: operatorclient.GlobalMachineSpecifiedConfigNamespace, Name: "service-ca"},
+		resourcesynccontroller.ResourceLocation{Namespace: operatorclient.GlobalMachineSpecifiedConfigNamespace, Name: clusterOperatorName},
 		resourcesynccontroller.ResourceLocation{Namespace: operatorclient.TargetNamespace, Name: api.SigningCABundleConfigMapName},
 	); err != nil {
 		return err
 	}
 
 	operator := NewServiceCAOperator(
-		scsInformers.Operator().V1().ServiceCAs(),
+		operatorConfigInformers.Operator().V1().ServiceCAs(),
 		kubeInformersNamespaced,
-		scsClient.OperatorV1(),
+		operatorClient.Client,
 		kubeClient.AppsV1(),
 		kubeClient.CoreV1(),
 		kubeClient.RbacV1(),
+		versionGetter,
 		ctx.EventRecorder,
 	)
 
-	scsInformers.Start(ctx.Done())
 	operatorConfigInformers.Start(ctx.Done())
 	kubeInformersNamespaced.Start(ctx.Done())
 	kubeInformersForNamespaces.Start(ctx.Done())
