@@ -3,12 +3,15 @@ kind: CustomResourceDefinition
 metadata:
   name: servicecas.operator.openshift.io
 spec:
+  scope: Cluster
   group: operator.openshift.io
+  version: v1
   names:
     kind: ServiceCA
     plural: servicecas
     singular: serviceca
-  scope: Cluster
+  subresources:
+    status: {}
   validation:
     openAPIV3Schema:
       properties:
@@ -25,6 +28,7 @@ spec:
         metadata:
           type: object
         spec:
+          description: +required
           properties:
             logLevel:
               description: logLevel is an intent based logging for an overall component.  It
@@ -35,11 +39,12 @@ spec:
             managementState:
               description: managementState indicates whether and how the operator
                 should manage the component
+              pattern: ^Managed|Unmanaged|Force|Removed$
               type: string
             observedConfig:
               description: observedConfig holds a sparse config that controller has
                 observed from the cluster state.  It exists in spec because it is
-                an input to the level for the operator
+                an input to the level for the operator +nullable
               type: object
             operandSpecs:
               description: operandSpecs provide customization for functional units
@@ -87,15 +92,69 @@ spec:
               description: 'unsupportedConfigOverrides holds a sparse config that
                 will override any previously set options.  It only needs to be the
                 fields to override it will end up overlaying in the following order:
-                1. hardcoded defaults 2. observedConfig 3. unsupportedConfigOverrides'
+                1. hardcoded defaults 2. observedConfig 3. unsupportedConfigOverrides
+                +nullable'
               type: object
           type: object
         status:
+          properties:
+            conditions:
+              description: conditions is a list of conditions and their status
+              items:
+                properties:
+                  lastTransitionTime:
+                    format: date-time
+                    type: string
+                  message:
+                    type: string
+                  reason:
+                    type: string
+                  status:
+                    type: string
+                  type:
+                    type: string
+                type: object
+              type: array
+            generations:
+              description: generations are used to determine when an item needs to
+                be reconciled or has changed in a way that needs a reaction.
+              items:
+                properties:
+                  group:
+                    description: group is the group of the thing you're tracking
+                    type: string
+                  hash:
+                    description: hash is an optional field set for resources without
+                      generation that are content sensitive like secrets and configmaps
+                    type: string
+                  lastGeneration:
+                    description: lastGeneration is the last generation of the workload
+                      controller involved
+                    format: int64
+                    type: integer
+                  name:
+                    description: name is the name of the thing you're tracking
+                    type: string
+                  namespace:
+                    description: namespace is where the thing you're tracking is
+                    type: string
+                  resource:
+                    description: resource is the resource type of the thing you're
+                      tracking
+                    type: string
+                type: object
+              type: array
+            observedGeneration:
+              description: observedGeneration is the last generation change you've
+                dealt with
+              format: int64
+              type: integer
+            readyReplicas:
+              description: readyReplicas indicates how many replicas are ready and
+                at the desired state
+              format: int32
+              type: integer
+            version:
+              description: version is the level this availability applies to
+              type: string
           type: object
-  version: v1
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: []
-  storedVersions: []
