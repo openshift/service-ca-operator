@@ -102,7 +102,7 @@ func (c serviceCAOperator) Sync(obj metav1.Object) error {
 		return nil
 	case operatorv1.Managed:
 		// This is to push out deployments but does not handle deployment generation like it used to. It may need tweaking.
-		err := sync_v4_00_to_latest(c, operatorConfigCopy)
+		err := syncControllers(c, operatorConfigCopy)
 		if err != nil {
 			c.setFailingStatus(operatorConfigCopy, "OperatorSyncLoopError", err.Error())
 		} else {
