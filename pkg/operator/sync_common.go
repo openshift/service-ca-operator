@@ -21,6 +21,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
+	"github.com/golang/glog"
 )
 
 func manageControllerNS(c serviceCAOperator) (bool, error) {
@@ -75,12 +76,34 @@ func manageControllerResources(c serviceCAOperator, resourcePath string) (bool, 
 	return saModified, ""
 }
 
-// TODO manage rotation in addition to initial creation
-func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Recorder) (*corev1.Secret, bool, error) {
+func manageSignerCA(c serviceCAOperator) (*corev1.Secret, bool, error) {
 	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml"))
-	existing, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
-	if !apierrors.IsNotFound(err) {
+	existing, err := c.corev1Client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
 		return existing, false, err
+	}
+
+	if !apierrors.IsNotFound(err) {
+		glog.Infof("signer secret %s/%s found\n", secret.Namespace, secret.Name)
+		if c.ca == nil {
+			// Create the CA cache, we would hit this if the operator restarts.
+			glog.Infof("initially loading signer secret\n")
+			newCA, caErr := crypto.GetCAFromBytes(existing.Data["tls.crt"], existing.Data["tls.key"])
+			if caErr != nil {
+				return existing, false, caErr
+			}
+			c.ca = newCA
+		}
+
+		// Check if the CA cache matches the secret, if not, continue with CA generation below.
+		isCurrent, curCAErr := isCurrentCA(c, existing)
+		if curCAErr != nil {
+			return existing, false, curCAErr
+		}
+		if isCurrent {
+			glog.Infof("signer secret is current\n")
+			return existing, false, nil
+		}
 	}
 
 	ca, err := crypto.MakeSelfSignedCAConfig(serviceServingCertSignerName(), 365)
@@ -96,27 +119,50 @@ func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Reco
 
 	secret.Data["tls.crt"] = certBytes.Bytes()
 	secret.Data["tls.key"] = keyBytes.Bytes()
+	newCA, caErr := crypto.GetCAFromBytes(certBytes.Bytes(), keyBytes.Bytes())
+	if caErr != nil {
+		return existing, false, caErr
+	}
 
-	return resourceapply.ApplySecret(client, eventRecorder, secret)
+	s, ok, err := resourceapply.ApplySecret(c.corev1Client, c.eventRecorder, secret)
+	if err == nil {
+		// Only update the CA cache if the secret was properly updated.
+		glog.Infof("updated CA cache\n")
+		c.ca = newCA
+	}
+	glog.Infof("regenerated new CA\n")
+	return s, ok, err
 }
 
-// TODO manage rotation in addition to initial creation
-func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder events.Recorder) (*corev1.ConfigMap, bool, error) {
+func manageSignerCABundle(c serviceCAOperator) (*corev1.ConfigMap, bool, error) {
 	configMap := resourceread.ReadConfigMapV1OrDie(v4_00_assets.MustAsset("v4.0.0/apiservice-cabundle-controller/signing-cabundle.yaml"))
-	existing, err := client.ConfigMaps(configMap.Namespace).Get(configMap.Name, metav1.GetOptions{})
+	// Fetch the cached CA.
+	caCert, _, err := c.ca.Config.GetPEMBytes()
+	if err != nil {
+		return nil, false, err
+	}
+
+	existing, err := c.corev1Client.ConfigMaps(configMap.Namespace).Get(configMap.Name, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return existing, false, err
+	}
 	if !apierrors.IsNotFound(err) {
-		return existing, false, err
+		// Check if the CA bundle is the same as cache, otherwise continue with update.
+		if configMap.Data["ca-bundle.crt"] == string(caCert) {
+			glog.Infof("CA bundle is cached\n")
+			return existing, false, err
+		}
 	}
 
-	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml"))
-	currentSigningKeySecret, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
-	if err != nil || len(currentSigningKeySecret.Data["tls.crt"]) == 0 {
-		return existing, false, err
-	}
+	//secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml"))
+	//currentSigningKeySecret, err := c.corev1Client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
+	//if err != nil || len(currentSigningKeySecret.Data["tls.crt"]) == 0 {
+	//	return existing, false, err
+	//}
 
-	configMap.Data["ca-bundle.crt"] = string(currentSigningKeySecret.Data["tls.crt"])
-
-	return resourceapply.ApplyConfigMap(client, eventRecorder, configMap)
+	configMap.Data["ca-bundle.crt"] = string(caCert)
+	glog.Infof("updated CA bundle\n")
+	return resourceapply.ApplyConfigMap(c.corev1Client, c.eventRecorder, configMap)
 }
 
 func manageSignerControllerConfig(client coreclientv1.ConfigMapsGetter, eventRecorder events.Recorder) (*corev1.ConfigMap, bool, error) {
@@ -171,4 +217,19 @@ func manageDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.
 
 func serviceServingCertSignerName() string {
 	return fmt.Sprintf("%s@%d", "openshift-service-serving-signer", time.Now().Unix())
+}
+
+// isCurrentCA compares the operator CA cache against the given secret and returns true if they match.
+func isCurrentCA(c serviceCAOperator, secret *corev1.Secret) (bool, error) {
+	curCACert, curCAKey, err := c.ca.Config.GetPEMBytes()
+	if err != nil {
+		return false, err
+	}
+	secretCert := secret.Data["tls.crt"]
+	secretKey := secret.Data["tls.key"]
+	if len(secretCert) == 0 || len(secretKey) == 0 {
+		return false, nil
+	}
+
+	return bytes.Equal(curCACert, secretCert) && bytes.Equal(curCAKey, secretKey), nil
 }

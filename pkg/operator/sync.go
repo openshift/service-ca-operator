@@ -26,12 +26,12 @@ func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) 
 	}
 
 	// Sync the CA (regenerate if missing).
-	_, modified, err = manageSignerCA(c.corev1Client, c.eventRecorder)
+	_, modified, err = manageSignerCA(c)
 	if err != nil {
 		return fmt.Errorf("Error syncing signer CA: %v", err)
 	}
 	// Sync the CA bundle. This will be updated if the CA has changed.
-	_, modified, err = manageSignerCABundle(c.corev1Client, c.eventRecorder)
+	_, modified, err = manageSignerCABundle(c)
 	if err != nil {
 		return fmt.Errorf("Error syncing signer CA bundle: %v", err)
 	}

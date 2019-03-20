@@ -20,6 +20,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/boilerplate/operator"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
+	"github.com/openshift/library-go/pkg/crypto"
 )
 
 type serviceCAOperator struct {
@@ -32,6 +33,8 @@ type serviceCAOperator struct {
 
 	versionGetter status.VersionGetter
 	eventRecorder events.Recorder
+
+	ca         *crypto.CA
 }
 
 func NewServiceCAOperator(
