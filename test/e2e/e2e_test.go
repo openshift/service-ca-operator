@@ -14,7 +14,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -29,6 +29,7 @@ const (
 	apiInjectorPodPrefix         = api.APIServiceInjectorDeploymentName
 	configMapInjectorPodPrefix   = api.ConfigMapInjectorDeploymentName
 	caControllerPodPrefix        = api.SignerControllerDeploymentName
+	signingKeySecretName         = "service-serving-cert-signer-signing-key"
 )
 
 func hasPodWithPrefixName(client *kubernetes.Clientset, name, namespace string) bool {
@@ -194,6 +195,72 @@ func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMap
 		return fmt.Errorf("unexpected ca bundle injection configmap data: %v", cm.Data)
 	}
 	return nil
+}
+
+func pollForServiceServingSecretWithReturn(client *kubernetes.Clientset, secretName, namespace string) (*v1.Secret, error) {
+	var secret *v1.Secret
+	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+		s, err := client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		secret = s
+		return true, nil
+	})
+	return secret, err
+}
+
+func pollForCABundleInjectionConfigMapWithReturn(client *kubernetes.Clientset, configMapName, namespace string) (*v1.ConfigMap, error) {
+	var configmap *v1.ConfigMap
+	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+		cm, err := client.CoreV1().ConfigMaps(namespace).Get(configMapName, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		configmap = cm
+		return true, nil
+	})
+	return configmap, err
+}
+
+func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret) error {
+	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
+		s, err := client.CoreV1().Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if !bytes.Equal(s.Data[v1.TLSCertKey], secret.Data[v1.TLSCertKey]) &&
+			!bytes.Equal(s.Data[v1.TLSPrivateKeyKey], secret.Data[v1.TLSPrivateKeyKey]) {
+			return true, nil
+		}
+		return false, nil
+	})
+}
+
+func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap) error {
+	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
+		cm, err := client.CoreV1().ConfigMaps(compareConfigMap.Namespace).Get(compareConfigMap.Name, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, nil
+		}
+		if cm.Data[api.InjectionDataKey] != compareConfigMap.Data[api.InjectionDataKey] {
+			// the change happened
+			return true, nil
+		}
+		return false, nil
+	})
 }
 
 func cleanupServiceSignerTestObjects(client *kubernetes.Clientset, secretName, serviceName, namespace string) {
@@ -407,12 +474,74 @@ func TestE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error when checking ca bundle injection configmap: %v", err)
 		}
+	})
 
+	t.Run("refresh-CA", func(t *testing.T) {
+		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		if err != nil {
+			t.Fatalf("could not create test namespace: %v", err)
+		}
+
+		// create secret
+		testServiceName := "test-service-" + randSeq(5)
+		testSecretName := "test-secret-" + randSeq(5)
+		defer cleanupServiceSignerTestObjects(adminClient, testSecretName, testServiceName, ns.Name)
+
+		err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name)
+		if err != nil {
+			t.Fatalf("error creating annotated service: %v", err)
+		}
+
+		secret, err := pollForServiceServingSecretWithReturn(adminClient, testSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error fetching created serving cert secret: %v", err)
+		}
+		secretCopy := secret.DeepCopy()
+
+		// create configmap
+		testConfigMapName := "test-configmap-" + randSeq(5)
+		defer cleanupConfigMapCABundleInjectionTestObjects(adminClient, testConfigMapName, ns.Name)
+
+		err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
+		if err != nil {
+			t.Fatalf("error creating annotated configmap: %v", err)
+		}
+
+		configmap, err := pollForCABundleInjectionConfigMapWithReturn(adminClient, testConfigMapName, ns.Name)
+		if err != nil {
+			t.Fatalf("error fetching ca bundle injection configmap: %v", err)
+		}
+		configmapCopy := configmap.DeepCopy()
+		err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
+		if err != nil {
+			t.Fatalf("error when checking ca bundle injection configmap: %v", err)
+		}
+
+		// delete ca secret
+		err = adminClient.CoreV1().Secrets(serviceCAControllerNamespace).Delete(signingKeySecretName, nil)
+		if err != nil {
+			t.Fatalf("error deleting signing key: %v", err)
+		}
+
+		// make sure it's recreated
+		err = pollForServiceServingSecret(adminClient, signingKeySecretName, serviceCAControllerNamespace)
+		if err != nil {
+			t.Fatalf("signing key was not recreated: %v", err)
+		}
+
+		err = pollForConfigMapChange(adminClient, configmapCopy)
+		if err != nil {
+			t.Fatalf("configmap bundle did not change: %v", err)
+		}
+
+		err = pollForSecretChange(adminClient, secretCopy)
+		if err != nil {
+			t.Fatalf("secret cert did not change: %v", err)
+		}
 	})
 
 	// TODO: additional tests
 	// - API service CA bundle injection
-	// - regenerate serving cert
 }
 
 func init() {
