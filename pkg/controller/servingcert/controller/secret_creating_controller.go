@@ -288,8 +288,7 @@ func toBaseSecret(service *v1.Service) *v1.Secret {
 		Type: v1.SecretTypeTLS,
 	}
 }
-
-func toRequiredSecret(dnsSuffix string, ca *crypto.CA, service *v1.Service, secretCopy *v1.Secret) error {
+func getServingCert(dnsSuffix string, ca *crypto.CA, service *v1.Service) (*crypto.TLSCertificateConfig, error) {
 	dnsName := service.Name + "." + service.Namespace + ".svc"
 	fqDNSName := dnsName + "." + dnsSuffix
 	certificateLifetime := 365 * 2 // 2 years
@@ -299,24 +298,31 @@ func toRequiredSecret(dnsSuffix string, ca *crypto.CA, service *v1.Service, secr
 		cryptoextensions.ServiceServerCertificateExtensionV1(service),
 	)
 	if err != nil {
+		return nil, err
+	}
+	return servingCert, nil
+}
+
+func toRequiredSecret(dnsSuffix string, ca *crypto.CA, service *v1.Service, secretCopy *v1.Secret) error {
+	servingCert, err := getServingCert(dnsSuffix, ca, service)
+	if err != nil {
 		return err
 	}
 	certBytes, keyBytes, err := servingCert.GetPEMBytes()
 	if err != nil {
 		return err
 	}
-
 	if secretCopy.Annotations == nil {
 		secretCopy.Annotations = map[string]string{}
 	}
-	if secretCopy.Data == nil {
-		secretCopy.Data = map[string][]byte{}
+	// let garbage collector cleanup map allocation, for simplicity
+	secretCopy.Data = map[string][]byte{
+		v1.TLSCertKey:       certBytes,
+		v1.TLSPrivateKeyKey: keyBytes,
 	}
 
 	secretCopy.Annotations[api.AlphaServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
 	secretCopy.Annotations[api.ServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
-	secretCopy.Data[v1.TLSCertKey] = certBytes
-	secretCopy.Data[v1.TLSPrivateKeyKey] = keyBytes
 
 	ocontroller.EnsureOwnerRef(secretCopy, ownerRef(service))
 
