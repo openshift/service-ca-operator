@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/golang/glog"
-
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 )
 
 type Option func(*controller)
@@ -45,7 +44,7 @@ func WithInformer(getter InformerGetter, filter ParentFilter) Option {
 			AddFunc: func(obj interface{}) {
 				object := metaOrDie(obj)
 				if filter.Add(object) {
-					glog.V(4).Infof("%s: handling add %s/%s", c.name, object.GetNamespace(), object.GetName())
+					klog.V(4).Infof("%s: handling add %s/%s", c.name, object.GetNamespace(), object.GetName())
 					c.add(filter, object)
 				}
 			},
@@ -53,7 +52,7 @@ func WithInformer(getter InformerGetter, filter ParentFilter) Option {
 				oldObject := metaOrDie(oldObj)
 				newObject := metaOrDie(newObj)
 				if filter.Update(oldObject, newObject) {
-					glog.V(4).Infof("%s: handling update %s/%s", c.name, newObject.GetNamespace(), newObject.GetName())
+					klog.V(4).Infof("%s: handling update %s/%s", c.name, newObject.GetNamespace(), newObject.GetName())
 					c.add(filter, newObject)
 				}
 			},
@@ -72,7 +71,7 @@ func WithInformer(getter InformerGetter, filter ParentFilter) Option {
 					}
 				}
 				if filter.Delete(accessor) {
-					glog.V(4).Infof("%s: handling delete %s/%s", c.name, accessor.GetNamespace(), accessor.GetName())
+					klog.V(4).Infof("%s: handling delete %s/%s", c.name, accessor.GetNamespace(), accessor.GetName())
 					c.add(filter, accessor)
 				}
 			},

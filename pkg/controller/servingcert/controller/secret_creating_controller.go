@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/golang/glog"
-
 	corev1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,6 +13,7 @@ import (
 	informers "k8s.io/client-go/informers/core/v1"
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/klog"
 
 	ocontroller "github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/crypto"
@@ -96,7 +95,7 @@ func (sc *serviceServingCertController) deleteSecret(obj metav1.Object) bool {
 		utilruntime.HandleError(fmt.Errorf("unable to get service %s/%s: %v", secret.Namespace, serviceName, err))
 		return false
 	}
-	glog.V(4).Infof("recreating secret for service %s/%s", service.Namespace, service.Name)
+	klog.V(4).Infof("recreating secret for service %s/%s", service.Namespace, service.Name)
 	return true
 }
 
@@ -122,7 +121,7 @@ func (sc *serviceServingCertController) syncService(obj metav1.Object) error {
 }
 
 func (sc *serviceServingCertController) generateCert(serviceCopy *corev1.Service) error {
-	glog.V(4).Infof("generating new cert for %s/%s", serviceCopy.GetNamespace(), serviceCopy.GetName())
+	klog.V(4).Infof("generating new cert for %s/%s", serviceCopy.GetNamespace(), serviceCopy.GetName())
 	if serviceCopy.Annotations == nil {
 		serviceCopy.Annotations = map[string]string{}
 	}
@@ -146,7 +145,7 @@ func (sc *serviceServingCertController) generateCert(serviceCopy *corev1.Service
 			uidErr := fmt.Errorf("secret %s/%s does not have corresponding service UID %v", actualSecret.GetNamespace(), actualSecret.GetName(), serviceCopy.UID)
 			return sc.updateServiceFailure(serviceCopy, uidErr)
 		}
-		glog.V(4).Infof("renewing cert in existing secret %s/%s", secret.GetNamespace(), secret.GetName())
+		klog.V(4).Infof("renewing cert in existing secret %s/%s", secret.GetNamespace(), secret.GetName())
 		// Actually update the secret in the regeneration case (the secret already exists but we want to update to a new cert).
 		_, updateErr := sc.secretClient.Secrets(secret.GetNamespace()).Update(secret)
 		if updateErr != nil {
@@ -223,7 +222,7 @@ func (sc *serviceServingCertController) updateServiceFailure(service *corev1.Ser
 	incrementFailureNumAnnotation(service)
 	_, updateErr := sc.serviceClient.Services(service.Namespace).Update(service)
 	if updateErr != nil {
-		glog.V(4).Infof("warning: failed to update failure annotations on service %s: %v", service.Name, updateErr)
+		klog.V(4).Infof("warning: failed to update failure annotations on service %s: %v", service.Name, updateErr)
 	}
 	// Past the max retries means we've handled this failure enough, so forget it from the queue.
 	if updateErr == nil && getNumFailures(service) >= sc.maxRetries {

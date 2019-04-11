@@ -1,7 +1,8 @@
 package operator
 
 import (
-	"github.com/golang/glog"
+	"k8s.io/klog"
+
 	operatorv1 "github.com/openshift/api/operator/v1"
 )
 
@@ -69,6 +70,6 @@ func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) 
 		return err
 	}
 
-	glog.V(4).Infof("synced all controller resources")
+	klog.V(4).Infof("synced all controller resources")
 	return nil
 }
