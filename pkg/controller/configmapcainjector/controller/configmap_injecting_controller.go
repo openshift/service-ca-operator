@@ -1,13 +1,12 @@
 package controller
 
 import (
-	"github.com/golang/glog"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	informers "k8s.io/client-go/informers/core/v1"
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/klog"
 
 	"github.com/openshift/service-ca-operator/pkg/boilerplate/controller"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
@@ -63,7 +62,7 @@ func (ic *configMapCABundleInjectionController) ensureConfigMapCABundleInjection
 	// make a copy to avoid mutating cache state
 	configMapCopy := current.DeepCopy()
 	configMapCopy.Data = map[string]string{api.InjectionDataKey: ic.ca}
-	glog.V(4).Infof("updating configmap %s/%s with CA", configMapCopy.GetNamespace(), configMapCopy.GetName())
+	klog.V(4).Infof("updating configmap %s/%s with CA", configMapCopy.GetNamespace(), configMapCopy.GetName())
 	_, err := ic.configMapClient.ConfigMaps(current.Namespace).Update(configMapCopy)
 	return err
 }

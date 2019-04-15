@@ -6,12 +6,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang/glog"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	appsclientv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coreclientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/klog"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/crypto"
@@ -87,7 +86,7 @@ func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Reco
 		return false, err
 	}
 	name := serviceServingCertSignerName()
-	glog.V(4).Infof("generating signing CA: %s", name)
+	klog.V(4).Infof("generating signing CA: %s", name)
 
 	ca, err := crypto.MakeSelfSignedCAConfig(name, 365)
 	if err != nil {
@@ -116,7 +115,7 @@ func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder eve
 		}
 	}
 
-	glog.V(4).Infof("updating CA bundle configmap")
+	klog.V(4).Infof("updating CA bundle configmap")
 	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml"))
 	currentSigningKeySecret, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
 	// Return err or if the signing secret has no data (should not normally happen).
@@ -183,7 +182,7 @@ func manageDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.
 	if err != nil {
 		return mod, err
 	}
-	glog.V(4).Infof("current deployment of %s: %#v", resourcePath, deployment)
+	klog.V(4).Infof("current deployment of %s: %#v", resourcePath, deployment)
 	resourcemerge.SetDeploymentGeneration(&options.Status.Generations, deployment)
 
 	return mod, nil

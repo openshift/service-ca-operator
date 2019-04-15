@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 )
 
 type Runner interface {
@@ -50,8 +49,8 @@ func (c *controller) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	glog.Infof("Starting %s", c.name)
-	defer glog.Infof("Shutting down %s", c.name)
+	klog.Infof("Starting %s", c.name)
+	defer klog.Infof("Shutting down %s", c.name)
 
 	c.run = true
 	for _, opt := range c.runOpts {

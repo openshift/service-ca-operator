@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +13,7 @@ import (
 	informers "k8s.io/client-go/informers/core/v1"
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/klog"
 
 	ocontroller "github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/crypto"
@@ -189,7 +189,7 @@ func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Servi
 	block, _ := pem.Decode([]byte(tlsCert))
 	if block == nil {
 		// Regenerate the secret
-		glog.Infof("Error decoding cert bytes %s from secret: %s namespace: %s, replacing cert", v1.TLSCertKey, secretCopy.Name, secretCopy.Namespace)
+		klog.Infof("Error decoding cert bytes %s from secret: %s namespace: %s, replacing cert", v1.TLSCertKey, secretCopy.Name, secretCopy.Namespace)
 		// Regenerate the secret
 		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, service, secretCopy); err != nil {
 			return update, err
@@ -198,7 +198,7 @@ func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Servi
 	}
 	_, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		glog.Infof("Error parsing %s from secret: %s namespace: %s, replacing cert", v1.TLSCertKey, secretCopy.Name, secretCopy.Namespace)
+		klog.Infof("Error parsing %s from secret: %s namespace: %s, replacing cert", v1.TLSCertKey, secretCopy.Name, secretCopy.Namespace)
 		// Regenerate the secret
 		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, service, secretCopy); err != nil {
 			return update, err

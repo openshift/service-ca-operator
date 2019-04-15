@@ -15,11 +15,11 @@ import (
 
 func TestRequiresRegenerationOrReplace(t *testing.T) {
 	tests := []struct {
-		name            string
-		primeServices   func(cache.Indexer)
-		secret          *v1.Secret
-		expected   bool
-		serviceIsValid  bool
+		name           string
+		primeServices  func(cache.Indexer)
+		secret         *v1.Secret
+		expected       bool
+		serviceIsValid bool
 	}{
 		{
 			name:          "no service annotation",
@@ -30,7 +30,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					Annotations: map[string]string{},
 				},
 			},
-			expected:  false,
+			expected:       false,
 			serviceIsValid: false,
 		},
 		{
@@ -44,7 +44,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					},
 				},
 			},
-			expected:  false,
+			expected:       false,
 			serviceIsValid: false,
 		},
 		{
@@ -64,7 +64,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					OwnerReferences: []metav1.OwnerReference{ownerRef(&v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: types.UID("uid-2")}})},
 				},
 			},
-			expected:  false,
+			expected:       false,
 			serviceIsValid: false,
 		},
 		{
@@ -84,7 +84,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					OwnerReferences: []metav1.OwnerReference{ownerRef(&v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: types.UID("uid-1")}})},
 				},
 			},
-			expected:  false,
+			expected:       false,
 			serviceIsValid: false,
 		},
 		{
@@ -105,7 +105,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 				},
 			},
 			serviceIsValid: true,
-			expected:  true,
+			expected:       true,
 		},
 		{
 			name: "bad expiry",
@@ -125,7 +125,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					OwnerReferences: []metav1.OwnerReference{ownerRef(&v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: types.UID("uid-1")}})},
 				},
 			},
-			expected:  true,
+			expected:       true,
 			serviceIsValid: true,
 		},
 		{
@@ -146,7 +146,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					OwnerReferences: []metav1.OwnerReference{ownerRef(&v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: types.UID("uid-1")}})},
 				},
 			},
-			expected:  true,
+			expected:       true,
 			serviceIsValid: true,
 		},
 		{
@@ -171,8 +171,8 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					v1.TLSPrivateKeyKey: []byte("morecontent"),
 				},
 			},
-			expected:   false,
-			serviceIsValid:  true,
+			expected:       false,
+			serviceIsValid: true,
 		},
 		{
 			name: "missing ownerref",
@@ -192,7 +192,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					OwnerReferences: []metav1.OwnerReference{ownerRef(&v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: types.UID("uid-2")}})},
 				},
 			},
-			expected:  true,
+			expected:       true,
 			serviceIsValid: true,
 		},
 	}
@@ -438,4 +438,3 @@ func TestRequiresRegenerationServiceUIDMismatchBetaAnnotation(t *testing.T) {
 		})
 	}
 }
-
