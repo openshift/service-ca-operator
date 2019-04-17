@@ -27,13 +27,58 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/cryptoextensions"
 )
 
+const signerName = "openshift-service-serving-signer"
+
+const testCert = `
+-----BEGIN CERTIFICATE-----
+MIIDETCCAfmgAwIBAgIUTNjtvaP8ZzRNabhgLhuqHONxuTYwDQYJKoZIhvcNAQEL
+BQAwKzEpMCcGA1UEAwwgb3BlbnNoaWZ0LXNlcnZpY2Utc2VydmluZy1zaWduZXIw
+HhcNMTkwNDE3MTkyMjEwWhcNMjAwNDE2MTkyMjEwWjAPMQ0wCwYDVQQDDAR0ZXN0
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6QmfkmO9eaSqONefWAKO
+ZGwYe02tBltRCWsE96GslVq+aWVc6SSOVcghv9bL4xZQy2TQNxDRKNBDX0Fwk5TR
+Aj2aMzXuJ+HzxwyCK3o5SqwQYnOlgFuUpKShtpM4jye6hxwllFr059MvRAUZZNVX
+Fkv0Gh2CJcry/wPAuXVZV03GOixB/TeFKSEmpSSdMyhK3hFve3XkeW88rtuP9cG1
+duy3onAGZQ4V86TrwYsPJVo9t7IDS+SheIqHEhbfYouS6zBEvpeZMz+evP4q2AJs
+FXfLSQJi+HyHYdGovbBO9+ZotJ609hrkJ4/cMDJOxXeG8YBr6x9hgZtH4GO55jeS
+kQIDAQABo0kwRzALBgNVHQ8EBAMCBeAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwCQYD
+VR0TBAIwADAYBgNVHREEETAPgg0qLmZvby5iYXIuY29tMA0GCSqGSIb3DQEBCwUA
+A4IBAQB9HfCAUdxoVyaA7KxU1a838sC2Z/NrbqC2+u1eR1SVilRjykD+k3v6XnM9
+ku7TYpf8YRbgRmbu864zYE1ibxMwVGqQlMR9tNm2cA6nEDke2sDqH0JbS5lZPX+a
+DA9tdnJtx+/uxsuz6I68rp5kDPiTjUTjxc9/Ob3vLiCopBikuiC0H9cPdq1lNHFJ
+k89OWEXatvLbNvVRioyptH1hf5lweVtDjytnj7gaMchhlH8qK6u4iggLxViVxheO
+fiNJr2o4fexMfez1J6u7ZuM2w50CuOHuAGVAdrVdE8LYjr0SouwzVt20Uc0swLRE
+GKM7HG83Wj2hA+DWdy9ZJAdBLISB
+-----END CERTIFICATE-----
+`
+const testCertUnknownIssuer = `
+-----BEGIN CERTIFICATE-----
+MIIDETCCAfmgAwIBAgIUdbBKh0jOJxli4wl34q0TYJu8+n0wDQYJKoZIhvcNAQEL
+BQAwKzEpMCcGA1UEAwwgb3BlbnNoaWZ0LXNlcnZpY2Utc2VydmluZy1mb29iYXIw
+HhcNMTkwNDE3MTkzNDU0WhcNMjAwNDE2MTkzNDU0WjAPMQ0wCwYDVQQDDAR0ZXN0
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA+GyWv5JtuPjrOUrWrHkK
+IgW2D5SlH0RUb5tbeuleKQLAOAovaR/rYTHsUNTmZjHnSxUfL23RGwt96/fabG/4
+M8EVKyYd5pLJP3Xrzq8sA7fjSlH9YTC17GPEl7eF8acXdEF8VybGvuz7WcojDiU1
+PRFV4Pgg0rHTTdgkpFreOEao3wrr2BKvF8jllhp/pf0Pm6EG3OyWbfbNUXDK62cO
+92wX88wtXxb6Yps+kzbUbO5es6HoFxGDAkTC1aOIjh4Thu5RHeUlMFOYJZDeat2a
+XHDCyZNFODqUnUiQdC2MMxSzTVlIwQv2vJZXdEPdNOa4ta7dn/SMTPWpspx82ugn
+IwIDAQABo0kwRzALBgNVHQ8EBAMCBeAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwCQYD
+VR0TBAIwADAYBgNVHREEETAPgg0qLmZvby5iYXIuY29tMA0GCSqGSIb3DQEBCwUA
+A4IBAQAyCaZQL70WHph9h1yc2CKgSooWQiSAU7U5mT5rc+FJdzcLaqZcQvapBgpk
+Fpj1zw4cm4hjiwQceM7Zmjr+2m8aQ9b3SPxzRzCnLvYPq3jOjQSgguGTQd7edSAG
+TDVO+6niXPxNLBNGWqMjTOtB/mBaXOr1Vw+8eszMFUiImlDMl6Dd0tfwgc1V7SLE
+Jm4tZFG75oKIYWxo+gXLbZssVsi/wCthw+n8DE6UOo86W7YyWv9UGTGwt1wagfiR
+NLnkOmhMNgDRXebZOq2vR6SWhdkbuq4FIDrfzU3iM/9r2ATJv4/tJZDqZGZAx8xf
+Cryo2APfUHF0zOtxK0JifCnYi47H
+-----END CERTIFICATE-----
+`
+
 func controllerSetup(startingObjects []runtime.Object, t *testing.T) ( /*caName*/ string, *fake.Clientset, *watch.RaceFreeFakeWatcher, *watch.RaceFreeFakeWatcher, *serviceServingCertController, informers.SharedInformerFactory) {
 	certDir, err := ioutil.TempDir("", "serving-cert-unit-")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	signerName := fmt.Sprintf("%s@%d", "openshift-service-serving-signer", time.Now().Unix())
+	signerName := fmt.Sprintf("%s", signerName)
 	ca, err := crypto.MakeSelfSignedCA(
 		path.Join(certDir, "service-signer.crt"),
 		path.Join(certDir, "service-signer.key"),
@@ -785,7 +830,7 @@ func TestSkipGenerationControllerFlow(t *testing.T) {
 	serviceUID := "some-uid"
 	namespace := "ns"
 
-	caName, kubeclient, fakeWatch, fakeSecretWatch, controller, informerFactory := controllerSetup([]runtime.Object{}, t)
+	_, kubeclient, fakeWatch, fakeSecretWatch, controller, informerFactory := controllerSetup([]runtime.Object{}, t)
 	kubeclient.PrependReactor("update", "service", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
 		return true, &v1.Service{}, kapierrors.NewForbidden(v1.Resource("fdsa"), "new-service", fmt.Errorf("any service reason"))
 	})
@@ -806,7 +851,11 @@ func TestSkipGenerationControllerFlow(t *testing.T) {
 		return err
 	}
 
-	secretToAdd := &v1.Secret{}
+	secretToAdd := &v1.Secret{
+		Data: map[string][]byte{
+			v1.TLSCertKey: []byte(testCert),
+		},
+	}
 	secretToAdd.Name = expectedSecretName
 	secretToAdd.Namespace = namespace
 	fakeSecretWatch.Add(secretToAdd)
@@ -818,7 +867,7 @@ func TestSkipGenerationControllerFlow(t *testing.T) {
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName, api.AlphaServingCertErrorAnnotation: "any-error", api.AlphaServingCertErrorNumAnnotation: "11"}
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -836,7 +885,7 @@ func TestSkipGenerationControllerFlow(t *testing.T) {
 	}
 
 	kubeclient.ClearActions()
-	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName, api.AlphaServingCertCreatedByAnnotation: caName}
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -854,7 +903,7 @@ func TestSkipGenerationControllerFlow(t *testing.T) {
 	}
 }
 
-func TestSkipGenerationControllerFlowBetaAnnotation(t *testing.T) {
+func TestNeedsGenerationMismatchCAControllerFlow(t *testing.T) {
 	stopChannel := make(chan struct{})
 	defer close(stopChannel)
 	received := make(chan bool)
@@ -864,7 +913,7 @@ func TestSkipGenerationControllerFlowBetaAnnotation(t *testing.T) {
 	serviceUID := "some-uid"
 	namespace := "ns"
 
-	caName, kubeclient, fakeWatch, fakeSecretWatch, controller, informerFactory := controllerSetup([]runtime.Object{}, t)
+	_, kubeclient, fakeWatch, fakeSecretWatch, controller, informerFactory := controllerSetup([]runtime.Object{}, t)
 	kubeclient.PrependReactor("update", "service", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
 		return true, &v1.Service{}, kapierrors.NewForbidden(v1.Resource("fdsa"), "new-service", fmt.Errorf("any service reason"))
 	})
@@ -885,7 +934,11 @@ func TestSkipGenerationControllerFlowBetaAnnotation(t *testing.T) {
 		return err
 	}
 
-	secretToAdd := &v1.Secret{}
+	secretToAdd := &v1.Secret{
+		Data: map[string][]byte{
+			v1.TLSCertKey: []byte(testCertUnknownIssuer),
+		},
+	}
 	secretToAdd.Name = expectedSecretName
 	secretToAdd.Namespace = namespace
 	fakeSecretWatch.Add(secretToAdd)
@@ -897,7 +950,7 @@ func TestSkipGenerationControllerFlowBetaAnnotation(t *testing.T) {
 	serviceToAdd.Name = serviceName
 	serviceToAdd.Namespace = namespace
 	serviceToAdd.UID = types.UID(serviceUID)
-	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName, api.ServingCertErrorAnnotation: "any-error", api.ServingCertErrorNumAnnotation: "11"}
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -907,15 +960,19 @@ func TestSkipGenerationControllerFlowBetaAnnotation(t *testing.T) {
 		t.Fatalf("failed to call into syncService")
 	}
 
+	gotUpdate := false
 	for _, action := range kubeclient.Actions() {
 		switch action.GetVerb() {
 		case "update", "create":
-			t.Errorf("no mutation expected, but we got %v", action)
+			gotUpdate = true
 		}
+	}
+	if !gotUpdate {
+		t.Errorf("expected secret update")
 	}
 
 	kubeclient.ClearActions()
-	serviceToAdd.Annotations = map[string]string{api.ServingCertSecretAnnotation: expectedSecretName, api.ServingCertCreatedByAnnotation: caName}
+	serviceToAdd.Annotations = map[string]string{api.AlphaServingCertSecretAnnotation: expectedSecretName}
 	fakeWatch.Add(serviceToAdd)
 
 	t.Log("waiting to reach syncHandler")
@@ -925,11 +982,15 @@ func TestSkipGenerationControllerFlowBetaAnnotation(t *testing.T) {
 		t.Fatalf("failed to call into syncService")
 	}
 
+	gotUpdate = false
 	for _, action := range kubeclient.Actions() {
 		switch action.GetVerb() {
 		case "update", "create":
-			t.Errorf("no mutation expected, but we got %v", action)
+			gotUpdate = true
 		}
+	}
+	if !gotUpdate {
+		t.Errorf("expected secret update")
 	}
 }
 

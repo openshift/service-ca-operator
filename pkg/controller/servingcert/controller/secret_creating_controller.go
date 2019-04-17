@@ -13,6 +13,7 @@ import (
 	informers "k8s.io/client-go/informers/core/v1"
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/util/cert"
 	"k8s.io/klog"
 
 	ocontroller "github.com/openshift/library-go/pkg/controller"
@@ -186,7 +187,7 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 		}
 	}
 
-	_, err := sc.secretLister.Secrets(service.Namespace).Get(secretName)
+	secret, err := sc.secretLister.Secrets(service.Namespace).Get(secretName)
 	if kapierrors.IsNotFound(err) {
 		// we have not created the secret yet
 		return true
@@ -196,10 +197,10 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 		return false
 	}
 
-	// check to see if the service was updated by us
-	if service.Annotations[api.ServingCertCreatedByAnnotation] == sc.commonName() || service.Annotations[api.AlphaServingCertCreatedByAnnotation] == sc.commonName() {
+	if sc.issuedByCurrentCA(secret) {
 		return false
 	}
+
 	// we have failed too many times on this service, give up
 	if getNumFailures(service) >= sc.maxRetries {
 		return false
@@ -208,6 +209,24 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 	// the secret exists but the service was either not updated to include the correct created
 	// by annotation or it does not match what we expect (i.e. the certificate has been rotated)
 	return true
+}
+
+// Returns true if the secret certificate has the same issuer common name as the current CA, false
+// if not or if there is a parsing error.
+func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret) bool {
+	certs, err := cert.ParseCertsPEM(secret.Data[corev1.TLSCertKey])
+	if err != nil {
+		klog.V(4).Infof("warning: error parsing certificate data in %s/%s during issuer check: %v",
+			secret.Namespace, secret.Name, err)
+		return false
+	}
+
+	if len(certs) == 0 || certs[0] == nil {
+		klog.V(4).Infof("warning: no certs returned from ParseCertsPEM during issuer check")
+		return false
+	}
+
+	return certs[0].Issuer.CommonName == sc.commonName()
 }
 
 func (sc *serviceServingCertController) commonName() string {
