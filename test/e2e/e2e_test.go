@@ -14,12 +14,18 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 
+	rand2 "crypto/rand"
+	"crypto/rsa"
+	"crypto/x509/pkix"
+	"math/big"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/cert"
 )
 
 const (
@@ -260,6 +266,19 @@ func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.C
 			return true, nil
 		}
 		return false, nil
+	})
+}
+
+func pollSecretForDataExist(client *kubernetes.Clientset, secret *v1.Secret, key string) error {
+	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
+		s, err := client.CoreV1().Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return s.Data[key] != nil, nil
 	})
 }
 
@@ -538,6 +557,148 @@ func TestE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("secret cert did not change: %v", err)
 		}
+	})
+
+	t.Run("rotate-CA", func(t *testing.T) {
+		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		if err != nil {
+			t.Fatalf("could not create test namespace: %v", err)
+		}
+
+		// create secret
+		testServiceName := "test-service-" + randSeq(5)
+		testSecretName := "test-secret-" + randSeq(5)
+		defer cleanupServiceSignerTestObjects(adminClient, testSecretName, testServiceName, ns.Name)
+
+		err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name)
+		if err != nil {
+			t.Fatalf("error creating annotated service: %v", err)
+		}
+
+		secret, err := pollForServiceServingSecretWithReturn(adminClient, testSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error fetching created serving cert secret: %v", err)
+		}
+		//secretCopy := secret.DeepCopy()
+
+		// create configmap
+		testConfigMapName := "test-configmap-" + randSeq(5)
+		defer cleanupConfigMapCABundleInjectionTestObjects(adminClient, testConfigMapName, ns.Name)
+
+		err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
+		if err != nil {
+			t.Fatalf("error creating annotated configmap: %v", err)
+		}
+
+		configmap, err := pollForCABundleInjectionConfigMapWithReturn(adminClient, testConfigMapName, ns.Name)
+		if err != nil {
+			t.Fatalf("error fetching ca bundle injection configmap: %v", err)
+		}
+		configmapCopy := configmap.DeepCopy()
+		err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
+		if err != nil {
+			t.Fatalf("error when checking ca bundle injection configmap: %v", err)
+		}
+
+		// Replace the CA secret with one that has passed its halfway-expired point, this way we force a rotation.
+		//
+		template := &x509.Certificate{
+			Subject:            pkix.Name{CommonName: "test"},
+			SignatureAlgorithm: x509.SHA256WithRSA,
+			// A 4 hour cert that has 3 of those hours elapsed, more than halfway to expiration.
+			NotBefore:             time.Now().Add(-3 * time.Hour),
+			NotAfter:              time.Now().Add(1 * time.Hour),
+			SerialNumber:          big.NewInt(1),
+			KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+			BasicConstraintsValid: true,
+			IsCA: true,
+		}
+		priv, err := rsa.GenerateKey(rand2.Reader, 2048)
+		if err != nil {
+			t.Fatalf("error creating test CA key: %v", err)
+		}
+		caDer, err := x509.CreateCertificate(rand2.Reader, template, template, &priv.PublicKey, priv)
+		if err != nil {
+			t.Fatalf("error creating test CA: %v", err)
+		}
+		certBuf := bytes.Buffer{}
+		err = pem.Encode(&certBuf, &pem.Block{Type: cert.CertificateBlockType, Bytes: caDer})
+		if err != nil {
+			t.Fatalf("error encoding test CA pem: %v", err)
+		}
+		keyBuf := bytes.Buffer{}
+		err = pem.Encode(&keyBuf, &pem.Block{Type: cert.RSAPrivateKeyBlockType, Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+		if err != nil {
+			t.Fatalf("error encoding test CA key: %v", err)
+		}
+		caSecret := &v1.Secret{
+			Type: v1.SecretTypeTLS,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      signingKeySecretName,
+				Namespace: serviceCAControllerNamespace,
+			},
+			Data: map[string][]byte{
+				"tls.crt": certBuf.Bytes(),
+				"tls.key": keyBuf.Bytes(),
+			},
+		}
+		_, err = adminClient.CoreV1().Secrets(caSecret.Namespace).Update(caSecret)
+		if err != nil {
+			t.Fatalf("error updating secret with test CA: %v", err)
+		}
+
+		// Make sure secret is updated with ca-bundle.crt data containing 4 certs
+
+		err = pollSecretForDataExist(adminClient, caSecret, "ca-bundle.crt")
+		if err != nil {
+			t.Fatalf("error confirming rotation of CA secret: %v", err)
+		}
+		// Make sure tls.crt is updated with two certs
+		updatedCA, err := pollForServiceServingSecretWithReturn(adminClient, caSecret.Name, caSecret.Namespace)
+		if err != nil {
+			t.Fatalf("error fetching service CA secret: %v", err)
+		}
+
+		certs, err := cert.ParseCertsPEM(updatedCA.Data["tls.crt"])
+		if err != nil {
+			t.Fatalf("error parsing service CA after rotation: %v", err)
+		}
+
+		if len(certs) != 2 {
+			t.Fatalf("service CA after rotation does not contain intermediate, contains %v certs", len(certs))
+		}
+
+		// Make sure a new signing cert gets renewed and contains the intermediate
+		refreshedSecret, err := pollForServiceServingSecretWithReturn(adminClient, secret.Name, secret.Namespace)
+		if err != nil {
+			t.Fatalf("error fetching created serving cert secret after rotation: %v", err)
+		}
+
+		refreshedParsedCerts, err := cert.ParseCertsPEM(refreshedSecret.Data["tls.crt"])
+		if err != nil {
+			t.Fatalf("error parsing service CA after rotation: %v", err)
+		}
+
+		if len(refreshedParsedCerts) != 2 {
+			t.Fatalf("serving cert after rotation does not contain intermediate, contains %v certs", len(refreshedParsedCerts))
+		}
+
+		// Make sure configmap gets updated with full bundle 4 certs
+		updatedConfigmap, err := pollForCABundleInjectionConfigMapWithReturn(adminClient, configmapCopy.Name, configmapCopy.Namespace)
+		if err != nil {
+			t.Fatalf("error fetching ca bundle injection configmap: %v", err)
+		}
+
+		cmCerts, err := cert.ParseCertsPEM([]byte(updatedConfigmap.Data["ca-bundle.crt"]))
+		if err != nil {
+			t.Fatalf("error parsing configmap cert bundle after rotation: %v", err )
+		}
+
+		if len(cmCerts) != 4 {
+			t.Fatalf("configmap bundle does not contain all CAs after rotation, contains %v certs", len(cmCerts))
+		}
+
+		// TODO: add some extra validation
 	})
 
 	// TODO: additional tests
