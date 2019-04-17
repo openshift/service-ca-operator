@@ -12,13 +12,17 @@ import (
 	coreclientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog"
 
+	"crypto/rsa"
+
 	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
+	"github.com/openshift/service-ca-operator/pkg/operator/util"
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
+	"k8s.io/client-go/util/cert"
 )
 
 func manageControllerNS(c serviceCAOperator) (bool, error) {
@@ -81,26 +85,68 @@ func manageControllerResources(c serviceCAOperator, resourcePath string, modifie
 // TODO manage rotation in addition to initial creation
 func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Recorder) (bool, error) {
 	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml"))
-	_, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
+	var (
+		caCertPem, caKeyPem, signedByOldPem, fullBundlePem []byte
+	)
+
+	existing, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
 	if !apierrors.IsNotFound(err) {
-		return false, err
+		if err != nil {
+			return false, err
+		}
+		// If we're not yet half expired, return.
+		certs, err := cert.ParseCertsPEM(existing.Data["tls.crt"])
+		if err != nil {
+			return false, err
+		}
+		if certs[0] != nil {
+			if !util.CertHalfwayExpired(certs[0]) {
+				return false, nil
+			}
+			// Rotate, use RotateSigningCA
+			klog.V(4).Infof("rotating signing CA")
+			key, err := cert.ParsePrivateKeyPEM(existing.Data["tls.key"])
+			if err != nil {
+				return false, err
+			}
+			newCA, newCAKey, signedByOld, bundle, err := util.RotateSigningCA(certs[0], key.(*rsa.PrivateKey))
+			if err != nil {
+				return false, err
+			}
+			caCertPem = newCA
+			caKeyPem = newCAKey
+			signedByOldPem = signedByOld
+			fullBundlePem = bundle
+		}
 	}
-	name := serviceServingCertSignerName()
-	klog.V(4).Infof("generating signing CA: %s", name)
 
-	ca, err := crypto.MakeSelfSignedCAConfig(name, 365)
-	if err != nil {
-		return false, err
+	if len(caCertPem) == 0 && len(caKeyPem) == 0 {
+		name := serviceServingCertSignerName()
+		klog.V(4).Infof("generating signing CA: %s", name)
+
+		ca, err := crypto.MakeSelfSignedCAConfig(name, util.SignerDays)
+		if err != nil {
+			return false, err
+		}
+
+		certBuf := &bytes.Buffer{}
+		keyBuf := &bytes.Buffer{}
+		if err := ca.WriteCertConfig(certBuf, keyBuf); err != nil {
+			return false, err
+		}
+		caCertPem = certBuf.Bytes()
+		caKeyPem = keyBuf.Bytes()
 	}
 
-	certBytes := &bytes.Buffer{}
-	keyBytes := &bytes.Buffer{}
-	if err := ca.WriteCertConfig(certBytes, keyBytes); err != nil {
-		return false, err
+	// Append the required intermediate
+	if len(signedByOldPem) > 0 {
+		caCertPem = append(caCertPem, signedByOldPem...)
 	}
-
-	secret.Data["tls.crt"] = certBytes.Bytes()
-	secret.Data["tls.key"] = keyBytes.Bytes()
+	secret.Data["tls.crt"] = caCertPem
+	secret.Data["tls.key"] = caKeyPem
+	if len(fullBundlePem) > 0 {
+		secret.Data["ca-bundle.crt"] = fullBundlePem
+	}
 	_, mod, err := resourceapply.ApplySecret(client, eventRecorder, secret)
 	return mod, err
 }
@@ -123,7 +169,12 @@ func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder eve
 		return false, err
 	}
 
-	configMap.Data["ca-bundle.crt"] = string(currentSigningKeySecret.Data["tls.crt"])
+	// Prefer the full bundle after rotation since it contains all required CAs.
+	bundle := currentSigningKeySecret.Data["ca-bundle.crt"]
+	if len(bundle) == 0 {
+		bundle = currentSigningKeySecret.Data["tls.crt"]
+	}
+	configMap.Data["ca-bundle.crt"] = string(bundle)
 
 	_, mod, err := resourceapply.ApplyConfigMap(client, eventRecorder, configMap)
 	return mod, err

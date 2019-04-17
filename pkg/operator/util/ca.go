@@ -17,12 +17,22 @@ import (
 	cryptohelpers "github.com/openshift/library-go/pkg/crypto"
 )
 
+const SignerDays = 356
+
+// CertHalfwayExpired returns true if half of the cert validity period has elapsed, false if not.
+func CertHalfwayExpired(cert *x509.Certificate) bool {
+	now := time.Now()
+	halfValidPeriod := cert.NotAfter.Sub(cert.NotBefore).Nanoseconds() / 2
+	halfExpiration := cert.NotBefore.Add(time.Duration(halfValidPeriod) * time.Nanosecond)
+	return now.After(halfExpiration)
+}
+
 // RotateSigningCA creates a new CA with a set of cross-signed interim CAs to allow for graceful rollover.
 // Returns new CA pem, new CA key pem, signed-by-old-key CA pem, full client CA bundle, err.
 func RotateSigningCA(currentCA *x509.Certificate, currentCAKey *rsa.PrivateKey) ([]byte, []byte, []byte, []byte, error) {
 
 	// Create the new CA
-	newCACert, newCAKey, newCACertPem, newCAKeyPem, err := createServiceSigner(currentCA.Subject, 356)
+	newCACert, newCAKey, newCACertPem, newCAKeyPem, err := createServiceSigner(currentCA.Subject, SignerDays)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -81,7 +91,7 @@ func createServiceSigner(caSubject pkix.Name, days int) (*x509.Certificate, cryp
 
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
-		IsCA: true,
+		IsCA:                  true,
 	}
 
 	replacementCAPublicKey, replacementCAPrivateKey, err := cryptohelpers.NewKeyPair()
