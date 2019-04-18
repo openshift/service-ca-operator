@@ -24,7 +24,7 @@ import (
 
 const (
 	serviceCAOperatorNamespace   = operatorclient.OperatorNamespace
-	serviceCAOperatorPodPrefix   = operatorclient.OperatorNamespace // Same as operator namespace
+	serviceCAOperatorPodPrefix   = operatorclient.OperatorName
 	serviceCAControllerNamespace = operatorclient.TargetNamespace
 	apiInjectorPodPrefix         = api.APIServiceInjectorDeploymentName
 	configMapInjectorPodPrefix   = api.ConfigMapInjectorDeploymentName

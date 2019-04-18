@@ -4,20 +4,20 @@ metadata:
   namespace: openshift-service-ca
   name: service-serving-cert-signer
   labels:
-    app: openshift-service-serving-cert-signer
+    app: service-serving-cert-signer
     service-serving-cert-signer: "true"
 spec:
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: openshift-service-serving-cert-signer
+      app: service-serving-cert-signer
       service-serving-cert-signer: "true"
   template:
     metadata:
       name: service-serving-cert-signer
       labels:
-        app: openshift-service-serving-cert-signer
+        app: service-serving-cert-signer
         service-serving-cert-signer: "true"
     spec:
       serviceAccountName: service-serving-cert-signer-sa

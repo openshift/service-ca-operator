@@ -8,7 +8,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/version"
 )
 
-const componentName = "openshift-service-ca-operator"
+const componentName = "service-ca-operator"
 
 func NewOperator() *cobra.Command {
 	cmd := controllercmd.

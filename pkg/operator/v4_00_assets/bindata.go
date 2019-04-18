@@ -192,20 +192,20 @@ metadata:
   namespace: openshift-service-ca
   name: apiservice-cabundle-injector
   labels:
-    app: openshift-apiservice-cabundle-injector
+    app: apiservice-cabundle-injector
     apiservice-cabundle-injector: "true"
 spec:
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: openshift-apiservice-cabundle-injector
+      app: apiservice-cabundle-injector
       apiservice-cabundle-injector: "true"
   template:
     metadata:
       name: apiservice-cabundle-injector
       labels:
-        app: openshift-apiservice-cabundle-injector
+        app: apiservice-cabundle-injector
         apiservice-cabundle-injector: "true"
     spec:
       serviceAccountName: apiservice-cabundle-injector-sa
@@ -521,20 +521,20 @@ metadata:
   namespace: openshift-service-ca
   name: configmap-cabundle-injector
   labels:
-    app: openshift-configmap-cabundle-injector
+    app: configmap-cabundle-injector
     configmap-cabundle-injector: "true"
 spec:
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: openshift-configmap-cabundle-injector
+      app: configmap-cabundle-injector
       configmap-cabundle-injector: "true"
   template:
     metadata:
       name: configmap-cabundle-injector
       labels:
-        app: openshift-configmap-cabundle-injector
+        app: configmap-cabundle-injector
         configmap-cabundle-injector: "true"
     spec:
       serviceAccountName: configmap-cabundle-injector-sa
@@ -888,20 +888,20 @@ metadata:
   namespace: openshift-service-ca
   name: service-serving-cert-signer
   labels:
-    app: openshift-service-serving-cert-signer
+    app: service-serving-cert-signer
     service-serving-cert-signer: "true"
 spec:
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: openshift-service-serving-cert-signer
+      app: service-serving-cert-signer
       service-serving-cert-signer: "true"
   template:
     metadata:
       name: service-serving-cert-signer
       labels:
-        app: openshift-service-serving-cert-signer
+        app: service-serving-cert-signer
         service-serving-cert-signer: "true"
     spec:
       serviceAccountName: service-serving-cert-signer-sa

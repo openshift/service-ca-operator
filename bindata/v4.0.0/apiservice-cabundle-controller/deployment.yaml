@@ -4,20 +4,20 @@ metadata:
   namespace: openshift-service-ca
   name: apiservice-cabundle-injector
   labels:
-    app: openshift-apiservice-cabundle-injector
+    app: apiservice-cabundle-injector
     apiservice-cabundle-injector: "true"
 spec:
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: openshift-apiservice-cabundle-injector
+      app: apiservice-cabundle-injector
       apiservice-cabundle-injector: "true"
   template:
     metadata:
       name: apiservice-cabundle-injector
       labels:
-        app: openshift-apiservice-cabundle-injector
+        app: apiservice-cabundle-injector
         apiservice-cabundle-injector: "true"
     spec:
       serviceAccountName: apiservice-cabundle-injector-sa

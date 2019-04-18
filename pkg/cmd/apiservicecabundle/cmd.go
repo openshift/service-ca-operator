@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	componentName      = "openshift-service-serving-cert-signer-apiservice-injector"
+	componentName      = "apiservice-cabundle-injector"
 	componentNamespace = "openshift-service-ca"
 )
 

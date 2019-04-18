@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	componentName      = "openshift-service-serving-cert-signer-cabundle-injector"
+	componentName      = "configmap-cabundle-injector"
 	componentNamespace = "openshift-service-ca"
 )
 

@@ -2,21 +2,21 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   namespace: openshift-service-ca-operator
-  name: openshift-service-ca-operator
+  name: service-ca-operator
   labels:
-    app: openshift-service-ca-operator
+    app: service-ca-operator
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: openshift-service-ca-operator
+      app: service-ca-operator
   template:
     metadata:
-      name: openshift-service-ca-operator
+      name: service-ca-operator
       labels:
-        app: openshift-service-ca-operator
+        app: service-ca-operator
     spec:
-      serviceAccountName: openshift-service-ca-operator
+      serviceAccountName: service-ca-operator
       containers:
       - name: operator
         image: quay.io/openshift/origin-service-ca-operator:v4.0
@@ -37,12 +37,12 @@ spec:
       - name: serving-cert
         secret:
           defaultMode: 400
-          secretName: openshift-service-ca-operator-serving-cert
+          secretName: serving-cert
           optional: true
       - name: config
         configMap:
           defaultMode: 440
-          name: openshift-service-ca-operator-config
+          name: service-ca-operator-config
       nodeSelector:
         node-role.kubernetes.io/master: ""
       tolerations:
