@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
@@ -22,7 +21,6 @@ import (
 
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
-	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
 
 const (
@@ -48,10 +46,6 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 	if err != nil {
 		return err
 	}
-	dynamicClient, err := dynamic.NewForConfig(ctx.KubeConfig)
-	if err != nil {
-		return err
-	}
 	configClient, err := configv1client.NewForConfig(ctx.KubeConfig)
 	if err != nil {
 		return err
@@ -67,10 +61,6 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		operatorclient.OperatorNamespace,
 		operatorclient.TargetNamespace,
 	)
-	v1helpers.EnsureOperatorConfigExists(
-		dynamicClient,
-		v4_00_assets.MustAsset("v4.0.0/service-ca-operator/operator-config.yaml"),
-		operatorv1.GroupVersion.WithResource("servicecas"))
 
 	operatorClient := &operatorclient.OperatorClient{
 		Informers: operatorConfigInformers,
