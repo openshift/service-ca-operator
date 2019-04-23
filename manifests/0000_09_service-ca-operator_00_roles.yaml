@@ -8,4 +8,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   namespace: openshift-service-ca-operator
-  name: openshift-service-ca-operator
+  name: service-ca-operator
