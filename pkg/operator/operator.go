@@ -98,10 +98,10 @@ func (c serviceCAOperator) Sync(obj metav1.Object) error {
 		// This is to push out deployments but does not handle deployment generation like it used to. It may need tweaking.
 		err := syncControllers(c, operatorConfigCopy)
 		if err != nil {
-			setFailingTrue(operatorConfigCopy, "OperatorSyncLoopError", err.Error())
+			setDegradedTrue(operatorConfigCopy, "OperatorSyncLoopError", err.Error())
 		} else {
-			if v1helpers.IsOperatorConditionTrue(operatorConfigCopy.Status.Conditions, operatorv1.OperatorStatusTypeFailing) {
-				setFailingFalse(operatorConfigCopy, "OperatorSyncLoopComplete")
+			if v1helpers.IsOperatorConditionTrue(operatorConfigCopy.Status.Conditions, operatorv1.OperatorStatusTypeDegraded) {
+				setDegradedFalse(operatorConfigCopy, "OperatorSyncLoopComplete")
 			}
 			existingDeployments, err := c.appsv1Client.Deployments(operatorclient.TargetNamespace).List(metav1.ListOptions{})
 			if err != nil {
