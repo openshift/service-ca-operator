@@ -29,7 +29,7 @@ const (
 	apiInjectorPodPrefix         = api.APIServiceInjectorDeploymentName
 	configMapInjectorPodPrefix   = api.ConfigMapInjectorDeploymentName
 	caControllerPodPrefix        = api.SignerControllerDeploymentName
-	signingKeySecretName         = "service-serving-cert-signer-signing-key"
+	signingKeySecretName         = api.SignerControllerSecretName
 )
 
 func hasPodWithPrefixName(client *kubernetes.Clientset, name, namespace string) bool {

@@ -25,5 +25,5 @@ const (
 	ConfigMapInjectorDeploymentName  = "configmap-cabundle-injector"
 
 	// Secrets
-	SignerControllerSecretName = "service-serving-cert-signer-signing-key"
+	SignerControllerSecretName = "signing-key"
 )
