@@ -19,6 +19,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
+	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
 )
 
 func manageControllerNS(c serviceCAOperator) (bool, error) {
@@ -101,6 +102,8 @@ func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Reco
 
 	secret.Data["tls.crt"] = certBytes.Bytes()
 	secret.Data["tls.key"] = keyBytes.Bytes()
+	metrics.LabelAsManagedSecret(secret, metrics.CertificateTypeSigner)
+
 	_, mod, err := resourceapply.ApplySecret(client, eventRecorder, secret)
 	return mod, err
 }

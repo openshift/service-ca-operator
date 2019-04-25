@@ -21,6 +21,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/boilerplate/controller"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/cryptoextensions"
+	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
 )
 
 type serviceServingCertController struct {
@@ -274,7 +275,7 @@ func ownerRef(service *corev1.Service) metav1.OwnerReference {
 func toBaseSecret(service *corev1.Service) *corev1.Secret {
 	// Use beta annotations
 	if _, ok := service.Annotations[api.ServingCertSecretAnnotation]; ok {
-		return &corev1.Secret{
+		secret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      service.Annotations[api.ServingCertSecretAnnotation],
 				Namespace: service.Namespace,
@@ -285,9 +286,11 @@ func toBaseSecret(service *corev1.Service) *corev1.Secret {
 			},
 			Type: corev1.SecretTypeTLS,
 		}
+		metrics.LabelAsManagedSecret(secret, metrics.CertificateTypeTarget)
+		return secret
 	}
 	// Use alpha annotations
-	return &corev1.Secret{
+	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      service.Annotations[api.AlphaServingCertSecretAnnotation],
 			Namespace: service.Namespace,
@@ -298,6 +301,8 @@ func toBaseSecret(service *corev1.Service) *corev1.Secret {
 		},
 		Type: corev1.SecretTypeTLS,
 	}
+	metrics.LabelAsManagedSecret(secret, metrics.CertificateTypeTarget)
+	return secret
 }
 
 func getServingCert(dnsSuffix string, ca *crypto.CA, service *corev1.Service) (*crypto.TLSCertificateConfig, error) {
@@ -335,7 +340,7 @@ func toRequiredSecret(dnsSuffix string, ca *crypto.CA, service *corev1.Service, 
 
 	secretCopy.Annotations[api.AlphaServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
 	secretCopy.Annotations[api.ServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
-
+	metrics.LabelAsManagedSecret(secretCopy, metrics.CertificateTypeTarget)
 	ocontroller.EnsureOwnerRef(secretCopy, ownerRef(service))
 
 	return nil

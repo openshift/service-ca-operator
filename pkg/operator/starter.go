@@ -21,6 +21,7 @@ import (
 
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
+	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
 )
 
 const (
@@ -108,6 +109,8 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		versionGetter,
 		ctx.EventRecorder,
 	)
+
+	metrics.Register(kubeInformersForNamespaces.ConfigMapLister(), kubeInformersForNamespaces.SecretLister())
 
 	operatorConfigInformers.Start(ctx.Done())
 	configInformers.Start(ctx.Done())

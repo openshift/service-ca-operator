@@ -10,6 +10,7 @@ import (
 
 	"github.com/openshift/service-ca-operator/pkg/boilerplate/controller"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
 )
 
 // ConfigMapCABundleInjectionController is responsible for injecting a CA bundle into configMaps annotated with
@@ -63,6 +64,7 @@ func (ic *configMapCABundleInjectionController) ensureConfigMapCABundleInjection
 	configMapCopy := current.DeepCopy()
 	configMapCopy.Data = map[string]string{api.InjectionDataKey: ic.ca}
 	klog.V(4).Infof("updating configmap %s/%s with CA", configMapCopy.GetNamespace(), configMapCopy.GetName())
+	metrics.LabelAsManagedConfigMap(configMapCopy, metrics.CertificateTypeCABundle)
 	_, err := ic.configMapClient.ConfigMaps(current.Namespace).Update(configMapCopy)
 	return err
 }
