@@ -17,6 +17,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/cmd/configmapcabundle"
 	"github.com/openshift/service-ca-operator/pkg/cmd/operator"
 	"github.com/openshift/service-ca-operator/pkg/cmd/servingcertsigner"
+	"github.com/openshift/service-ca-operator/pkg/cmd/webhookconfigurationcabundle"
 )
 
 func main() {
@@ -49,6 +50,7 @@ func NewSSCSCommand() *cobra.Command {
 	cmd.AddCommand(servingcertsigner.NewController())
 	cmd.AddCommand(apiservicecabundle.NewController())
 	cmd.AddCommand(configmapcabundle.NewController())
+	cmd.AddCommand(webhookconfigurationcabundle.NewController())
 
 	return cmd
 }
