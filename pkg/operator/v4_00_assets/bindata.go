@@ -255,7 +255,10 @@ kind: Namespace
 metadata:
   name: openshift-service-ca
   labels:
-    openshift.io/run-level: "1"`)
+    openshift.io/run-level: "1"
+  annotations:
+    openshift.io/node-selector: ""
+`)
 
 func v400ApiserviceCabundleControllerNsYamlBytes() ([]byte, error) {
 	return _v400ApiserviceCabundleControllerNsYaml, nil
@@ -585,6 +588,8 @@ metadata:
   name: openshift-service-ca
   labels:
     openshift.io/run-level: "1"
+  annotations:
+    openshift.io/node-selector: ""
 `)
 
 func v400ConfigmapCabundleControllerNsYamlBytes() ([]byte, error) {
@@ -928,7 +933,10 @@ kind: Namespace
 metadata:
   name: openshift-service-ca
   labels:
-    openshift.io/run-level: "1"`)
+    openshift.io/run-level: "1"
+  annotations:
+    openshift.io/node-selector: ""
+`)
 
 func v400ServiceServingCertSignerControllerNsYamlBytes() ([]byte, error) {
 	return _v400ServiceServingCertSignerControllerNsYaml, nil

@@ -4,3 +4,5 @@ metadata:
   labels:
     openshift.io/run-level: "1"
   name: openshift-service-ca-operator
+  annotations:
+    openshift.io/node-selector: ""
