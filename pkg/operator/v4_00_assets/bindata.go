@@ -164,10 +164,6 @@ authentication:
   disabled: true
 authorization:
   disabled: true
-leaderElection:
-  leaseDuration: "15s"
-  renewDeadline: "10s"
-  retryPeriod: "2s"
 `)
 
 func v400ApiserviceCabundleControllerDefaultconfigYamlBytes() ([]byte, error) {
@@ -496,10 +492,6 @@ authentication:
   disabled: true
 authorization:
   disabled: true
-leaderElection:
-  leaseDuration: "15s"
-  renewDeadline: "10s"
-  retryPeriod: "2s"
 `)
 
 func v400ConfigmapCabundleControllerDefaultconfigYamlBytes() ([]byte, error) {
@@ -842,10 +834,6 @@ authentication:
   disabled: true
 authorization:
   disabled: true
-leaderElection:
-  leaseDuration: "15s"
-  renewDeadline: "10s"
-  retryPeriod: "2s"
 `)
 
 func v400ServiceServingCertSignerControllerDefaultconfigYamlBytes() ([]byte, error) {
