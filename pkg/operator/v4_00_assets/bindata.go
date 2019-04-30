@@ -903,7 +903,7 @@ spec:
       volumes:
       - name: signing-key
         secret:
-          secretName: service-serving-cert-signer-signing-key
+          secretName: signing-key
       - name: config
         configMap:
           name: service-serving-cert-signer-config
@@ -1064,7 +1064,7 @@ var _v400ServiceServingCertSignerControllerSigningSecretYaml = []byte(`apiVersio
 kind: Secret
 metadata:
   namespace: openshift-service-ca
-  name: service-serving-cert-signer-signing-key
+  name: signing-key
 type: kubernetes.io/tls
 data:
   tls.crt:
