@@ -2,10 +2,10 @@
 
 This operator runs the following OpenShift controllers:
 * **service-ca controller:**
-  * Issues a signed serving certificate/key pair to services annotated with 'service.alpha.openshift.io/serving-cert-secret-name' via a secret. [See the current OKD documentation for usage.](https://docs.okd.io/latest/dev_guide/secrets.html#service-serving-certificate-secrets)
+  * Issues a signed serving certificate/key pair to services annotated with 'service.beta.openshift.io/serving-cert-secret-name' via a secret. [See the current OKD documentation for usage.](https://docs.okd.io/latest/dev_guide/secrets.html#service-serving-certificate-secrets)
 
 * **configmap-cabundle-injector controller:**
-  * Watches for configmaps annotated with 'service.alpha.openshift.io/inject-cabundle=true' and adds or updates a data item (key "service-ca.crt") containing the PEM-encoded CA signing bundle. Consumers of the configmap can then trust service-ca.crt in their TLS client configuration, allowing connections to services that utilize service-serving certificates.
+  * Watches for configmaps annotated with 'service.beta.openshift.io/inject-cabundle=true' and adds or updates a data item (key "service-ca.crt") containing the PEM-encoded CA signing bundle. Consumers of the configmap can then trust service-ca.crt in their TLS client configuration, allowing connections to services that utilize service-serving certificates.
   * Note: Explicitly referencing the "service-ca.crt" key in a volumeMount will prevent a pod from starting until the configMap has been injected with the CA bundle (https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#restrictions). This behavior helps ensure that pods start with the CA bundle data available.
 
 ```
@@ -23,7 +23,7 @@ metadata:
   resourceVersion: "56490"
   selfLink: /api/v1/namespaces/myproject/configmaps/foobar
   uid: afee501b-b61c-11e8-833b-c85b762603b0
-$ oc annotate configmap foobar service.alpha.openshift.io/inject-cabundle="true"
+$ oc annotate configmap foobar service.beta.openshift.io/inject-cabundle="true"
 configmap/foobar annotated
 $ oc get configmap/foobar -o yaml
 apiVersion: v1
@@ -52,7 +52,7 @@ data:
 kind: ConfigMap
 metadata:
   annotations:
-    service.alpha.openshift.io/inject-cabundle: "true"
+    service.beta.openshift.io/inject-cabundle: "true"
   creationTimestamp: 2018-09-11T23:44:56Z
   name: foobar
   namespace: myproject
@@ -62,7 +62,7 @@ metadata:
 ```
 
 * **apiservice-cabundle-injector controller:**
-  * Watches for apiservices annotated with 'service.alpha.openshift.io/inject-cabundle=true' and updates the apiservice spec.caBundle with a base64url-encoded CA signing bundle. This is simply an apiservice variant of the above configmap injection feature.
+  * Watches for apiservices annotated with 'service.beta.openshift.io/inject-cabundle=true' and updates the apiservice spec.caBundle with a base64url-encoded CA signing bundle. This is simply an apiservice variant of the above configmap injection feature.
 
 ```
 $ oc get apiservice/v1.build.openshift.io -o yaml
@@ -71,8 +71,8 @@ kind: APIService
 metadata:
   annotations:
     kubectl.kubernetes.io/last-applied-configuration: |
-      {"apiVersion":"apiregistration.k8s.io/v1beta1","kind":"APIService","metadata":{"annotations":{"service.alpha.openshift.io/inject-cabundle":"true"},"name":"v1.build.openshift.io","namespace":""},"spec":{"group":"build.openshift.io","groupPriorityMinimum":9900,"service":{"name":"api","namespace":"openshift-apiserver"},"version":"v1","versionPriority":15}}
-    service.alpha.openshift.io/inject-cabundle: "true"
+      {"apiVersion":"apiregistration.k8s.io/v1beta1","kind":"APIService","metadata":{"annotations":{"service.beta.openshift.io/inject-cabundle":"true"},"name":"v1.build.openshift.io","namespace":""},"spec":{"group":"build.openshift.io","groupPriorityMinimum":9900,"service":{"name":"api","namespace":"openshift-apiserver"},"version":"v1","versionPriority":15}}
+    service.beta.openshift.io/inject-cabundle: "true"
   creationTimestamp: 2018-09-11T19:52:16Z
   name: v1.build.openshift.io
   resourceVersion: "923"
