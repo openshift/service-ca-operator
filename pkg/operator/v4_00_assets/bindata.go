@@ -228,7 +228,17 @@ spec:
       nodeSelector:
         node-role.kubernetes.io/master: ""
       tolerations:
-      - operator: Exists
+      - key: node-role.kubernetes.io/master  
+        operator: Exists
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120 
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
 `)
 
 func v400ApiserviceCabundleControllerDeploymentYamlBytes() ([]byte, error) {
@@ -556,7 +566,17 @@ spec:
       nodeSelector:
         node-role.kubernetes.io/master: ""
       tolerations:
-      - operator: Exists
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
 `)
 
 func v400ConfigmapCabundleControllerDeploymentYamlBytes() ([]byte, error) {
@@ -898,7 +918,17 @@ spec:
       nodeSelector:
         node-role.kubernetes.io/master: ""
       tolerations:
-      - operator: Exists
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
 `)
 
 func v400ServiceServingCertSignerControllerDeploymentYamlBytes() ([]byte, error) {
