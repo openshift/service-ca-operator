@@ -29,6 +29,11 @@ func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) 
 		return err
 	}
 
+	err = manageWebhookConfigurationCABundleControllerResources(c, &needsDeploy)
+	if err != nil {
+		return err
+	}
+
 	// Sync the CA (regenerate if missing).
 	caModified, err := manageSignerCA(c.corev1Client, c.eventRecorder)
 	if err != nil {
@@ -66,6 +71,16 @@ func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) 
 		return err
 	}
 	_, err = manageConfigMapCABundleControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified || configModified)
+	if err != nil {
+		return err
+	}
+
+	// Sync the webhook configuration CA bundle controller.
+	configModified, err = manageWebhookConfigurationCABundleControllerConfig(c.corev1Client, c.eventRecorder)
+	if err != nil {
+		return err
+	}
+	_, err = manageWebhookConfigurationCABundleControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified || configModified)
 	if err != nil {
 		return err
 	}

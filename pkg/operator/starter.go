@@ -33,6 +33,7 @@ var targetDeploymentNames = sets.NewString(
 	api.SignerControllerDeploymentName,
 	api.APIServiceInjectorDeploymentName,
 	api.ConfigMapInjectorDeploymentName,
+	api.WebhookConfigurationInjectorDeploymentName,
 )
 
 func RunOperator(ctx *controllercmd.ControllerContext) error {

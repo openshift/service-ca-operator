@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: openshift-service-ca
+  name: webhookconfiguration-cabundle-injector
+  labels:
+    app: webhookconfiguration-cabundle-injector
+    webhookconfiguration-cabundle-injector: "true"
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: webhookconfiguration-cabundle-injector
+      webhookconfiguration-cabundle-injector: "true"
+  template:
+    metadata:
+      name: webhookconfiguration-cabundle-injector
+      labels:
+        app: webhookconfiguration-cabundle-injector
+        webhookconfiguration-cabundle-injector: "true"
+    spec:
+      serviceAccountName: webhookconfiguration-cabundle-injector-sa
+      containers:
+      - name: webhookconfiguration-cabundle-injector-controller
+        image: ${IMAGE}
+        imagePullPolicy: IfNotPresent
+        command: ["service-ca-operator", "webhookconfiguration-cabundle-injector"]
+        args:
+        - "--config=/var/run/configmaps/config/controller-config.yaml"
+        ports:
+        - containerPort: 8443
+        volumeMounts:
+        - mountPath: /var/run/configmaps/config
+          name: config
+        - mountPath: /var/run/configmaps/signing-cabundle
+          name: signing-cabundle
+      volumes:
+      - name: signing-cabundle
+        configMap:
+          name: signing-cabundle
+      - name: config
+        configMap:
+          name: webhookconfiguration-cabundle-injector-config
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120

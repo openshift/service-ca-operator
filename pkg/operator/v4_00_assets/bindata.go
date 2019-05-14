@@ -30,6 +30,16 @@
 // bindata/v4.0.0/service-serving-cert-signer-controller/rolebinding.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/sa.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/clusterrole.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/clusterrolebinding.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/cm.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/defaultconfig.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/deployment.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/ns.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/role.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/rolebinding.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/sa.yaml
+// bindata/v4.0.0/webhookconfiguration-cabundle-controller/signing-cabundle.yaml
 // DO NOT EDIT!
 
 package v4_00_assets
@@ -1104,6 +1114,345 @@ func v400ServiceServingCertSignerControllerSigningSecretYaml() (*asset, error) {
 	return a, nil
 }
 
+var _v400WebhookconfigurationCabundleControllerClusterroleYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:openshift:controller:webhookconfiguration-cabundle-injector
+rules:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+`)
+
+func v400WebhookconfigurationCabundleControllerClusterroleYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerClusterroleYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerClusterroleYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerClusterroleYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/clusterrole.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400WebhookconfigurationCabundleControllerClusterrolebindingYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system:openshift:controller:webhookconfiguration-cabundle-injector
+roleRef:
+  kind: ClusterRole
+  name: system:openshift:controller:webhookconfiguration-cabundle-injector
+subjects:
+- kind: ServiceAccount
+  namespace: openshift-service-ca
+  name: webhookconfiguration-cabundle-injector-sa
+`)
+
+func v400WebhookconfigurationCabundleControllerClusterrolebindingYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerClusterrolebindingYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerClusterrolebindingYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerClusterrolebindingYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/clusterrolebinding.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400WebhookconfigurationCabundleControllerCmYaml = []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: openshift-service-ca
+  name: webhookconfiguration-cabundle-injector-config
+data:
+  controller-config.yaml:
+`)
+
+func v400WebhookconfigurationCabundleControllerCmYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerCmYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerCmYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerCmYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/cm.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400WebhookconfigurationCabundleControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
+kind: ConfigMapCABundleInjectorConfig
+caBundleFile: /var/run/configmaps/signing-cabundle/ca-bundle.crt
+authentication:
+  disabled: true
+authorization:
+  disabled: true
+`)
+
+func v400WebhookconfigurationCabundleControllerDefaultconfigYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerDefaultconfigYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerDefaultconfigYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerDefaultconfigYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/defaultconfig.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400WebhookconfigurationCabundleControllerDeploymentYaml = []byte(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: openshift-service-ca
+  name: webhookconfiguration-cabundle-injector
+  labels:
+    app: webhookconfiguration-cabundle-injector
+    webhookconfiguration-cabundle-injector: "true"
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: webhookconfiguration-cabundle-injector
+      webhookconfiguration-cabundle-injector: "true"
+  template:
+    metadata:
+      name: webhookconfiguration-cabundle-injector
+      labels:
+        app: webhookconfiguration-cabundle-injector
+        webhookconfiguration-cabundle-injector: "true"
+    spec:
+      serviceAccountName: webhookconfiguration-cabundle-injector-sa
+      containers:
+      - name: webhookconfiguration-cabundle-injector-controller
+        image: ${IMAGE}
+        imagePullPolicy: IfNotPresent
+        command: ["service-ca-operator", "webhookconfiguration-cabundle-injector"]
+        args:
+        - "--config=/var/run/configmaps/config/controller-config.yaml"
+        ports:
+        - containerPort: 8443
+        volumeMounts:
+        - mountPath: /var/run/configmaps/config
+          name: config
+        - mountPath: /var/run/configmaps/signing-cabundle
+          name: signing-cabundle
+      volumes:
+      - name: signing-cabundle
+        configMap:
+          name: signing-cabundle
+      - name: config
+        configMap:
+          name: webhookconfiguration-cabundle-injector-config
+      nodeSelector:
+        node-role.kubernetes.io/master: ""
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 120
+`)
+
+func v400WebhookconfigurationCabundleControllerDeploymentYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerDeploymentYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerDeploymentYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerDeploymentYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/deployment.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400WebhookconfigurationCabundleControllerNsYaml = []byte(`apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-service-ca
+  labels:
+    openshift.io/run-level: "1"
+  annotations:
+    openshift.io/node-selector: ""
+`)
+
+func v400WebhookconfigurationCabundleControllerNsYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerNsYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerNsYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerNsYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/ns.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400WebhookconfigurationCabundleControllerRoleYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: system:openshift:controller:webhookconfiguration-cabundle-injector
+  namespace: openshift-service-ca
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - "apps"
+  resources:
+  - replicasets
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+`)
+
+func v400WebhookconfigurationCabundleControllerRoleYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerRoleYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerRoleYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerRoleYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/role.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400WebhookconfigurationCabundleControllerRolebindingYaml = []byte(`apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: system:openshift:controller:webhookconfiguration-cabundle-injector
+  namespace: openshift-service-ca
+roleRef:
+  kind: Role
+  name: system:openshift:controller:webhookconfiguration-cabundle-injector
+subjects:
+- kind: ServiceAccount
+  namespace: openshift-service-ca
+  name: webhookconfiguration-cabundle-injector-sa
+`)
+
+func v400WebhookconfigurationCabundleControllerRolebindingYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerRolebindingYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerRolebindingYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerRolebindingYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/rolebinding.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400WebhookconfigurationCabundleControllerSaYaml = []byte(`apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: openshift-service-ca
+  name: webhookconfiguration-cabundle-injector-sa
+`)
+
+func v400WebhookconfigurationCabundleControllerSaYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerSaYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerSaYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerSaYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/sa.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
+var _v400WebhookconfigurationCabundleControllerSigningCabundleYaml = []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: openshift-service-ca
+  name: signing-cabundle
+data:
+  ca-bundle.crt:
+`)
+
+func v400WebhookconfigurationCabundleControllerSigningCabundleYamlBytes() ([]byte, error) {
+	return _v400WebhookconfigurationCabundleControllerSigningCabundleYaml, nil
+}
+
+func v400WebhookconfigurationCabundleControllerSigningCabundleYaml() (*asset, error) {
+	bytes, err := v400WebhookconfigurationCabundleControllerSigningCabundleYamlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "v4.0.0/webhookconfiguration-cabundle-controller/signing-cabundle.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
+	a := &asset{bytes: bytes, info: info}
+	return a, nil
+}
+
 // Asset loads and returns the asset for the given name.
 // It returns an error if the asset could not be found or
 // could not be loaded.
@@ -1186,6 +1535,16 @@ var _bindata = map[string]func() (*asset, error){
 	"v4.0.0/service-serving-cert-signer-controller/rolebinding.yaml": v400ServiceServingCertSignerControllerRolebindingYaml,
 	"v4.0.0/service-serving-cert-signer-controller/sa.yaml": v400ServiceServingCertSignerControllerSaYaml,
 	"v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml": v400ServiceServingCertSignerControllerSigningSecretYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/clusterrole.yaml": v400WebhookconfigurationCabundleControllerClusterroleYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/clusterrolebinding.yaml": v400WebhookconfigurationCabundleControllerClusterrolebindingYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/cm.yaml": v400WebhookconfigurationCabundleControllerCmYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/defaultconfig.yaml": v400WebhookconfigurationCabundleControllerDefaultconfigYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/deployment.yaml": v400WebhookconfigurationCabundleControllerDeploymentYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/ns.yaml": v400WebhookconfigurationCabundleControllerNsYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/role.yaml": v400WebhookconfigurationCabundleControllerRoleYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/rolebinding.yaml": v400WebhookconfigurationCabundleControllerRolebindingYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/sa.yaml": v400WebhookconfigurationCabundleControllerSaYaml,
+	"v4.0.0/webhookconfiguration-cabundle-controller/signing-cabundle.yaml": v400WebhookconfigurationCabundleControllerSigningCabundleYaml,
 }
 
 // AssetDir returns the file names below a certain
@@ -1264,6 +1623,18 @@ var _bintree = &bintree{nil, map[string]*bintree{
 			"rolebinding.yaml": &bintree{v400ServiceServingCertSignerControllerRolebindingYaml, map[string]*bintree{}},
 			"sa.yaml": &bintree{v400ServiceServingCertSignerControllerSaYaml, map[string]*bintree{}},
 			"signing-secret.yaml": &bintree{v400ServiceServingCertSignerControllerSigningSecretYaml, map[string]*bintree{}},
+		}},
+		"webhookconfiguration-cabundle-controller": &bintree{nil, map[string]*bintree{
+			"clusterrole.yaml": &bintree{v400WebhookconfigurationCabundleControllerClusterroleYaml, map[string]*bintree{}},
+			"clusterrolebinding.yaml": &bintree{v400WebhookconfigurationCabundleControllerClusterrolebindingYaml, map[string]*bintree{}},
+			"cm.yaml": &bintree{v400WebhookconfigurationCabundleControllerCmYaml, map[string]*bintree{}},
+			"defaultconfig.yaml": &bintree{v400WebhookconfigurationCabundleControllerDefaultconfigYaml, map[string]*bintree{}},
+			"deployment.yaml": &bintree{v400WebhookconfigurationCabundleControllerDeploymentYaml, map[string]*bintree{}},
+			"ns.yaml": &bintree{v400WebhookconfigurationCabundleControllerNsYaml, map[string]*bintree{}},
+			"role.yaml": &bintree{v400WebhookconfigurationCabundleControllerRoleYaml, map[string]*bintree{}},
+			"rolebinding.yaml": &bintree{v400WebhookconfigurationCabundleControllerRolebindingYaml, map[string]*bintree{}},
+			"sa.yaml": &bintree{v400WebhookconfigurationCabundleControllerSaYaml, map[string]*bintree{}},
+			"signing-cabundle.yaml": &bintree{v400WebhookconfigurationCabundleControllerSigningCabundleYaml, map[string]*bintree{}},
 		}},
 	}},
 }}

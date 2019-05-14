@@ -38,6 +38,10 @@ func manageConfigMapCABundleControllerResources(c serviceCAOperator, modified *b
 	return manageControllerResources(c, "v4.0.0/configmap-cabundle-controller/", modified)
 }
 
+func manageWebhookConfigurationCABundleControllerResources(c serviceCAOperator, modified *bool) error {
+	return manageControllerResources(c, "v4.0.0/webhookconfiguration-cabundle-controller/", modified)
+}
+
 func manageControllerResources(c serviceCAOperator, resourcePath string, modified *bool) error {
 	var err error
 	requiredClusterRole := resourceread.ReadClusterRoleV1OrDie(v4_00_assets.MustAsset(resourcePath + "clusterrole.yaml"))
@@ -162,6 +166,17 @@ func manageConfigMapCABundleControllerConfig(client coreclientv1.ConfigMapsGette
 	return mod, err
 }
 
+func manageWebhookConfigurationCABundleControllerConfig(client coreclientv1.ConfigMapsGetter, eventRecorder events.Recorder) (bool, error) {
+	configMap := resourceread.ReadConfigMapV1OrDie(v4_00_assets.MustAsset("v4.0.0/webhookconfiguration-cabundle-controller/cm.yaml"))
+	defaultConfig := v4_00_assets.MustAsset("v4.0.0/webhookconfiguration-cabundle-controller/defaultconfig.yaml")
+	requiredConfigMap, _, err := resourcemerge.MergeConfigMap(configMap, "controller-config.yaml", nil, defaultConfig)
+	if err != nil {
+		return false, err
+	}
+	_, mod, err := resourceapply.ApplyConfigMap(client, eventRecorder, requiredConfigMap)
+	return mod, err
+}
+
 func manageSignerControllerDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
 	return manageDeployment(client, eventRecorder, options, "v4.0.0/service-serving-cert-signer-controller/", forceDeployment)
 }
@@ -172,6 +187,10 @@ func manageAPIServiceControllerDeployment(client appsclientv1.AppsV1Interface, e
 
 func manageConfigMapCABundleControllerDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
 	return manageDeployment(client, eventRecorder, options, "v4.0.0/configmap-cabundle-controller/", forceDeployment)
+}
+
+func manageWebhookConfigurationCABundleControllerDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
+	return manageDeployment(client, eventRecorder, options, "v4.0.0/webhookconfiguration-cabundle-controller/", forceDeployment)
 }
 
 func manageDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, resourcePath string, forceDeployment bool) (bool, error) {
