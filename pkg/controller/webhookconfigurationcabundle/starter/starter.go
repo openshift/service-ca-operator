@@ -43,12 +43,8 @@ func StartWebhookConfigurationCABundleInjector(ctx *controllercmd.ControllerCont
 	}
 	kubeInformers := informers.NewSharedInformerFactory(kubeClient, 20*time.Minute)
 
-	mutatingWebhookConfigurationCABundleInjectionController := controller.NewMutatingWebhookConfigurationCABundleInjectionController(
+	webhookConfigurationCABundleInjectionController := controller.NewWebhookConfigurationCABundleInjectionController(
 		kubeInformers.Admissionregistration().V1beta1().MutatingWebhookConfigurations(),
-		kubeClient.AdmissionregistrationV1beta1(),
-		caBundle,
-	)
-	validatingWebhookConfigurationCABundleInjectionController := controller.NewValidatingWebhookConfigurationCABundleInjectionController(
 		kubeInformers.Admissionregistration().V1beta1().ValidatingWebhookConfigurations(),
 		kubeClient.AdmissionregistrationV1beta1(),
 		caBundle,
@@ -56,8 +52,7 @@ func StartWebhookConfigurationCABundleInjector(ctx *controllercmd.ControllerCont
 
 	kubeInformers.Start(ctx.Done())
 
-	go mutatingWebhookConfigurationCABundleInjectionController.Run(5, ctx.Done())
-	go validatingWebhookConfigurationCABundleInjectionController.Run(5, ctx.Done())
+	go webhookConfigurationCABundleInjectionController.Run(5, ctx.Done())
 
 	<-ctx.Done()
 
