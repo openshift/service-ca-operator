@@ -213,6 +213,10 @@ spec:
         - "--config=/var/run/configmaps/config/controller-config.yaml"
         ports:
         - containerPort: 8443
+        resources:
+          requests:
+            memory: 50Mi
+            cpu: 10m
         volumeMounts:
         - mountPath: /var/run/configmaps/config
           name: config
@@ -551,6 +555,10 @@ spec:
         - "--config=/var/run/configmaps/config/controller-config.yaml"
         ports:
         - containerPort: 8443
+        resources:
+          requests:
+            memory: 50Mi
+            cpu: 10m
         volumeMounts:
         - mountPath: /var/run/configmaps/config
           name: config
@@ -903,6 +911,10 @@ spec:
         - "--config=/var/run/configmaps/config/controller-config.yaml"
         ports:
         - containerPort: 8443
+        resources:
+          requests:
+            memory: 120Mi
+            cpu: 10m
         volumeMounts:
         - mountPath: /var/run/configmaps/config
           name: config
