@@ -25,6 +25,10 @@ spec:
         args:
         - "--config=/var/run/configmaps/config/operator-config.yaml"
         - "-v=4"
+        resources:
+          requests:
+            memory: 80Mi
+            cpu: 10m
         env:
         - name: CONTROLLER_IMAGE
           value: quay.io/openshift/origin-service-ca-operator:v4.0
