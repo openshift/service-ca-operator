@@ -1,7 +1,7 @@
 # OpenShift Service CA Operator
 
 This operator runs the following OpenShift controllers:
-* **service-ca controller:**
+* **service-serving-cert-signer controller:**
   * Issues a signed serving certificate/key pair to services annotated with 'service.beta.openshift.io/serving-cert-secret-name' via a secret. [See the current OKD documentation for usage.](https://docs.okd.io/latest/dev_guide/secrets.html#service-serving-certificate-secrets)
 
 * **configmap-cabundle-injector controller:**
