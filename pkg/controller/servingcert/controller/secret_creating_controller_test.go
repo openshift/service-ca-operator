@@ -107,7 +107,7 @@ func controllerSetup(startingObjects []runtime.Object, t *testing.T) ( /*caName*
 	controller := NewServiceServingCertController(
 		informerFactory.Core().V1().Services(),
 		informerFactory.Core().V1().Secrets(),
-		kubeclient.Core(), kubeclient.Core(), ca, "cluster.local",
+		kubeclient.CoreV1(), kubeclient.CoreV1(), ca, "cluster.local",
 	)
 
 	return signerName, kubeclient, fakeWatch, fakeSecretWatch, controller.(*serviceServingCertController), informerFactory
