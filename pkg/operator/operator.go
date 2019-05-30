@@ -3,19 +3,19 @@ package operator
 import (
 	"fmt"
 
+	"monis.app/go/openshift/operator"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	appsclientv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coreclientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	rbacclientv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 
+	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 
-	operatorv1 "github.com/openshift/api/operator/v1"
-
-	"github.com/openshift/service-ca-operator/pkg/boilerplate/operator"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 )

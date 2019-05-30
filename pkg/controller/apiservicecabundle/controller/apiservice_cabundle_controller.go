@@ -3,13 +3,14 @@ package controller
 import (
 	"bytes"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"monis.app/go/openshift/controller"
+
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiregistrationv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
 	apiserviceinformer "k8s.io/kube-aggregator/pkg/client/informers/externalversions/apiregistration/v1"
 	apiservicelister "k8s.io/kube-aggregator/pkg/client/listers/apiregistration/v1"
 
-	"github.com/openshift/service-ca-operator/pkg/boilerplate/controller"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
