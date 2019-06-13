@@ -10,7 +10,7 @@ ENTRYPOINT ["/usr/bin/service-ca-operator"]
 LABEL io.k8s.display-name="OpenShift service-ca-operator" \
       io.k8s.description="This is a component of OpenShift and manages serving certificates" \
       com.redhat.component="service-ca-operator" \
-      maintainer="OpenShift Auth Team <aos-auth-team@redhat.com>" \
+      maintainer="OpenShift API/Auth/Scheduling Team <aos-master@redhat.com>" \
       name="openshift/ose-service-ca-operator" \
       version="v4.0.0" \
       io.openshift.tags="openshift" \
