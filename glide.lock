@@ -1,5 +1,5 @@
-hash: f2a1c9b04c39784394428b6b3aad18eea5806bdb10b2f1682c9b113f72646c51
-updated: 2019-05-30T14:31:29.738882218-04:00
+hash: 32473b8e5dd398c8f3e2f9089895e9bee8e6312092e0b2b352bbae0290f035a7
+updated: 2019-07-22T21:35:16.239963118-04:00
 imports:
 - name: github.com/beorn7/perks
   version: 3ac7bf7a47d159a033b107610db8a1b6575507a4
@@ -35,7 +35,7 @@ imports:
 - name: github.com/getsentry/raven-go
   version: c977f96e109525a5d8fa10a19165341f601f38b0
 - name: github.com/ghodss/yaml
-  version: c7ce16629ff4cd059ed96ed06419dd3856fd3577
+  version: 25d852aebe32c875e9c044af3eef9c7dc6bc777f
 - name: github.com/go-openapi/jsonpointer
   version: ef5f0afec364d3b9396b7b77b43dbe26bf1f8004
 - name: github.com/go-openapi/jsonreference
@@ -104,7 +104,7 @@ imports:
 - name: github.com/NYTimes/gziphandler
   version: 56545f4a5d46df9a6648819d1664c3a03a13ffdb
 - name: github.com/openshift/api
-  version: dafd2647cb03b7e8b3ccec0eba3f7af85df898d6
+  version: 9525304a0adb725ab4a4a54539a1a6bf6cc343d3
   subpackages:
   - apps
   - apps/v1
@@ -150,7 +150,7 @@ imports:
   - webconsole
   - webconsole/v1
 - name: github.com/openshift/client-go
-  version: f4b242dfe08529a11803996e325ab6dc127d4e1d
+  version: a85ea6a6b3a5d2dbe41582ee35695dd4683e1f02
   subpackages:
   - config/clientset/versioned
   - config/clientset/versioned/scheme
@@ -163,13 +163,16 @@ imports:
   - operator/clientset/versioned
   - operator/clientset/versioned/scheme
   - operator/clientset/versioned/typed/operator/v1
+  - operator/clientset/versioned/typed/operator/v1alpha1
   - operator/informers/externalversions
   - operator/informers/externalversions/internalinterfaces
   - operator/informers/externalversions/operator
   - operator/informers/externalversions/operator/v1
+  - operator/informers/externalversions/operator/v1alpha1
   - operator/listers/operator/v1
+  - operator/listers/operator/v1alpha1
 - name: github.com/openshift/library-go
-  version: a92e51f5d57cdb8b2f54078e8a07f9e90fdaa2d7
+  version: 2cca97dadd0479b239581ae1665b09da3445f84d
   subpackages:
   - pkg/config/client
   - pkg/config/clusteroperator/v1helpers
@@ -221,9 +224,9 @@ imports:
 - name: github.com/sirupsen/logrus
   version: 89742aefa4b206dcf400792f3bd35b542998eb3b
 - name: github.com/spf13/cobra
-  version: 67fc4837d267bc9bfd6e47f77783fcc3dffc68de
+  version: c439c4fa093711d42e1b01acb1235b52004753c1
 - name: github.com/spf13/pflag
-  version: 24fa6976df40757dce6aea913e7b81ade90530e1
+  version: 583c0c0531f06d5278b7d917446061adc344b5cd
 - name: golang.org/x/crypto
   version: de0752318171da717af4ce24d0a2e8626afaeb11
   subpackages:
@@ -232,6 +235,8 @@ imports:
   version: 65e2d4e15006aab9813ff8769e768bbf4bb667a0
   subpackages:
   - context
+  - html
+  - html/atom
   - http/httpguts
   - http2
   - http2/hpack
@@ -242,10 +247,7 @@ imports:
 - name: golang.org/x/oauth2
   version: a6bd8cefa1811bd24b86f8902872e4e8225f74c4
   subpackages:
-  - google
   - internal
-  - jws
-  - jwt
 - name: golang.org/x/sys
   version: 95c6576299259db960f6c5b9b69ea52422860fce
   subpackages:
@@ -270,7 +272,7 @@ imports:
   subpackages:
   - rate
 - name: google.golang.org/appengine
-  version: 311d3c5cf9373249645db030e53c37c209a8b378
+  version: b2f4a3cf3c67576a2ee09e1fe62656a5086ce880
   subpackages:
   - internal
   - internal/base
@@ -359,8 +361,7 @@ imports:
   - storage/v1alpha1
   - storage/v1beta1
 - name: k8s.io/apiextensions-apiserver
-  version: b146dc0b36ca23726a14389af9d690bc1d5c4d21
-  repo: https://github.com/openshift/kubernetes-apiextensions-apiserver
+  version: 53c4693659ed354d76121458fb819202dd1635fa
   subpackages:
   - pkg/apis/apiextensions
   - pkg/apis/apiextensions/v1beta1
@@ -749,10 +750,12 @@ imports:
   subpackages:
   - buffer
   - integer
-  - pointer
   - trace
 - name: monis.app/go
-  version: c5f5c94dc2ac1cffc652a852951568216f7c7f8a
+  version: c655260686641764462eb1a5317b566d88377b77
+  subpackages:
+  - openshift/controller
+  - openshift/operator
 - name: sigs.k8s.io/structured-merge-diff
   version: e85c7b244fd2cc57bb829d73a061f93a441e63ce
   subpackages:
