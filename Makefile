@@ -72,6 +72,14 @@ verify-commits:
 	hack/verify-upstream-commits.sh
 .PHONY: verify-commits
 
+# Verify generated crds.
+#
+# Example:
+#   make verify-codegen-crds
+verify-codegen-crds:
+	hack/verify-generated-crds.sh
+.PHONY: verify-codegen-crds
+
 # Run unit tests.
 #
 # Args:
@@ -133,3 +141,14 @@ build-rpms:
 build-images:
 	hack/build-images.sh
 .PHONY: build-images
+
+# Update generated crds
+#
+# Args:
+#
+# Example:
+#   make update-codegen-crds
+update-codegen-crds:
+	hack/update-generated-crds.sh
+.PHONY: update-codegen-crds
+
