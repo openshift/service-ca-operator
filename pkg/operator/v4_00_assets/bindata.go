@@ -231,14 +231,15 @@ spec:
           name: apiservice-cabundle-injector-config
       nodeSelector:
         node-role.kubernetes.io/master: ""
+      priorityClassName: "system-cluster-critical"
       tolerations:
-      - key: node-role.kubernetes.io/master  
+      - key: node-role.kubernetes.io/master
         operator: Exists
         effect: "NoSchedule"
       - key: "node.kubernetes.io/unreachable"
         operator: "Exists"
         effect: "NoExecute"
-        tolerationSeconds: 120 
+        tolerationSeconds: 120
       - key: "node.kubernetes.io/not-ready"
         operator: "Exists"
         effect: "NoExecute"
@@ -573,6 +574,7 @@ spec:
           name: configmap-cabundle-injector-config
       nodeSelector:
         node-role.kubernetes.io/master: ""
+      priorityClassName: "system-cluster-critical"
       tolerations:
       - key: node-role.kubernetes.io/master
         operator: Exists
@@ -929,6 +931,7 @@ spec:
           name: service-serving-cert-signer-config
       nodeSelector:
         node-role.kubernetes.io/master: ""
+      priorityClassName: "system-cluster-critical"
       tolerations:
       - key: node-role.kubernetes.io/master
         operator: Exists
