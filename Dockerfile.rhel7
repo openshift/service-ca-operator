@@ -1,17 +1,11 @@
 FROM registry.svc.ci.openshift.org/ocp/builder:golang-1.12 AS builder
 WORKDIR /go/src/github.com/openshift/service-ca-operator
 COPY . .
-RUN GODEBUG=tls13=1 go build -o service-ca-operator ./cmd/service-ca-operator
+ENV GO_PACKAGE github.com/openshift/service-ca-operator
+RUN go build -ldflags "-X $GO_PACKAGE/pkg/version.versionFromGit=$(git describe --long --tags --abbrev=7 --match 'v[0-9]*')" ./cmd/service-ca-operator
 
 FROM registry.svc.ci.openshift.org/ocp/4.0:base
 COPY --from=builder /go/src/github.com/openshift/service-ca-operator/service-ca-operator /usr/bin/
 COPY manifests /manifests
 ENTRYPOINT ["/usr/bin/service-ca-operator"]
-LABEL io.k8s.display-name="OpenShift service-ca-operator" \
-      io.k8s.description="This is a component of OpenShift and manages serving certificates" \
-      com.redhat.component="service-ca-operator" \
-      maintainer="OpenShift Auth Team <aos-auth-team@redhat.com>" \
-      name="openshift/ose-service-ca-operator" \
-      version="v4.0.0" \
-      io.openshift.tags="openshift" \
-      io.openshift.release.operator=true
+LABEL io.openshift.release.operator=true
