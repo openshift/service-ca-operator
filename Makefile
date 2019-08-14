@@ -11,12 +11,12 @@ include $(addprefix ./vendor/github.com/openshift/library-go/alpha-build-machine
 
 # This will call a macro called "build-image" which will generate image specific targets based on the parameters:
 # $0 - macro name
-# $1 - target suffix
-# $2 - image name
+# $1 - target name
+# $2 - image ref
 # $3 - Dockerfile path
 # $4 - context directory for image build
 # It will generate target "image-$(1)" for building the image and binding it as a prerequisite to target "images".
-$(call build-image,origin-service-ca-operator,quay.io/openshift/origin-service-ca-operator,./Dockerfile,.)
+$(call build-image,origin-$(go_build_binaries),quay.io/openshift/origin-$(go_build_binaries),./Dockerfile,.)
 
 # This will call a macro called "add-bindata" which will generate bindata specific targets based on the parameters:
 # $0 - macro name
