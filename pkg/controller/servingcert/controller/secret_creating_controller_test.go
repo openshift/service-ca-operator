@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -29,27 +30,6 @@ import (
 
 const signerName = "openshift-service-serving-signer"
 
-const testCert = `
------BEGIN CERTIFICATE-----
-MIIDETCCAfmgAwIBAgIUTNjtvaP8ZzRNabhgLhuqHONxuTYwDQYJKoZIhvcNAQEL
-BQAwKzEpMCcGA1UEAwwgb3BlbnNoaWZ0LXNlcnZpY2Utc2VydmluZy1zaWduZXIw
-HhcNMTkwNDE3MTkyMjEwWhcNMjAwNDE2MTkyMjEwWjAPMQ0wCwYDVQQDDAR0ZXN0
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6QmfkmO9eaSqONefWAKO
-ZGwYe02tBltRCWsE96GslVq+aWVc6SSOVcghv9bL4xZQy2TQNxDRKNBDX0Fwk5TR
-Aj2aMzXuJ+HzxwyCK3o5SqwQYnOlgFuUpKShtpM4jye6hxwllFr059MvRAUZZNVX
-Fkv0Gh2CJcry/wPAuXVZV03GOixB/TeFKSEmpSSdMyhK3hFve3XkeW88rtuP9cG1
-duy3onAGZQ4V86TrwYsPJVo9t7IDS+SheIqHEhbfYouS6zBEvpeZMz+evP4q2AJs
-FXfLSQJi+HyHYdGovbBO9+ZotJ609hrkJ4/cMDJOxXeG8YBr6x9hgZtH4GO55jeS
-kQIDAQABo0kwRzALBgNVHQ8EBAMCBeAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwCQYD
-VR0TBAIwADAYBgNVHREEETAPgg0qLmZvby5iYXIuY29tMA0GCSqGSIb3DQEBCwUA
-A4IBAQB9HfCAUdxoVyaA7KxU1a838sC2Z/NrbqC2+u1eR1SVilRjykD+k3v6XnM9
-ku7TYpf8YRbgRmbu864zYE1ibxMwVGqQlMR9tNm2cA6nEDke2sDqH0JbS5lZPX+a
-DA9tdnJtx+/uxsuz6I68rp5kDPiTjUTjxc9/Ob3vLiCopBikuiC0H9cPdq1lNHFJ
-k89OWEXatvLbNvVRioyptH1hf5lweVtDjytnj7gaMchhlH8qK6u4iggLxViVxheO
-fiNJr2o4fexMfez1J6u7ZuM2w50CuOHuAGVAdrVdE8LYjr0SouwzVt20Uc0swLRE
-GKM7HG83Wj2hA+DWdy9ZJAdBLISB
------END CERTIFICATE-----
-`
 const testCertUnknownIssuer = `
 -----BEGIN CERTIFICATE-----
 MIIDETCCAfmgAwIBAgIUdbBKh0jOJxli4wl34q0TYJu8+n0wDQYJKoZIhvcNAQEL
@@ -107,7 +87,7 @@ func controllerSetup(startingObjects []runtime.Object, t *testing.T) ( /*caName*
 	controller := NewServiceServingCertController(
 		informerFactory.Core().V1().Services(),
 		informerFactory.Core().V1().Secrets(),
-		kubeclient.CoreV1(), kubeclient.CoreV1(), ca, "cluster.local",
+		kubeclient.CoreV1(), kubeclient.CoreV1(), ca, nil, "cluster.local",
 	)
 
 	return signerName, kubeclient, fakeWatch, fakeSecretWatch, controller.(*serviceServingCertController), informerFactory
@@ -851,9 +831,22 @@ func TestSkipGenerationControllerFlow(t *testing.T) {
 		return err
 	}
 
+	// Generate a serving cert from the ca to ensure key identity chaining
+	newServingCert, err := controller.ca.MakeServerCert(
+		sets.NewString("foo"),
+		crypto.DefaultCertificateLifetimeInDays,
+	)
+	if err != nil {
+		t.Fatalf("failed to generate serving cert: %v", err)
+	}
+	certPEM, err := crypto.EncodeCertificates(newServingCert.Certs[0])
+	if err != nil {
+		t.Fatalf("failed to encode serving cert to PEM: %v", err)
+	}
+
 	secretToAdd := &v1.Secret{
 		Data: map[string][]byte{
-			v1.TLSCertKey: []byte(testCert),
+			v1.TLSCertKey: certPEM,
 		},
 	}
 	secretToAdd.Name = expectedSecretName
