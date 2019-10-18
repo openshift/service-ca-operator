@@ -32,20 +32,33 @@ const (
 	signingKeySecretName         = api.SignerControllerSecretName
 )
 
-func hasPodWithPrefixName(client *kubernetes.Clientset, name, namespace string) bool {
-	if client == nil || len(name) == 0 || len(namespace) == 0 {
-		return false
+// checkComponents verifies that the components of the operator are running.
+func checkComponents(t *testing.T, client *kubernetes.Clientset) {
+	componentConfigs := []struct {
+		namespace string
+		podPrefix string
+	}{
+		{serviceCAOperatorNamespace, serviceCAOperatorPodPrefix},
+		{serviceCAControllerNamespace, apiInjectorPodPrefix},
+		{serviceCAControllerNamespace, configMapInjectorPodPrefix},
+		{serviceCAControllerNamespace, caControllerPodPrefix},
 	}
-	pods, err := client.CoreV1().Pods(namespace).List(metav1.ListOptions{})
-	if err != nil {
-		return false
-	}
-	for _, pod := range pods.Items {
-		if strings.HasPrefix(pod.GetName(), name) {
-			return true
+	for _, cfg := range componentConfigs {
+		pods, err := client.CoreV1().Pods(cfg.namespace).List(metav1.ListOptions{})
+		if err != nil {
+			t.Fatalf("Failed to list pods in namespace %q: %v", cfg.namespace, err)
+		}
+		podFound := false
+		for _, pod := range pods.Items {
+			if strings.HasPrefix(pod.GetName(), cfg.podPrefix) {
+				podFound = true
+				break
+			}
+		}
+		if !podFound {
+			t.Fatalf("No pods with prefix %q found running in namespace %q", cfg.podPrefix, cfg.namespace)
 		}
 	}
-	return false
 }
 
 func createTestNamespace(client *kubernetes.Clientset, namespaceName string) (*v1.Namespace, error) {
@@ -301,18 +314,7 @@ func TestE2E(t *testing.T) {
 
 	// the service-serving-cert-operator and controllers should be running as a stock OpenShift component. our first test is to
 	// verify that all of the components are running.
-	if !hasPodWithPrefixName(adminClient, serviceCAOperatorPodPrefix, serviceCAOperatorNamespace) {
-		t.Fatalf("%s not running in %s namespace", serviceCAOperatorPodPrefix, serviceCAOperatorNamespace)
-	}
-	if !hasPodWithPrefixName(adminClient, apiInjectorPodPrefix, serviceCAControllerNamespace) {
-		t.Fatalf("%s not running in %s namespace", apiInjectorPodPrefix, serviceCAControllerNamespace)
-	}
-	if !hasPodWithPrefixName(adminClient, configMapInjectorPodPrefix, serviceCAControllerNamespace) {
-		t.Fatalf("%s not running in %s namespace", configMapInjectorPodPrefix, serviceCAControllerNamespace)
-	}
-	if !hasPodWithPrefixName(adminClient, caControllerPodPrefix, serviceCAControllerNamespace) {
-		t.Fatalf("%s not running in %s namespace", caControllerPodPrefix, serviceCAControllerNamespace)
-	}
+	checkComponents(t, adminClient)
 
 	// test the main feature. annotate service -> created secret
 	t.Run("serving-cert-annotation", func(t *testing.T) {
