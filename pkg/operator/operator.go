@@ -100,9 +100,7 @@ func (c serviceCAOperator) Sync(obj metav1.Object) error {
 		if err != nil {
 			setDegradedTrue(operatorConfigCopy, "OperatorSyncLoopError", err.Error())
 		} else {
-			if v1helpers.IsOperatorConditionTrue(operatorConfigCopy.Status.Conditions, operatorv1.OperatorStatusTypeDegraded) {
-				setDegradedFalse(operatorConfigCopy, "OperatorSyncLoopComplete")
-			}
+			setDegradedFalse(operatorConfigCopy, "OperatorSyncLoopComplete")
 			existingDeployments, err := c.appsv1Client.Deployments(operatorclient.TargetNamespace).List(metav1.ListOptions{})
 			if err != nil {
 				return fmt.Errorf("Error listing deployments in %s: %v", operatorclient.TargetNamespace, err)
