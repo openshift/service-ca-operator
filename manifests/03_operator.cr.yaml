@@ -6,3 +6,5 @@ metadata:
     release.openshift.io/create-only: "true"
 spec:
   managementState: Managed
+  # Configure the log level of managed deployments
+  logLevel: "4"
