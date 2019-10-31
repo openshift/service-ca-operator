@@ -2,7 +2,6 @@ package operator
 
 import (
 	"bytes"
-	"crypto/rsa"
 	"crypto/x509"
 	"fmt"
 	"os"
@@ -14,7 +13,6 @@ import (
 	appsclientv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coreclientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/util/cert"
-	"k8s.io/client-go/util/keyutil"
 	"k8s.io/klog"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
@@ -84,11 +82,10 @@ func manageControllerResources(c serviceCAOperator, resourcePath string, modifie
 	return nil
 }
 
-func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Recorder) (bool, error) {
+func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Recorder, rawUnsupportedServiceCAConfig []byte) (bool, error) {
 	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml"))
 
-	var certs []*x509.Certificate
-
+	var existingCert *x509.Certificate
 	existing, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		// Secret will need to be created
@@ -98,76 +95,66 @@ func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Reco
 		// Secret exists - attempt to parse its certs
 		certData := existing.Data[corev1.TLSCertKey]
 		if len(certData) > 0 {
-			certs, err = cert.ParseCertsPEM(certData)
+			certs, err := cert.ParseCertsPEM(certData)
 			if err != nil {
 				return false, err
+			}
+			if len(certs) > 0 {
+				existingCert = certs[0]
 			}
 		}
 	}
 
-	rotated := false
-	secretHasCert := len(certs) != 0 && certs[0] != nil
-	if secretHasCert {
-		existingCert := certs[0]
-		if !certHalfwayExpired(existingCert) {
-			// Cert is up-to-date
+	rotationMsg := ""
+	if existingCert == nil {
+		// Secret does not exist or lacks the expected cert.
+		err = initializeSigningSecret(secret)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		rotationMsg, err = rotateSigningSecret(existing, existingCert, rawUnsupportedServiceCAConfig)
+		if err != nil {
+			return false, fmt.Errorf("failed to rotate signing CA: %v", err)
+		}
+		if len(rotationMsg) == 0 {
 			return false, nil
 		}
-
-		// Rotation is required
-		klog.V(4).Infof("rotating signing CA")
-		keyData := existing.Data[corev1.TLSPrivateKeyKey]
-		if len(keyData) == 0 {
-			return false, fmt.Errorf("secret %s/%s does not provide a value for %q", secret.Namespace, secret.Name, corev1.TLSPrivateKeyKey)
-		}
-		key, err := keyutil.ParsePrivateKeyPEM(keyData)
-		if err != nil {
-			return false, err
-		}
-		signingCA, err := rotateSigningCA(existingCert, key.(*rsa.PrivateKey))
-		if err != nil {
-			return false, err
-		}
-		d := secret.Data
-		d[corev1.TLSCertKey], d[corev1.TLSPrivateKeyKey], d[api.BundleDataKey], d[api.IntermediateDataKey], err = signingCA.getPEMBytes()
-		if err != nil {
-			return false, err
-		}
-		rotated = true
-	} else {
-		// Secret does not exist or lacks the expected cert.
-		d := secret.Data
-		d[corev1.TLSCertKey], d[corev1.TLSPrivateKeyKey], err = createNewSigner()
-		if err != nil {
-			return false, err
-		}
+		// Ensure the updated existing secret is applied below
+		secret = existing
 	}
 
 	_, mod, err := resourceapply.ApplySecret(client, eventRecorder, secret)
 
-	if err == nil && rotated {
-		eventRecorder.Eventf("RotatedServiceCA", "Rotated service CA at the mid-point of its validity")
+	if err == nil && len(rotationMsg) > 0 {
+		eventRecorder.Eventf("RotatedServiceCA", rotationMsg)
 	}
 
 	return mod, err
 }
 
-// createNewSigner generates a new signing CA cert and private key
-func createNewSigner() ([]byte, []byte, error) {
+// initializeSigningSecret updates the provided map with a PEM-encoded
+// CA cert and private key.
+func initializeSigningSecret(secret *corev1.Secret) error {
 	name := serviceServingCertSignerName()
 	klog.V(4).Infof("generating signing CA: %s", name)
 
 	ca, err := crypto.MakeSelfSignedCAConfig(name, signingCertificateLifetimeInDays)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 
 	certBuff := &bytes.Buffer{}
 	keyBuff := &bytes.Buffer{}
 	if err := ca.WriteCertConfig(certBuff, keyBuff); err != nil {
-		return nil, nil, err
+		return err
 	}
-	return certBuff.Bytes(), keyBuff.Bytes(), nil
+	if secret.Data == nil {
+		secret.Data = map[string][]byte{}
+	}
+	secret.Data[corev1.TLSCertKey] = certBuff.Bytes()
+	secret.Data[corev1.TLSPrivateKeyKey] = keyBuff.Bytes()
+	return nil
 }
 
 func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder events.Recorder, forceUpdate bool) (bool, error) {

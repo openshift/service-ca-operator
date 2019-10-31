@@ -7,11 +7,12 @@ import (
 )
 
 const (
-	InjectCABundleAnnotationName      = "service.beta.openshift.io/inject-cabundle"
-	AlphaInjectCABundleAnnotationName = "service.alpha.openshift.io/inject-cabundle"
-	InjectionDataKey                  = "service-ca.crt"
-	BundleDataKey                     = "ca-bundle.crt"
-	IntermediateDataKey               = "intermediate-ca.crt"
+	InjectCABundleAnnotationName       = "service.beta.openshift.io/inject-cabundle"
+	AlphaInjectCABundleAnnotationName  = "service.alpha.openshift.io/inject-cabundle"
+	ForcedRotationReasonAnnotationName = "service-ca.operators.openshift.io/forced-rotation-reason"
+	InjectionDataKey                   = "service-ca.crt"
+	BundleDataKey                      = "ca-bundle.crt"
+	IntermediateDataKey                = "intermediate-ca.crt"
 )
 
 func HasInjectCABundleAnnotation(metadata v1.Object) bool {

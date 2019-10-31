@@ -17,12 +17,15 @@ import (
 	pkgruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/operator"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 	"github.com/openshift/service-ca-operator/test/util"
 )
@@ -304,9 +307,74 @@ func cleanupConfigMapCABundleInjectionTestObjects(client *kubernetes.Clientset, 
 	// it should probably fail the test if the namespace gets stuck
 }
 
-// rotateCA replaces the current CA cert with one that has passed its
-// halfway-expired point and waits for the CA to be rotated.
-func rotateCA(t *testing.T, client *kubernetes.Clientset) {
+type triggerRotationFunc func(*testing.T, *kubernetes.Clientset, *rest.Config)
+
+func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Config, triggerRotation triggerRotationFunc) {
+	ns, err := createTestNamespace(client, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+
+	// Prompt the creation of a service cert secret
+	testServiceName := "test-service-" + randSeq(5)
+	testSecretName := "test-secret-" + randSeq(5)
+	defer cleanupServiceSignerTestObjects(client, testSecretName, testServiceName, ns.Name)
+
+	err = createServingCertAnnotatedService(client, testSecretName, testServiceName, ns.Name)
+	if err != nil {
+		t.Fatalf("error creating annotated service: %v", err)
+	}
+
+	// Prompt the injection of the ca bundle into a configmap
+	testConfigMapName := "test-configmap-" + randSeq(5)
+	defer cleanupConfigMapCABundleInjectionTestObjects(client, testConfigMapName, ns.Name)
+
+	err = createAnnotatedCABundleInjectionConfigMap(client, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error creating annotated configmap: %v", err)
+	}
+
+	// Retrieve the pre-rotation service cert
+	oldCertPEM, oldKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, pollTimeout, nil, nil)
+	if err != nil {
+		t.Fatalf("error retrieving service cert: %v", err)
+	}
+
+	// Retrieve the pre-rotation ca bundle
+	oldBundlePEM, err := pollForUpdatedCABundle(t, client, ns.Name, testConfigMapName, pollTimeout, nil)
+	if err != nil {
+		t.Fatalf("error retrieving ca bundle: %v", err)
+	}
+
+	// Prompt CA rotation
+	triggerRotation(t, client, config)
+
+	// Retrieve the post-rotation service cert
+	newCertPEM, newKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, rotationTimeout, oldCertPEM, oldKeyPEM)
+	if err != nil {
+		t.Fatalf("error retrieving service cert: %v", err)
+	}
+
+	// Retrieve the post-rotation ca bundle
+	newBundlePEM, err := pollForUpdatedCABundle(t, client, ns.Name, testConfigMapName, rotationTimeout, oldBundlePEM)
+	if err != nil {
+		t.Fatalf("error retrieving ca bundle: %v", err)
+	}
+
+	// Determine the dns name valid for the serving cert
+	certs, err := util.PemToCerts(newCertPEM)
+	if err != nil {
+		t.Fatalf("error decoding pem to certs: %v", err)
+	}
+	dnsName := certs[0].Subject.CommonName
+
+	util.CheckRotation(t, dnsName, oldCertPEM, oldKeyPEM, oldBundlePEM, newCertPEM, newKeyPEM, newBundlePEM)
+}
+
+// triggerExpiryRotation replaces the current CA cert with one that
+// has passed its halfway-expired point and waits for the CA to be
+// rotated.
+func triggerExpiryRotation(t *testing.T, client *kubernetes.Clientset, config *rest.Config) {
 	// A rotation-prompting CA cert needs to be a renewed instance
 	// (i.e. share the same public and private keys) of the current
 	// cert to ensure that trust will be maintained for unrefreshed
@@ -360,10 +428,47 @@ func rotateCA(t *testing.T, client *kubernetes.Clientset) {
 		t.Fatalf("error updating secret with test CA: %v", err)
 	}
 
-	// Wait for the CA to be rotated
-	_, err = pollForUpdatedSecret(t, client, secret.Namespace, secret.Name, pollTimeout, map[string][]byte{
-		v1.TLSCertKey:           renewedCACertPEM,
-		v1.TLSPrivateKeyKey:     renewedCAKeyPEM,
+	pollForCARotation(t, client, renewedCACertPEM, renewedCAKeyPEM)
+}
+
+// triggerForcedRotation forces the rotation of the current CA via the
+// operator config.
+func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *rest.Config) {
+	// Retrieve the cert and key PEM of the current CA to be able to
+	// detect when rotation has completed.
+	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(signingKeySecretName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error retrieving signing key secret: %v", err)
+	}
+	caCertPEM := secret.Data[v1.TLSCertKey]
+	caKeyPEM := secret.Data[v1.TLSPrivateKeyKey]
+
+	// Trigger a forced rotation by updating the operator config
+	operatorClient, err := operatorv1client.NewForConfig(config)
+	if err != nil {
+		t.Fatalf("error creating operator client: %v", err)
+	}
+	operatorConfig, err := operatorClient.OperatorV1().ServiceCAs().Get(api.OperatorConfigInstanceName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error retrieving operator config: %v", err)
+	}
+	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig("42")
+	if err != nil {
+		t.Fatalf("failed to create raw unsupported config overrides: %v", err)
+	}
+	operatorConfig.Spec.UnsupportedConfigOverrides.Raw = rawUnsupportedServiceCAConfig
+	_, err = operatorClient.OperatorV1().ServiceCAs().Update(operatorConfig)
+	if err != nil {
+		t.Fatalf("error updating operator config: %v", err)
+	}
+
+	pollForCARotation(t, client, caCertPEM, caKeyPEM)
+}
+
+func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, caKeyPEM []byte) {
+	_, err := pollForUpdatedSecret(t, client, serviceCAControllerNamespace, signingKeySecretName, pollTimeout, map[string][]byte{
+		v1.TLSCertKey:           caCertPEM,
+		v1.TLSPrivateKeyKey:     caKeyPEM,
 		api.BundleDataKey:       nil,
 		api.IntermediateDataKey: nil,
 	})
@@ -394,7 +499,7 @@ func pollForUpdatedSecret(t *testing.T, client *kubernetes.Clientset, namespace,
 		if err != nil {
 			return nil, err
 		}
-		err = checkData(oldData, secret.Data)
+		err = util.CheckData(oldData, secret.Data)
 		if err != nil {
 			return nil, err
 		}
@@ -404,24 +509,6 @@ func pollForUpdatedSecret(t *testing.T, client *kubernetes.Clientset, namespace,
 		return nil, err
 	}
 	return obj.(*v1.Secret), nil
-}
-
-// checkData verifies that the new map contains the same keys as the
-// old and that the values have changed.
-func checkData(oldData, newData map[string][]byte) error {
-	if len(oldData) != len(newData) {
-		return fmt.Errorf("expected data size %d, got %d", len(oldData), len(newData))
-	}
-	for key, oldValue := range oldData {
-		newValue, ok := newData[key]
-		if !ok {
-			return fmt.Errorf("key %q is missing", key)
-		}
-		if bytes.Equal(oldValue, newValue) {
-			return fmt.Errorf("value for key %q has not changed", key)
-		}
-	}
-	return nil
 }
 
 // pollForUpdatedSecret returns the given configmap if its data changes from
@@ -722,69 +809,20 @@ func TestE2E(t *testing.T) {
 		}
 	})
 
-	// This test rotates the CA and validates that both refreshed and
-	// unrefreshed clients and servers can continue to communicate in
-	// a trusted fashion.
-	t.Run("rotate-CA", func(t *testing.T) {
-		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
-		if err != nil {
-			t.Fatalf("could not create test namespace: %v", err)
-		}
+	// This test triggers rotation by updating the CA to be half-way
+	// past its validity period and then validates that both refreshed
+	// and unrefreshed clients and servers can continue to communicate
+	// in a trusted fashion.
+	t.Run("rotate-expired-CA", func(t *testing.T) {
+		checkCARotation(t, adminClient, nil, triggerExpiryRotation)
+	})
 
-		// Prompt the creation of a service cert secret
-		testServiceName := "test-service-" + randSeq(5)
-		testSecretName := "test-secret-" + randSeq(5)
-		defer cleanupServiceSignerTestObjects(adminClient, testSecretName, testServiceName, ns.Name)
-
-		err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name)
-		if err != nil {
-			t.Fatalf("error creating annotated service: %v", err)
-		}
-
-		// Prompt the injection of the ca bundle into a configmap
-		testConfigMapName := "test-configmap-" + randSeq(5)
-		defer cleanupConfigMapCABundleInjectionTestObjects(adminClient, testConfigMapName, ns.Name)
-
-		err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error creating annotated configmap: %v", err)
-		}
-
-		// Retrieve the pre-rotation service cert
-		oldCertPEM, oldKeyPEM, err := pollForUpdatedServingCert(t, adminClient, ns.Name, testSecretName, pollTimeout, nil, nil)
-		if err != nil {
-			t.Fatalf("error retrieving service cert: %v", err)
-		}
-
-		// Retrieve the pre-rotation ca bundle
-		oldBundlePEM, err := pollForUpdatedCABundle(t, adminClient, ns.Name, testConfigMapName, pollTimeout, nil)
-		if err != nil {
-			t.Fatalf("error retrieving ca bundle: %v", err)
-		}
-
-		// Prompt CA rotation
-		rotateCA(t, adminClient)
-
-		// Retrieve the post-rotation service cert
-		newCertPEM, newKeyPEM, err := pollForUpdatedServingCert(t, adminClient, ns.Name, testSecretName, rotationTimeout, oldCertPEM, oldKeyPEM)
-		if err != nil {
-			t.Fatalf("error retrieving service cert: %v", err)
-		}
-
-		// Retrieve the post-rotation ca bundle
-		newBundlePEM, err := pollForUpdatedCABundle(t, adminClient, ns.Name, testConfigMapName, rotationTimeout, oldBundlePEM)
-		if err != nil {
-			t.Fatalf("error retrieving ca bundle: %v", err)
-		}
-
-		// Determine the dns name valid for the serving cert
-		certs, err := util.PemToCerts(newCertPEM)
-		if err != nil {
-			t.Fatalf("error decoding pem to certs: %v", err)
-		}
-		dnsName := certs[0].Subject.CommonName
-
-		util.CheckRotation(t, dnsName, oldCertPEM, oldKeyPEM, oldBundlePEM, newCertPEM, newKeyPEM, newBundlePEM)
+	// This test triggers rotation by updating the operator
+	// configuration to force rotation and then validates that both
+	// refreshed and unrefreshed clients and servers can continue to
+	// communicate in a trusted fashion.
+	t.Run("force-rotate-CA", func(t *testing.T) {
+		checkCARotation(t, adminClient, adminConfig, triggerForcedRotation)
 	})
 
 	// TODO: additional tests

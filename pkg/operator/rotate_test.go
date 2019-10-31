@@ -4,18 +4,166 @@ import (
 	"bytes"
 	"crypto/rsa"
 	"crypto/x509"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/controller"
 	"github.com/openshift/service-ca-operator/test/util"
 )
+
+func caToSigningSecret(t *testing.T, caConfig *crypto.TLSCertificateConfig) (*corev1.Secret, *x509.Certificate) {
+	certPEM, keyPEM, err := caConfig.GetPEMBytes()
+	if err != nil {
+		t.Fatalf("error converting ca to PEM: %v", err)
+	}
+	return &corev1.Secret{
+		Data: map[string][]byte{
+			corev1.TLSCertKey:       certPEM,
+			corev1.TLSPrivateKeyKey: keyPEM,
+		},
+	}, caConfig.Certs[0]
+}
+
+// TestRotateSigningSecret validates the rotation of a signing secret when required.
+func TestRotateSigningSecret(t *testing.T) {
+	// Create a brand new signing secret
+	newCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", signingCertificateLifetimeInDays)
+	if err != nil {
+		t.Fatalf("error generating a new ca: %v", err)
+	}
+	newSigningSecret, newCACert := caToSigningSecret(t, newCAConfig)
+
+	// Create a secret that has been force-rotated for a reason
+	forceRotatedSigningSecret := newSigningSecret.DeepCopy()
+	recordForcedRotationReason(forceRotatedSigningSecret, "42")
+
+	// Create a signing secret more than half-way past its expiry
+	notBefore := time.Now().Add(-3 * time.Hour)
+	notAfter := time.Now().Add(1 * time.Hour)
+	halfExpiredCAConfig, err := util.RenewSelfSignedCertificate(newCAConfig, notBefore, notAfter)
+	if err != nil {
+		t.Fatalf("error renewing ca to half-expired form: %v", err)
+	}
+	halfExpiredSigningSecret, halfExpiredCACert := caToSigningSecret(t, halfExpiredCAConfig)
+
+	testCases := map[string]struct {
+		secret           *corev1.Secret
+		caCert           *x509.Certificate
+		reason           string
+		rotationExpected bool
+	}{
+		"Rotation not required": {
+			secret: newSigningSecret,
+			caCert: newCACert,
+		},
+		"Time-based rotation required": {
+			secret:           halfExpiredSigningSecret,
+			caCert:           halfExpiredCACert,
+			rotationExpected: true,
+		},
+		"Forced rotation required": {
+			secret:           newSigningSecret,
+			caCert:           newCACert,
+			reason:           "42",
+			rotationExpected: true,
+		},
+		"Forced rotation required when half-expired": {
+			secret:           halfExpiredSigningSecret,
+			caCert:           halfExpiredCACert,
+			reason:           "42",
+			rotationExpected: true,
+		},
+		"Forced rotation not required": {
+			secret:           forceRotatedSigningSecret,
+			caCert:           newCACert,
+			reason:           "42",
+			rotationExpected: false,
+		},
+	}
+
+	for testName, tc := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			rawUnsupportedServiceCAConfig, err := RawUnsupportedServiceCAConfig(tc.reason)
+			if err != nil {
+				t.Fatalf("failed to create raw unsupported config overrides: %v", err)
+			}
+			secret := tc.secret.DeepCopy()
+			rotationMessage, err := rotateSigningSecret(secret, tc.caCert, rawUnsupportedServiceCAConfig)
+			if err != nil {
+				t.Fatalf("error rotating signing secret: %v", err)
+			}
+			rotated := len(rotationMessage) > 0
+			if tc.rotationExpected != rotated {
+				t.Fatalf("expected rotation %v, got %v", tc.rotationExpected, rotated)
+			}
+			if rotated {
+				oldMap := map[string][]byte{
+					corev1.TLSCertKey:       tc.secret.Data[corev1.TLSCertKey],
+					corev1.TLSPrivateKeyKey: tc.secret.Data[corev1.TLSPrivateKeyKey],
+					api.BundleDataKey:       nil,
+					api.IntermediateDataKey: nil,
+				}
+				err := util.CheckData(oldMap, secret.Data)
+				if err != nil {
+					t.Fatalf("rotated data does not match expectations: %v", err)
+				}
+
+				if len(tc.reason) > 0 {
+					// Secret should be updated with the reason
+					if secret.Annotations[api.ForcedRotationReasonAnnotationName] != tc.reason {
+						t.Fatalf("secret does not have '%s: %s'", api.ForcedRotationReasonAnnotationName, tc.reason)
+					}
+				}
+			} else if !reflect.DeepEqual(secret, tc.secret) {
+				t.Fatalf("secret was unexpected rotated")
+			}
+		})
+	}
+}
+
+func TestForcedRotationRequired(t *testing.T) {
+	testCases := map[string]struct {
+		annotations map[string]string
+		reason      string
+		expected    bool
+	}{
+		"No rotation without a reason": {
+			reason: "",
+		},
+		"No rotation if the stored reason matches": {
+			annotations: map[string]string{
+				api.ForcedRotationReasonAnnotationName: "42",
+			},
+			reason: "42",
+		},
+		"Rotation if the reason differs": {
+			reason:   "42",
+			expected: true,
+		},
+	}
+	for testName, tc := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: tc.annotations,
+				},
+			}
+			actual := forcedRotationRequired(secret, tc.reason)
+			if tc.expected != actual {
+				t.Fatalf("expected forced=%v, but forced=%v", tc.expected, actual)
+			}
+		})
+	}
+}
 
 // TestRotateSigningCA validates that service certs signed by pre- and
 // post-rotation CAs can be validated by both pre- and post-rotation

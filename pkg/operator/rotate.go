@@ -3,19 +3,34 @@ package operator
 import (
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	kyaml "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/client-go/util/keyutil"
+	"k8s.io/klog"
+
 	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/util"
 )
 
 const signingCertificateLifetimeInDays = 365 // 1 year
 
+type unsupportedServiceCAConfig struct {
+	ForceRotation forceRotationConfig `json:"forceRotation"`
+}
+type forceRotationConfig struct {
+	Reason string `json:"reason"`
+}
+
 type signingCA struct {
 	config             *crypto.TLSCertificateConfig
 	bundle             []*x509.Certificate
 	intermediateCACert *x509.Certificate
+	oldCAExpiry        time.Time
 }
 
 // getPEMBytes returns PEM-encodings of the CA cert, key, bundle and intermediate CA cert.
@@ -35,6 +50,51 @@ func (ca *signingCA) getPEMBytes() ([]byte, []byte, []byte, []byte, error) {
 	return caPEM, keyPEM, bundlePEM, intermediatePEM, nil
 }
 
+// rotateSigningSecret rotates the CA provided by the given secret and updates the secret
+// with the new CA's data.
+func rotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certificate, rawUnsupportedServiceCAConfig []byte) (string, error) {
+	reason, err := forceRotationReason(rawUnsupportedServiceCAConfig)
+	if err != nil {
+		return "", fmt.Errorf("failed to read force rotation reason: %v", err)
+	}
+	forcedRotation := forcedRotationRequired(secret, reason)
+	rotationRequired := forcedRotation || certHalfwayExpired(currentCACert)
+	if !rotationRequired {
+		return "", nil
+	}
+
+	if forcedRotation {
+		klog.V(4).Infof("Forcing service CA rotation due to reason %q.", reason)
+		recordForcedRotationReason(secret, reason)
+	} else {
+		klog.V(4).Infof("Rotating service CA due to the CA being past the mid-point of its validity.")
+	}
+
+	keyData := secret.Data[corev1.TLSPrivateKeyKey]
+	if len(keyData) == 0 {
+		return "", fmt.Errorf("signing secret is missing a value for %q", corev1.TLSPrivateKeyKey)
+	}
+	key, err := keyutil.ParsePrivateKeyPEM(keyData)
+	if err != nil {
+		return "", err
+	}
+
+	signingCA, err := rotateSigningCA(currentCACert, key.(*rsa.PrivateKey))
+	if err != nil {
+		return "", err
+	}
+
+	d := secret.Data
+	d[corev1.TLSCertKey], d[corev1.TLSPrivateKeyKey], d[api.BundleDataKey], d[api.IntermediateDataKey], err = signingCA.getPEMBytes()
+	if err != nil {
+		return "", err
+	}
+
+	oldCAExpiry := signingCA.oldCAExpiry.Format(time.RFC3339)
+	rotationMsg := fmt.Sprintf("CA rotation complete. The previous CA will be trusted until %s", oldCAExpiry)
+	return rotationMsg, nil
+}
+
 // rotateSigningCA creates a new signing CA, bundle and intermediate CA that together can
 // be used to ensure that serving certs generated both before and after rotation can be
 // trusted by both refreshed and unrefreshed consumers.
@@ -52,7 +112,7 @@ func rotateSigningCA(currentCACert *x509.Certificate, currentKey *rsa.PrivateKey
 	// serving certs.
 	currentCACertSignedByNewCA, err := createIntermediateCACert(currentCACert, newCACert, newCAConfig.Key.(*rsa.PrivateKey))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create intermediate certificate: %v", err)
+		return nil, fmt.Errorf("failed to create intermediate certificate signed by new ca: %v", err)
 	}
 
 	bundle := []*x509.Certificate{
@@ -66,13 +126,14 @@ func rotateSigningCA(currentCACert *x509.Certificate, currentKey *rsa.PrivateKey
 	// bundle will be able to trust post-rotation serving certs.
 	newCACertSignedByOldCA, err := createIntermediateCACert(newCACert, currentCACert, currentKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create intermediate certificate: %v", err)
+		return nil, fmt.Errorf("failed to create intermediate certificate signed by previous ca: %v", err)
 	}
 
 	return &signingCA{
 		config:             newCAConfig,
 		bundle:             bundle,
 		intermediateCACert: newCACertSignedByOldCA,
+		oldCAExpiry:        currentCACertSignedByNewCA.NotAfter,
 	}, nil
 }
 
@@ -101,4 +162,56 @@ func certHalfwayExpired(cert *x509.Certificate) bool {
 	halfValidPeriod := cert.NotAfter.Sub(cert.NotBefore).Nanoseconds() / 2
 	halfExpiration := cert.NotBefore.Add(time.Duration(halfValidPeriod) * time.Nanosecond)
 	return time.Now().After(halfExpiration)
+}
+
+// forceRotationReason attempts to retrieve a force rotation reason
+// from the provided raw UnsupportedConfigOverrides.
+func forceRotationReason(rawUnsupportedServiceCAConfig []byte) (string, error) {
+	serviceCAConfig := &unsupportedServiceCAConfig{}
+	if raw := rawUnsupportedServiceCAConfig; len(raw) > 0 {
+		jsonRaw, err := kyaml.ToJSON(raw)
+		if err != nil {
+			klog.Warning(err)
+			// maybe it's just json
+			jsonRaw = raw
+		}
+		if err := json.Unmarshal(jsonRaw, serviceCAConfig); err != nil {
+			return "", err
+		}
+	}
+
+	return serviceCAConfig.ForceRotation.Reason, nil
+}
+
+// RawUnsupportedServiceCAConfig returns the raw value of the operator field
+// UnsupportedConfigOverrides for the given force rotation reason.
+func RawUnsupportedServiceCAConfig(reason string) ([]byte, error) {
+	config := &unsupportedServiceCAConfig{
+		ForceRotation: forceRotationConfig{
+			Reason: reason,
+		},
+	}
+	return json.Marshal(config)
+}
+
+// forcedRotationRequired indicates whether the force rotation reason is not empty and
+// does not match the annotation stored on the signing secret.
+func forcedRotationRequired(secret *corev1.Secret, reason string) bool {
+	if len(reason) == 0 {
+		return false
+	}
+	if secret.Annotations == nil {
+		return true
+	}
+	seenReason := secret.Annotations[api.ForcedRotationReasonAnnotationName]
+	return reason != seenReason
+}
+
+// recordForcedRotationReason annotates the signing secret with the reason for performing
+// a forced rotation.
+func recordForcedRotationReason(secret *corev1.Secret, reason string) {
+	if secret.Annotations == nil {
+		secret.Annotations = map[string]string{}
+	}
+	secret.Annotations[api.ForcedRotationReasonAnnotationName] = reason
 }

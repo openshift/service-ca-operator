@@ -1,6 +1,7 @@
 package util
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -62,7 +63,12 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 		t.Fatalf("error creating tmpfile for cert: %v", err)
 
 	}
-	defer os.Remove(certFile.Name())
+	defer func() {
+		err := os.Remove(certFile.Name())
+		if err != nil {
+			t.Errorf("Failed to remove file %v", err)
+		}
+	}()
 	_, err = certFile.Write(certPEM)
 	if err != nil {
 		t.Fatalf("Error writing cert to disk: %v", err)
@@ -73,7 +79,12 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 		t.Fatalf("error creating tmpfile for key: %v", err)
 
 	}
-	defer os.Remove(keyFile.Name())
+	defer func() {
+		err := os.Remove(keyFile.Name())
+		if err != nil {
+			t.Errorf("Failed to remove file %v", err)
+		}
+	}()
 	_, err = keyFile.Write(keyPEM)
 	if err != nil {
 		t.Fatalf("Error writing key to disk: %v", err)
@@ -89,7 +100,9 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 	if err != nil {
 		t.Fatalf("net.Listen: %v", err)
 	}
-	defer ln.Close()
+	defer func() {
+		_ = ln.Close()
+	}()
 	serverAddress := ln.Addr().String()
 	serverPort := serverAddress[strings.LastIndex(serverAddress, ":")+1:]
 
@@ -137,4 +150,22 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 		t.Fatalf("Failed to receive output: %v", err)
 	}
 	// No error indicates that validation was successful
+}
+
+// CheckData verifies that the new map contains the same keys as the
+// old and that the values have changed.
+func CheckData(oldData, newData map[string][]byte) error {
+	if len(oldData) != len(newData) {
+		return fmt.Errorf("expected data size %d, got %d", len(oldData), len(newData))
+	}
+	for key, oldValue := range oldData {
+		newValue, ok := newData[key]
+		if !ok {
+			return fmt.Errorf("key %q is missing", key)
+		}
+		if bytes.Equal(oldValue, newValue) {
+			return fmt.Errorf("value for key %q has not changed", key)
+		}
+	}
+	return nil
 }
