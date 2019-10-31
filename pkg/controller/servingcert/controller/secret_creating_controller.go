@@ -313,6 +313,11 @@ func getServingCert(dnsSuffix string, ca *crypto.CA, service *corev1.Service) (*
 	if err != nil {
 		return nil, err
 	}
+	if len(servingCert.Certs) > 1 {
+		// Only include the generated cert. The issuing cert will be provided to
+		// clients via the ca bundle.
+		servingCert.Certs = servingCert.Certs[:1]
+	}
 	return servingCert, nil
 }
 
