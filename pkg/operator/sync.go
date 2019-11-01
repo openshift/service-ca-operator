@@ -30,7 +30,7 @@ func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) 
 	}
 
 	// Sync the CA (regenerate if missing).
-	caModified, err := manageSignerCA(c.corev1Client, c.eventRecorder)
+	caModified, err := manageSignerCA(c.corev1Client, c.eventRecorder, operatorConfig.Spec.UnsupportedConfigOverrides.Raw)
 	if err != nil {
 		return err
 	}

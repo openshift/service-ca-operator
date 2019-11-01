@@ -6,6 +6,22 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Constants for Service CA
+const (
+	// ForcedRotationReasonAnnotationName is the name of an annotation indicating
+	// the most recent reason that a service CA rotation was forced. The annotation
+	// will be set on the signing secret after the successful completion of a forced
+	// rotation.
+	ForcedRotationReasonAnnotationName = "service-ca.operators.openshift.io/forced-rotation-reason"
+	// BundleDataKey is the key used to identify the CA bundle in the signing
+	// secret.
+	BundleDataKey = "ca-bundle.crt"
+	// IntermediateDataKey is the key used to identify the post-rotation
+	// trust-bridging certificate in the signing secret.
+	IntermediateDataKey = "intermediate-ca.crt"
+)
+
+// Constants for CA bundle injection
 const (
 	InjectCABundleAnnotationName      = "service.beta.openshift.io/inject-cabundle"
 	AlphaInjectCABundleAnnotationName = "service.alpha.openshift.io/inject-cabundle"
