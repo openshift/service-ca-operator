@@ -256,5 +256,6 @@ func cleanupDeprecatedController(c serviceCAOperator, controllerName string) err
 			return err
 		}
 	}
+
 	return nil
 }

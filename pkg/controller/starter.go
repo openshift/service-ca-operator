@@ -5,17 +5,12 @@ import (
 	"fmt"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
-	apistart "github.com/openshift/service-ca-operator/pkg/controller/apiservicecabundle/starter"
-	cmstart "github.com/openshift/service-ca-operator/pkg/controller/configmapcainjector/starter"
+	"github.com/openshift/service-ca-operator/pkg/controller/cabundleinjector"
 	certstart "github.com/openshift/service-ca-operator/pkg/controller/servingcert/starter"
 )
 
 func StartServiceCAControllers(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
-	err := apistart.StartAPIServiceCABundleInjector(ctx, controllerContext)
-	if err != nil {
-		return err
-	}
-	err = cmstart.StartConfigMapCABundleInjector(ctx, controllerContext)
+	err := cabundleinjector.StartCABundleInjector(ctx, controllerContext)
 	if err != nil {
 		return err
 	}
