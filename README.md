@@ -62,7 +62,7 @@ metadata:
 ```
 
 * **generic cabundle injector:**
-  * Watches for apiservices and crds annotated with 'service.beta.openshift.io/inject-cabundle=true' and sets the appropriate ca bundle field (apiservice -> spec.caBundle, spec.conversion.webhook.clientConfig.caBundle) with a base64url-encoded CA signing bundle. The following example is for apiservices:
+  * Watches for apiservices, mutatingwebhookconfig, validatingwebhookconfig and crds annotated with 'service.beta.openshift.io/inject-cabundle=true' and sets the appropriate ca bundle field (apiservice -> spec.caBundle, *webhookconfig -> webhooks[].clientConfig.caBundle, spec.conversion.webhook.clientConfig.caBundle) with a base64url-encoded CA signing bundle. The following example is for apiservices:
 
 ```
 $ oc get apiservice/v1.build.openshift.io -o yaml

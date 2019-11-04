@@ -61,6 +61,8 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 		newAPIServiceInjectorConfig,
 		newConfigMapInjectorConfig,
 		newCRDInjectorConfig,
+		newMutatingWebhookInjectorConfig,
+		newValidatingWebhookInjectorConfig,
 	}
 	controllerRunners := []controller.Runner{}
 	for _, configConstructor := range configConstructors {
