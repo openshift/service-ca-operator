@@ -12,6 +12,14 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/operator/util"
 )
 
+func RenewForExpiryTest(caConfig *crypto.TLSCertificateConfig) (*crypto.TLSCertificateConfig, error) {
+	// Set CA to expire outside of the 10 minute default resync
+	// interval used by library-go informer initialization to ensure
+	// operators have a chance to refresh before expiry.
+	renewedExpiry := time.Now().Add(15 * time.Minute)
+	return RenewSelfSignedCertificate(caConfig, renewedExpiry)
+}
+
 // RenewSelfSignedCertificate generates a new CA with an incremented serial number and new expiry.
 func RenewSelfSignedCertificate(caConfig *crypto.TLSCertificateConfig, expiry time.Time) (*crypto.TLSCertificateConfig, error) {
 	caCert := caConfig.Certs[0]

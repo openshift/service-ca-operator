@@ -24,6 +24,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
+	"github.com/openshift/service-ca-operator/test/util"
 )
 
 func manageControllerNS(c serviceCAOperator) (bool, error) {
@@ -140,6 +141,11 @@ func initializeSigningSecret(secret *corev1.Secret) error {
 	klog.V(4).Infof("generating signing CA: %s", name)
 
 	ca, err := crypto.MakeSelfSignedCAConfig(name, signingCertificateLifetimeInDays)
+	if err != nil {
+		return err
+	}
+
+	ca, err = util.RenewForExpiryTest(ca)
 	if err != nil {
 		return err
 	}
