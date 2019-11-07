@@ -4,7 +4,3 @@ signer:
   certFile: /var/run/secrets/signing-key/tls.crt
   keyFile: /var/run/secrets/signing-key/tls.key
 intermediateCertFile: /var/run/secrets/signing-key/intermediate-ca.crt
-authentication:
-  disabled: true
-authorization:
-  disabled: true
