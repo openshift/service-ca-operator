@@ -36,7 +36,7 @@ func caToSigningSecret(t *testing.T, caConfig *crypto.TLSCertificateConfig) (*co
 // TestMaybeRotateSigningSecret validates the rotation of a signing secret when required.
 func TestMaybeRotateSigningSecret(t *testing.T) {
 	// Create a brand new signing secret
-	newCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", signingCertificateLifetimeInDays)
+	newCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", SigningCertificateLifetimeInDays)
 	if err != nil {
 		t.Fatalf("error generating a new ca: %v", err)
 	}
@@ -47,8 +47,7 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 	recordForcedRotationReason(forceRotatedSigningSecret, "42")
 
 	// Create a secret whose CA expires sooner than the minimum required duration.
-	renewedExpiry := time.Now().Add(1 * time.Hour)
-	expiringCAConfig, err := util.RenewSelfSignedCertificate(newCAConfig, renewedExpiry)
+	expiringCAConfig, err := RenewSelfSignedCertificate(newCAConfig, 1*time.Hour, true)
 	if err != nil {
 		t.Fatalf("error renewing ca to half-expired form: %v", err)
 	}
@@ -91,16 +90,19 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 
 	for testName, tc := range testCases {
 		t.Run(testName, func(t *testing.T) {
-			var rawUnsupportedServiceCAConfig []byte
-			if len(tc.reason) > 0 || tc.rotationExpected {
-				var err error
-				rawUnsupportedServiceCAConfig, err = RawUnsupportedServiceCAConfig(true, tc.reason)
-				if err != nil {
-					t.Fatalf("failed to create raw unsupported config overrides: %v", err)
-				}
+			serviceCAConfig := unsupportedServiceCAConfig{
+				CAConfig: caConfig{
+					ValidityDurationForTesting: 0,
+				},
+				TimeBasedRotation: timeBasedRotationConfig{
+					Enabled: tc.rotationExpected,
+				},
+				ForceRotation: forceRotationConfig{
+					Reason: tc.reason,
+				},
 			}
 			secret := tc.secret.DeepCopy()
-			rotationMessage, err := maybeRotateSigningSecret(secret, tc.caCert, rawUnsupportedServiceCAConfig)
+			rotationMessage, err := maybeRotateSigningSecret(secret, tc.caCert, serviceCAConfig)
 			if err != nil {
 				t.Fatalf("error rotating signing secret: %v", err)
 			}
@@ -180,7 +182,7 @@ func TestRotateSigningCA(t *testing.T) {
 		UID:       types.UID(uuid.New().String()),
 	}
 
-	oldCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", signingCertificateLifetimeInDays)
+	oldCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", SigningCertificateLifetimeInDays)
 	if err != nil {
 		t.Fatalf("error generating a new ca: %v", err)
 	}
@@ -206,8 +208,7 @@ func TestRotateSigningCA(t *testing.T) {
 	// Simulate time-based rotation by renewing the current ca with an expiry that
 	// is sooner than the minimum duration. This mirrors e2e testing to reduce the
 	// cost of test maintenance.
-	renewedExpiry := time.Now().Add(1 * time.Hour)
-	renewedCAConfig, err := util.RenewSelfSignedCertificate(oldCAConfig, renewedExpiry)
+	renewedCAConfig, err := RenewSelfSignedCertificate(oldCAConfig, 1*time.Hour, true)
 	if err != nil {
 		t.Fatalf("error renewing ca to half-expired form: %v", err)
 	}
@@ -242,7 +243,7 @@ func TestRotateSigningCA(t *testing.T) {
 
 	// Check that trust for the old CA was extended past its renewed expiry (which
 	// did not ensure the minimum trust duration).
-	if !newSigningCA.oldCAExpiry.After(renewedExpiry) {
+	if !newSigningCA.oldCAExpiry.After(renewedCAConfig.Certs[0].NotAfter) {
 		t.Fatalf("Trust for the old CA was not extended from the renewed expiry")
 	}
 

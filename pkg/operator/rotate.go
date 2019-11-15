@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	signingCertificateLifetimeInDays = 365 // 1 year
+	SigningCertificateLifetimeInDays = 365 // 1 year
 
 	// The minimum duration that a CA should be trusted is approximately half
 	// the default signing certificate lifetime. If a signing CA is valid for
@@ -63,12 +63,7 @@ func (ca *signingCA) updateSigningSecret(secret *corev1.Secret) error {
 // non-empty rotation message will be returned.  Rotation will not be performed if the
 // current CA is not more than half-way expired or if a forced rotation was not
 // requested, and in this case an empty rotation message will be returned.
-func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certificate, rawUnsupportedServiceCAConfig []byte) (string, error) {
-	serviceCAConfig, err := loadUnsupportedServiceCAConfig(rawUnsupportedServiceCAConfig)
-	if err != nil {
-		return "", fmt.Errorf("failed to load unsupportedConfigOverrides: %v", err)
-	}
-
+func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certificate, serviceCAConfig unsupportedServiceCAConfig) (string, error) {
 	reason := serviceCAConfig.ForceRotation.Reason
 	forcedRotation := forcedRotationRequired(secret, reason)
 
@@ -108,6 +103,12 @@ func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certifi
 		return "", err
 	}
 
+	// Set a custom expiry for testing if one was provided
+	signingCA.config, err = maybeUpdateExpiry(signingCA.config, serviceCAConfig.CAConfig.ValidityDurationForTesting)
+	if err != nil {
+		return "", fmt.Errorf("failed to renew ca for custom duration: %v", err)
+	}
+
 	err = signingCA.updateSigningSecret(secret)
 	if err != nil {
 		return "", err
@@ -123,7 +124,7 @@ func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certifi
 // trusted by both refreshed and unrefreshed consumers.
 func rotateSigningCA(currentCACert *x509.Certificate, currentKey *rsa.PrivateKey) (*signingCA, error) {
 	// Generate a new signing cert
-	newCAConfig, err := crypto.MakeSelfSignedCAConfigForSubject(currentCACert.Subject, signingCertificateLifetimeInDays)
+	newCAConfig, err := crypto.MakeSelfSignedCAConfigForSubject(currentCACert.Subject, SigningCertificateLifetimeInDays)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +176,7 @@ func createIntermediateCACert(targetCACert, signingCACert *x509.Certificate, sig
 	// Copy the target cert to allow modification.
 	template, err := x509.ParseCertificate(targetCACert.Raw)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to copy ca certificate: %v", err)
+		return nil, fmt.Errorf("failed to copy ca certificate: %v", err)
 	}
 	// Enable key identity chaining
 	template.AuthorityKeyId = signingCACert.SubjectKeyId

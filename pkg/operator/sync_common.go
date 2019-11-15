@@ -106,14 +106,20 @@ func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Reco
 		}
 	}
 
+	serviceCAConfig, err := loadUnsupportedServiceCAConfig(rawUnsupportedServiceCAConfig)
+	if err != nil {
+		return false, fmt.Errorf("failed to load unsupportedConfigOverrides: %v", err)
+	}
+
 	rotationMsg := ""
 	if existingCert == nil {
 		// Secret does not exist or lacks the expected cert.
-		if err := initializeSigningSecret(secret); err != nil {
+		validityDuration := serviceCAConfig.CAConfig.ValidityDurationForTesting
+		if err := initializeSigningSecret(secret, validityDuration); err != nil {
 			return false, err
 		}
 	} else {
-		rotationMsg, err = maybeRotateSigningSecret(existing, existingCert, rawUnsupportedServiceCAConfig)
+		rotationMsg, err = maybeRotateSigningSecret(existing, existingCert, serviceCAConfig)
 		if err != nil {
 			return false, fmt.Errorf("failed to rotate signing CA: %v", err)
 		}
@@ -134,14 +140,22 @@ func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Reco
 }
 
 // initializeSigningSecret updates the provided secret with the
-// PEM-encoded certificate and private key of a new self-signed CA.
-func initializeSigningSecret(secret *corev1.Secret) error {
+// PEM-encoded certificate and private key of a new self-signed
+// CA. The duration, if non-zero, will be used to set the
+// expiry of the CA.
+func initializeSigningSecret(secret *corev1.Secret, duration time.Duration) error {
 	name := serviceServingCertSignerName()
 	klog.V(4).Infof("generating signing CA: %s", name)
 
-	ca, err := crypto.MakeSelfSignedCAConfig(name, signingCertificateLifetimeInDays)
+	ca, err := crypto.MakeSelfSignedCAConfig(name, SigningCertificateLifetimeInDays)
 	if err != nil {
 		return err
+	}
+
+	// Set a custom expiry if one was provided
+	ca, err = maybeUpdateExpiry(ca, duration)
+	if err != nil {
+		return fmt.Errorf("Error renewing ca for custom duration: %v", err)
 	}
 
 	certBuff := &bytes.Buffer{}
