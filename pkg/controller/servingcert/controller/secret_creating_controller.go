@@ -333,17 +333,14 @@ func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.C
 	if err != nil {
 		return nil, err
 	}
-	if len(servingCert.Certs) > 1 {
-		// Only include the generated cert. The issuing cert will be provided to
-		// clients via the ca bundle.
-		servingCert.Certs = servingCert.Certs[:1]
-	}
+
 	// Including the intermediate cert will ensure that clients with a
 	// stale ca bundle (containing the previous CA but not the current
 	// one) will be able to trust the serving cert.
 	if intermediateCACert != nil {
 		servingCert.Certs = append(servingCert.Certs, intermediateCACert)
 	}
+
 	return servingCert, nil
 }
 
