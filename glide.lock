@@ -1,5 +1,5 @@
 hash: e905734cf69676fd784f44afcec2695c6af11719edfdba852cc656399b4e6c81
-updated: 2019-11-01T09:25:39.534211343-07:00
+updated: 2019-11-20T15:38:01.28670074-08:00
 imports:
 - name: github.com/beorn7/perks
   version: 3a771d992973f24aa725d07868b467d1ddfceafb
@@ -133,7 +133,7 @@ imports:
 - name: github.com/NYTimes/gziphandler
   version: 56545f4a5d46df9a6648819d1664c3a03a13ffdb
 - name: github.com/openshift/api
-  version: 86cb5b750830da685a27b7e983971270c9c6f5f6
+  version: 082f8e2a947ea8b4ed15c9c0f7b190d1fd35e6bc
   subpackages:
   - apps
   - apps/v1
@@ -168,6 +168,8 @@ imports:
   - quota/v1
   - route
   - route/v1
+  - samples
+  - samples/v1
   - security
   - security/v1
   - servicecertsigner
@@ -199,7 +201,7 @@ imports:
   - operator/listers/operator/v1
   - operator/listers/operator/v1alpha1
 - name: github.com/openshift/library-go
-  version: e7c97b468b83fd8c8f27aded2562792450cccbef
+  version: 4e2c7112d2520e84fea5934365aee8bf2e00ca55
   subpackages:
   - pkg/config/client
   - pkg/config/clusteroperator/v1helpers
@@ -213,6 +215,7 @@ imports:
   - pkg/crypto
   - pkg/operator/condition
   - pkg/operator/events
+  - pkg/operator/loglevel
   - pkg/operator/management
   - pkg/operator/resource/resourceapply
   - pkg/operator/resource/resourcemerge
@@ -224,7 +227,7 @@ imports:
 - name: github.com/pborman/uuid
   version: 8b1b92947f46224e3b97bb1a3a5b0382be00d31e
 - name: github.com/pkg/profile
-  version: f6fe06335df110bcf1ed6d4e852b760bfc15beee
+  version: e6812cd8b6726b9ddb25bd23b39e6f711ff5840b
 - name: github.com/prometheus/client_golang
   version: 505eaef017263e299324067d40ca2c48f6a2cf50
   subpackages:
