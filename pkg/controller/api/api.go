@@ -39,6 +39,14 @@ func HasInjectCABundleAnnotationUpdate(old, cur v1.Object) bool {
 
 // Annotations on service
 const (
+	// TODO(marun) When adding a GA serving cert annotation, consider
+	// discontinuing the practice of including the issuing cert with the serving
+	// cert. This behavior was accidental (at some point the issuing CA was an
+	// intermediate rather than the current self-signed root) but had to be
+	// maintained to support legacy clients that ended up reusing the serving cert
+	// as a CA bundle. Clients of a GA annotation should be expected to use a
+	// proper CA bundle.
+
 	// ServingCertSecretAnnotation stores the name of the secret to generate into.
 	ServingCertSecretAnnotation      = "service.beta.openshift.io/serving-cert-secret-name"
 	AlphaServingCertSecretAnnotation = "service.alpha.openshift.io/serving-cert-secret-name"
