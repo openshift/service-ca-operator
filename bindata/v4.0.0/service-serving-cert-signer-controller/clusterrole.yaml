@@ -24,3 +24,13 @@ rules:
   - watch
   - update
   - patch
+- apiGroups:
+  - ""
+  resourceNames:
+  - extension-apiserver-authentication
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch

@@ -89,6 +89,16 @@ rules:
   - watch
   - update
   - patch
+- apiGroups:
+  - ""
+  resourceNames:
+  - extension-apiserver-authentication
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
 `)
 
 func v400ApiserviceCabundleControllerClusterroleYamlBytes() ([]byte, error) {
@@ -779,6 +789,16 @@ rules:
   - watch
   - update
   - patch
+- apiGroups:
+  - ""
+  resourceNames:
+  - extension-apiserver-authentication
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
 `)
 
 func v400ServiceServingCertSignerControllerClusterroleYamlBytes() ([]byte, error) {
