@@ -398,6 +398,11 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 		Key:   currentCAKey,
 	}
 
+	// Enable time-based rotation by updating the operator config.
+	timeBasedRotationEnabled := true
+	forceRotationReason := ""
+	setUnsupportedServiceCAConfig(t, config, timeBasedRotationEnabled, forceRotationReason)
+
 	// Trigger rotation by renewing the current ca with an expiry that
 	// is sooner than the minimum required duration.
 	renewedExpiry := time.Now().Add(1 * time.Hour)
@@ -442,7 +447,13 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 	caCertPEM := secret.Data[v1.TLSCertKey]
 	caKeyPEM := secret.Data[v1.TLSPrivateKeyKey]
 
-	// Trigger a forced rotation by updating the operator config
+	// Trigger a forced rotation by updating the operator config with a reason.
+	setUnsupportedServiceCAConfig(t, config, false, "42")
+
+	pollForCARotation(t, client, caCertPEM, caKeyPEM)
+}
+
+func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, timeBasedRotationEnabled bool, forceRotationReason string) {
 	operatorClient, err := operatorv1client.NewForConfig(config)
 	if err != nil {
 		t.Fatalf("error creating operator client: %v", err)
@@ -451,7 +462,7 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 	if err != nil {
 		t.Fatalf("error retrieving operator config: %v", err)
 	}
-	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig("42")
+	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(timeBasedRotationEnabled, forceRotationReason)
 	if err != nil {
 		t.Fatalf("failed to create raw unsupported config overrides: %v", err)
 	}
@@ -460,8 +471,6 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 	if err != nil {
 		t.Fatalf("error updating operator config: %v", err)
 	}
-
-	pollForCARotation(t, client, caCertPEM, caKeyPEM)
 }
 
 // pollForCARotation polls for the signing secret to be changed in
@@ -815,7 +824,7 @@ func TestE2E(t *testing.T) {
 	// validates that both refreshed and unrefreshed clients and
 	// servers can continue to communicate in a trusted fashion.
 	t.Run("time-based-ca-rotation", func(t *testing.T) {
-		checkCARotation(t, adminClient, nil, triggerTimeBasedRotation)
+		checkCARotation(t, adminClient, adminConfig, triggerTimeBasedRotation)
 	})
 
 	// This test triggers rotation by updating the operator
