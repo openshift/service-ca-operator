@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/cert"
 
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	"github.com/openshift/library-go/pkg/crypto"
@@ -401,12 +402,11 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 	// Enable time-based rotation by updating the operator config.
 	timeBasedRotationEnabled := true
 	forceRotationReason := ""
-	setUnsupportedServiceCAConfig(t, config, timeBasedRotationEnabled, forceRotationReason)
+	setUnsupportedServiceCAConfig(t, config, timeBasedRotationEnabled, forceRotationReason, 0)
 
 	// Trigger rotation by renewing the current ca with an expiry that
 	// is sooner than the minimum required duration.
-	renewedExpiry := time.Now().Add(1 * time.Hour)
-	renewedCAConfig, err := util.RenewSelfSignedCertificate(currentCAConfig, renewedExpiry)
+	renewedCAConfig, err := operator.RenewSelfSignedCertificate(currentCAConfig, 1*time.Hour, true)
 	if err != nil {
 		t.Fatalf("error renewing ca to half-expired form: %v", err)
 	}
@@ -432,7 +432,7 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 		t.Fatalf("error updating secret with test CA: %v", err)
 	}
 
-	pollForCARotation(t, client, renewedCACertPEM, renewedCAKeyPEM)
+	_ = pollForCARotation(t, client, renewedCACertPEM, renewedCAKeyPEM)
 }
 
 // triggerForcedRotation forces the rotation of the current CA via the
@@ -447,13 +447,29 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 	caCertPEM := secret.Data[v1.TLSCertKey]
 	caKeyPEM := secret.Data[v1.TLSPrivateKeyKey]
 
-	// Trigger a forced rotation by updating the operator config with a reason.
-	setUnsupportedServiceCAConfig(t, config, false, "42")
+	// Set a custom validity duration longer than the default to
+	// validate that a custom expiry on rotation is possible.
+	defaultDuration := operator.SigningCertificateLifetimeInDays * time.Hour * 24
+	customDuration := defaultDuration + 1*time.Hour
 
-	pollForCARotation(t, client, caCertPEM, caKeyPEM)
+	// Trigger a forced rotation by updating the operator config
+	// with a reason.
+	setUnsupportedServiceCAConfig(t, config, false, "42", customDuration)
+
+	signingSecret := pollForCARotation(t, client, caCertPEM, caKeyPEM)
+
+	// Check that the expiry of the new CA is longer than the default
+	rawCert := signingSecret.Data[v1.TLSCertKey]
+	certs, err := cert.ParseCertsPEM(rawCert)
+	if err != nil {
+		t.Fatalf("Failed to parse signing secret cert: %v", err)
+	}
+	if !certs[0].NotAfter.After(time.Now().Add(defaultDuration)) {
+		t.Fatalf("Custom validity duration was not used to generate the new CA")
+	}
 }
 
-func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, timeBasedRotationEnabled bool, forceRotationReason string) {
+func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, timeBasedRotationEnabled bool, forceRotationReason string, validityDuration time.Duration) {
 	operatorClient, err := operatorv1client.NewForConfig(config)
 	if err != nil {
 		t.Fatalf("error creating operator client: %v", err)
@@ -462,7 +478,7 @@ func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, timeBasedR
 	if err != nil {
 		t.Fatalf("error retrieving operator config: %v", err)
 	}
-	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(timeBasedRotationEnabled, forceRotationReason)
+	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(timeBasedRotationEnabled, forceRotationReason, validityDuration)
 	if err != nil {
 		t.Fatalf("failed to create raw unsupported config overrides: %v", err)
 	}
@@ -475,8 +491,8 @@ func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, timeBasedR
 
 // pollForCARotation polls for the signing secret to be changed in
 // response to CA rotation.
-func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, caKeyPEM []byte) {
-	_, err := pollForUpdatedSecret(t, client, serviceCAControllerNamespace, signingKeySecretName, pollTimeout, map[string][]byte{
+func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, caKeyPEM []byte) *v1.Secret {
+	secret, err := pollForUpdatedSecret(t, client, serviceCAControllerNamespace, signingKeySecretName, pollTimeout, map[string][]byte{
 		v1.TLSCertKey:           caCertPEM,
 		v1.TLSPrivateKeyKey:     caKeyPEM,
 		api.BundleDataKey:       nil,
@@ -485,6 +501,7 @@ func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, ca
 	if err != nil {
 		t.Fatalf("error waiting for CA rotation: %v", err)
 	}
+	return secret
 }
 
 // pollForUpdatedServingCert returns the cert and key PEM if it changes from

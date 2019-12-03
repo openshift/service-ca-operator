@@ -5,39 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"math/big"
-	"time"
-
-	"github.com/openshift/library-go/pkg/crypto"
-	"github.com/openshift/service-ca-operator/pkg/operator/util"
 )
-
-// RenewSelfSignedCertificate generates a new CA with an incremented serial number and new expiry.
-func RenewSelfSignedCertificate(caConfig *crypto.TLSCertificateConfig, expiry time.Time) (*crypto.TLSCertificateConfig, error) {
-	caCert := caConfig.Certs[0]
-
-	// Copy the ca cert to avoid modifying the one provided
-	template, err := x509.ParseCertificate(caCert.Raw)
-	if err != nil {
-		return nil, fmt.Errorf("failed to copy ca certificate: %v", err)
-	}
-
-	// Increment the serial
-	template.SerialNumber = template.SerialNumber.Add(template.SerialNumber, big.NewInt(1))
-
-	// Update the expiry
-	template.NotAfter = expiry
-
-	renewedCACert, err := util.CreateCertificate(template, template, caCert.PublicKey, caConfig.Key)
-	if err != nil {
-		return nil, fmt.Errorf("error creating ca certificate: %v", err)
-	}
-
-	return &crypto.TLSCertificateConfig{
-		Certs: []*x509.Certificate{renewedCACert},
-		Key:   caConfig.Key,
-	}, nil
-}
 
 // PemToKey creates an rsa.PrivateKey from a PEM-ecoded byte array.
 func PemToKey(keyPEM []byte) (*rsa.PrivateKey, error) {
