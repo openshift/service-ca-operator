@@ -7,30 +7,18 @@ import (
 	"io/ioutil"
 	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
-	scsv1alpha1 "github.com/openshift/api/servicecertsigner/v1alpha1"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/service-ca-operator/pkg/controller/configmapcainjector/controller"
 )
 
 func StartConfigMapCABundleInjector(ctx *controllercmd.ControllerContext) error {
-	config := &scsv1alpha1.ConfigMapCABundleInjectorConfig{}
-	if ctx.ComponentConfig != nil {
-		// make a copy we can mutate
-		configCopy := ctx.ComponentConfig.DeepCopy()
-		// force the config to our version to read it
-		configCopy.SetGroupVersionKind(scsv1alpha1.GroupVersion.WithKind("ConfigMapCABundleInjectorConfig"))
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(configCopy.Object, config); err != nil {
-			return err
-		}
-	}
-	if len(config.CABundleFile) == 0 {
-		return fmt.Errorf("no ca bundle provided")
-	}
-	ca, err := ioutil.ReadFile(config.CABundleFile)
+	// TODO(marun) Allow this value to be supplied via argument
+	caBundleFile := "/var/run/configmaps/signing-cabundle/ca-bundle.crt"
+
+	ca, err := ioutil.ReadFile(caBundleFile)
 	if err != nil {
 		return err
 	}
