@@ -56,11 +56,13 @@ func StartConfigMapCABundleInjector(ctx *controllercmd.ControllerContext) error 
 		caBundle,
 	)
 
-	kubeInformers.Start(ctx.Done())
+	stopChan := ctx.Ctx.Done()
 
-	go configMapInjectorController.Run(5, ctx.Done())
+	kubeInformers.Start(stopChan)
 
-	<-ctx.Done()
+	go configMapInjectorController.Run(5, stopChan)
+
+	<-stopChan
 
 	return fmt.Errorf("stopped")
 }

@@ -48,11 +48,13 @@ func StartAPIServiceCABundleInjector(ctx *controllercmd.ControllerContext) error
 		caBundleContent,
 	)
 
-	apiServiceInformers.Start(ctx.Done())
+	stopChan := ctx.Ctx.Done()
 
-	go servingCertUpdateController.Run(5, ctx.Done())
+	apiServiceInformers.Start(stopChan)
 
-	<-ctx.Done()
+	go servingCertUpdateController.Run(5, stopChan)
+
+	<-stopChan
 
 	return fmt.Errorf("stopped")
 }

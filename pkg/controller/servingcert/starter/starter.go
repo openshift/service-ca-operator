@@ -72,12 +72,14 @@ func StartServiceServingCertSigner(ctx *controllercmd.ControllerContext) error {
 		"cluster.local",
 	)
 
-	kubeInformers.Start(ctx.Done())
+	stopChan := ctx.Ctx.Done()
 
-	go servingCertController.Run(5, ctx.Done())
-	go servingCertUpdateController.Run(5, ctx.Done())
+	kubeInformers.Start(stopChan)
 
-	<-ctx.Done()
+	go servingCertController.Run(5, stopChan)
+	go servingCertUpdateController.Run(5, stopChan)
+
+	<-stopChan
 
 	return fmt.Errorf("stopped")
 }
