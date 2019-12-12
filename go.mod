@@ -15,9 +15,9 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.9.0 // indirect
 	github.com/jteeuwen/go-bindata v3.0.8-0.20151023091102-a0ff2567cfb7+incompatible
-	github.com/openshift/api v0.0.0-20191119170142-082f8e2a947e
+	github.com/openshift/api v3.9.1-0.20191212095247-c1898f32de35+incompatible
 	github.com/openshift/client-go v0.0.0-20191022152013-2823239d2298
-	github.com/openshift/library-go v0.0.0-20191118102510-4e2c7112d252
+	github.com/openshift/library-go v0.0.0-20191212105739-f0b30dbbc337
 	github.com/pkg/profile v0.0.0-20191120004908-e6812cd8b672 // indirect
 	github.com/prometheus/client_golang v0.9.3
 	github.com/soheilhy/cmux v0.1.4 // indirect
