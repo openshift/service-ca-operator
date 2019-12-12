@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
 
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
@@ -30,11 +33,7 @@ const (
 	operatorVersionEnvName = "OPERATOR_IMAGE_VERSION"
 )
 
-var targetDeploymentNames = sets.NewString(
-	api.SignerControllerDeploymentName,
-	api.APIServiceInjectorDeploymentName,
-	api.ConfigMapInjectorDeploymentName,
-)
+var targetDeploymentNames = sets.NewString(api.ServiceCADeploymentName)
 
 func RunOperator(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
 
@@ -116,6 +115,31 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	configInformers.Start(stopChan)
 	kubeInformersNamespaced.Start(stopChan)
 	kubeInformersForNamespaces.Start(stopChan)
+
+	// Poll every minute to ensure removal of 4.3 deployments that were replaced in 4.4
+	// with a unified deployment.
+	//
+	// This code can be removed in 4.5 since downgrade to 4.3 will no longer be possible.
+	deployClient := kubeClient.AppsV1().Deployments(operatorclient.TargetNamespace)
+	go wait.Until(func() {
+		// List rather than blindly deleting so that there are max 1 request/minute
+		// instead of 3 (one for each 4.3 deployment).
+		deploys, err := deployClient.List(metav1.ListOptions{})
+		if err != nil {
+			klog.Warningf("Failed to list deployments when searching for 4.3 deployments to remove: %v", err)
+		}
+		if deploys == nil {
+			return
+		}
+		for _, deploy := range deploys.Items {
+			if api.IndependentDeploymentNames.Has(deploy.Name) {
+				err := deployClient.Delete(deploy.Name, &metav1.DeleteOptions{})
+				if err != nil {
+					klog.Warningf("Failed to delete 4.3 deployment: %v", err)
+				}
+			}
+		}
+	}, 1*time.Minute, ctx.Done())
 
 	go operator.Run(stopChan)
 	go clusterOperatorStatus.Run(ctx, 1)

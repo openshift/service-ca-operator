@@ -1,15 +1,39 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: system:openshift:controller:apiservice-cabundle-injector
-  namespace: openshift-service-ca
+  name: system:openshift:controller:service-ca
 rules:
 - apiGroups:
   - ""
   resources:
-  - events
+  - secrets
   verbs:
+  - get
+  - list
+  - watch
   - create
+  - update
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - apiregistration.k8s.io
+  resources:
+  - apiservices
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
 - apiGroups:
   - ""
   resources:
@@ -19,21 +43,3 @@ rules:
   - list
   - watch
   - update
-  - create
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - "apps"
-  resources:
-  - replicasets
-  - deployments
-  verbs:
-  - get
-  - list
-  - watch

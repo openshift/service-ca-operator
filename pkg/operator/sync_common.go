@@ -27,24 +27,14 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
 
+const resourcePath = "v4.0.0/controller/"
+
 func manageControllerNS(c serviceCAOperator) (bool, error) {
-	_, modified, err := resourceapply.ApplyNamespace(c.corev1Client, c.eventRecorder, resourceread.ReadNamespaceV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/ns.yaml")))
+	_, modified, err := resourceapply.ApplyNamespace(c.corev1Client, c.eventRecorder, resourceread.ReadNamespaceV1OrDie(v4_00_assets.MustAsset(resourcePath+"ns.yaml")))
 	return modified, err
 }
 
-func manageSignerControllerResources(c serviceCAOperator, modified *bool) error {
-	return manageControllerResources(c, "v4.0.0/service-serving-cert-signer-controller/", modified)
-}
-
-func manageAPIServiceControllerResources(c serviceCAOperator, modified *bool) error {
-	return manageControllerResources(c, "v4.0.0/apiservice-cabundle-controller/", modified)
-}
-
-func manageConfigMapCABundleControllerResources(c serviceCAOperator, modified *bool) error {
-	return manageControllerResources(c, "v4.0.0/configmap-cabundle-controller/", modified)
-}
-
-func manageControllerResources(c serviceCAOperator, resourcePath string, modified *bool) error {
+func manageControllerResources(c serviceCAOperator, modified *bool) error {
 	var err error
 	requiredClusterRole := resourceread.ReadClusterRoleV1OrDie(v4_00_assets.MustAsset(resourcePath + "clusterrole.yaml"))
 	_, mod, err := resourceapply.ApplyClusterRole(c.rbacv1Client, c.eventRecorder, requiredClusterRole)
@@ -85,7 +75,7 @@ func manageControllerResources(c serviceCAOperator, resourcePath string, modifie
 }
 
 func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Recorder, rawUnsupportedServiceCAConfig []byte) (bool, error) {
-	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml"))
+	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset(resourcePath + "signing-secret.yaml"))
 
 	var existingCert *x509.Certificate
 	existing, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
@@ -173,7 +163,7 @@ func initializeSigningSecret(secret *corev1.Secret, duration time.Duration) erro
 }
 
 func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder events.Recorder, forceUpdate bool) (bool, error) {
-	configMap := resourceread.ReadConfigMapV1OrDie(v4_00_assets.MustAsset("v4.0.0/apiservice-cabundle-controller/signing-cabundle.yaml"))
+	configMap := resourceread.ReadConfigMapV1OrDie(v4_00_assets.MustAsset(resourcePath + "signing-cabundle.yaml"))
 	if !forceUpdate {
 		// We don't need to force an update; return if the configmap already exists (or error getting).
 		_, err := client.ConfigMaps(configMap.Namespace).Get(configMap.Name, metav1.GetOptions{})
@@ -183,7 +173,7 @@ func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder eve
 	}
 
 	klog.V(4).Infof("updating CA bundle configmap")
-	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/signing-secret.yaml"))
+	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset(resourcePath + "signing-secret.yaml"))
 	currentSigningKeySecret, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
 	// Return err or if the signing secret has no data (should not normally happen).
 	if err != nil || len(currentSigningKeySecret.Data[corev1.TLSCertKey]) == 0 {
@@ -201,19 +191,7 @@ func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder eve
 	return mod, err
 }
 
-func manageSignerControllerDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
-	return manageDeployment(client, eventRecorder, options, "v4.0.0/service-serving-cert-signer-controller/", forceDeployment)
-}
-
-func manageAPIServiceControllerDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
-	return manageDeployment(client, eventRecorder, options, "v4.0.0/apiservice-cabundle-controller/", forceDeployment)
-}
-
-func manageConfigMapCABundleControllerDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
-	return manageDeployment(client, eventRecorder, options, "v4.0.0/configmap-cabundle-controller/", forceDeployment)
-}
-
-func manageDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, resourcePath string, forceDeployment bool) (bool, error) {
+func manageDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
 	required := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset(resourcePath + "deployment.yaml"))
 	required.Spec.Template.Spec.Containers[0].Image = os.Getenv("CONTROLLER_IMAGE")
 	required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, fmt.Sprintf("-v=%d", loglevel.LogLevelToKlog(options.Spec.LogLevel)))
@@ -235,15 +213,45 @@ func serviceServingCertSignerName() string {
 func cleanupDeprecatedResources(c serviceCAOperator) error {
 	klog.V(4).Infof("attempting removal of deprecated resources in namespace %q", operatorclient.TargetNamespace)
 
-	// Configmaps are no longer used to configure the controllers
-	namespace := operatorclient.TargetNamespace
-	configMapNames := []string{
-		"service-serving-cert-signer-config",
-		"apiservice-cabundle-injector-config",
-		"configmap-cabundle-injector-config",
+	// Service CA controllers are deployed together in 4.4, so the
+	// resources required by 4.3 deployments can be removed.
+	for _, name := range api.IndependentDeploymentNames.List() {
+		err := cleanupDeprecatedController(c, name)
+		if err != nil {
+			return err
+		}
 	}
-	for _, configMapName := range configMapNames {
-		err := c.corev1Client.ConfigMaps(namespace).Delete(configMapName, &metav1.DeleteOptions{})
+
+	return nil
+}
+
+// cleanupDeprecatedController removes resources associated with the
+// deprecated configuration of individually-deployed service ca controllers.
+func cleanupDeprecatedController(c serviceCAOperator, controllerName string) error {
+	namespace := operatorclient.TargetNamespace
+	configName := fmt.Sprintf("%s-config", controllerName)
+	lockName := fmt.Sprintf("%s-lock", controllerName)
+	saName := fmt.Sprintf("%s-sa", controllerName)
+	roleAndBindingName := fmt.Sprintf("system:openshift:controller:%s", controllerName)
+	delOpts := &metav1.DeleteOptions{}
+	deletionFuncs := []func() error{
+		// Delete ClusterRole system:openshift:controller:{controller name}
+		func() error { return c.rbacv1Client.ClusterRoles().Delete(roleAndBindingName, delOpts) },
+		// Delete ClusterRoleBinding system:openshift:controller:{controller name}
+		func() error { return c.rbacv1Client.ClusterRoleBindings().Delete(roleAndBindingName, delOpts) },
+		// Delete ConfigMap openshift-service-ca/{controller name}-config
+		func() error { return c.corev1Client.ConfigMaps(namespace).Delete(configName, delOpts) },
+		// Delete ConfigMap openshift-service-ca/{controller name}-lock
+		func() error { return c.corev1Client.ConfigMaps(namespace).Delete(lockName, delOpts) },
+		// Delete Role openshift-service-ca/system:openshift:controller:{controller name}
+		func() error { return c.rbacv1Client.Roles(namespace).Delete(roleAndBindingName, delOpts) },
+		// Delete RoleBinding openshift-service-ca/system:openshift:controller:{controller name}
+		func() error { return c.rbacv1Client.RoleBindings(namespace).Delete(roleAndBindingName, delOpts) },
+		// Delete ServiceAccount openshift-service-ca/{controller name}-sa
+		func() error { return c.corev1Client.ServiceAccounts(namespace).Delete(saName, delOpts) },
+	}
+	for _, deletionFunc := range deletionFuncs {
+		err := deletionFunc()
 		if err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}

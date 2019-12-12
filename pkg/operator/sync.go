@@ -36,21 +36,19 @@ func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) 
 		return err
 	}
 
+	// Remove resources related to 4.3 deployments at most once. These resources don't
+	// constitute an operational concern, so it is not necessarily to monitor for their
+	// presence.
+	//
+	// The 4.3 deployments do have an operational impact, and are continually monitored
+	// for removal via a goroutine in RunOperator.
+	//
+	// This code can be removed in 4.5 since downgrade to 4.3 will no longer be possible.
 	if err := once.Do(func() error { return cleanupDeprecatedResources(c) }); err != nil {
 		return err
 	}
 
-	err = manageSignerControllerResources(c, &needsDeploy)
-	if err != nil {
-		return err
-	}
-
-	err = manageAPIServiceControllerResources(c, &needsDeploy)
-	if err != nil {
-		return err
-	}
-
-	err = manageConfigMapCABundleControllerResources(c, &needsDeploy)
+	err = manageControllerResources(c, &needsDeploy)
 	if err != nil {
 		return err
 	}
@@ -66,20 +64,8 @@ func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) 
 		return err
 	}
 
-	// Sync the signing controller.
-	_, err = manageSignerControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified)
-	if err != nil {
-		return err
-	}
-
-	// Sync the API service controller.
-	_, err = manageAPIServiceControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified)
-	if err != nil {
-		return err
-	}
-
-	// Sync the API service controller.
-	_, err = manageConfigMapCABundleControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified)
+	// Sync the controller.
+	_, err = manageDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified)
 	if err != nil {
 		return err
 	}

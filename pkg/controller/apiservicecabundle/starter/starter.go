@@ -2,7 +2,6 @@ package starter
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"time"
 
@@ -40,7 +39,5 @@ func StartAPIServiceCABundleInjector(ctx context.Context, controllerContext *con
 
 	go servingCertUpdateController.Run(5, stopChan)
 
-	<-stopChan
-
-	return fmt.Errorf("stopped")
+	return nil
 }
