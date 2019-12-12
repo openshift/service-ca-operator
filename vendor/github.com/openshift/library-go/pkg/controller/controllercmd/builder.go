@@ -47,12 +47,7 @@ type ControllerContext struct {
 	// Server is the GenericAPIServer serving healthz checks and debug info
 	Server *genericapiserver.GenericAPIServer
 
-	stopChan <-chan struct{}
-}
-
-// Done returns a channel which will close on termination.
-func (c ControllerContext) Done() <-chan struct{} {
-	return c.stopChan
+	Ctx context.Context
 }
 
 // defaultObserverInterval specifies the default interval that file observer will do rehash the files it watches and react to any changes
@@ -227,7 +222,7 @@ func (b *ControllerBuilder) Run(config *unstructured.Unstructured, ctx context.C
 		ProtoKubeConfig: protoConfig,
 		EventRecorder:   eventRecorder,
 		Server:          server,
-		stopChan:        ctx.Done(),
+		Ctx:             ctx,
 	}
 
 	if b.leaderElection == nil {
@@ -237,13 +232,17 @@ func (b *ControllerBuilder) Run(config *unstructured.Unstructured, ctx context.C
 		return fmt.Errorf("exited")
 	}
 
-	leaderElection, err := leaderelectionconverter.ToConfigMapLeaderElection(clientConfig, *b.leaderElection, b.componentName, b.instanceIdentity)
+	// ensure blocking TCP connections don't block the leader election
+	leaderConfig := rest.CopyConfig(clientConfig)
+	leaderConfig.Timeout = b.leaderElection.RenewDeadline.Duration
+
+	leaderElection, err := leaderelectionconverter.ToConfigMapLeaderElection(leaderConfig, *b.leaderElection, b.componentName, b.instanceIdentity)
 	if err != nil {
 		return err
 	}
 
 	leaderElection.Callbacks.OnStartedLeading = func(ctx context.Context) {
-		controllerContext.stopChan = ctx.Done()
+		controllerContext.Ctx = ctx
 		if err := b.startFunc(controllerContext); err != nil {
 			klog.Fatal(err)
 		}
