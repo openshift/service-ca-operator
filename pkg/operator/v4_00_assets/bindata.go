@@ -2,8 +2,6 @@
 // sources:
 // bindata/v4.0.0/apiservice-cabundle-controller/clusterrole.yaml
 // bindata/v4.0.0/apiservice-cabundle-controller/clusterrolebinding.yaml
-// bindata/v4.0.0/apiservice-cabundle-controller/cm.yaml
-// bindata/v4.0.0/apiservice-cabundle-controller/defaultconfig.yaml
 // bindata/v4.0.0/apiservice-cabundle-controller/deployment.yaml
 // bindata/v4.0.0/apiservice-cabundle-controller/ns.yaml
 // bindata/v4.0.0/apiservice-cabundle-controller/role.yaml
@@ -12,8 +10,6 @@
 // bindata/v4.0.0/apiservice-cabundle-controller/signing-cabundle.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/clusterrole.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/clusterrolebinding.yaml
-// bindata/v4.0.0/configmap-cabundle-controller/cm.yaml
-// bindata/v4.0.0/configmap-cabundle-controller/defaultconfig.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/deployment.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/ns.yaml
 // bindata/v4.0.0/configmap-cabundle-controller/role.yaml
@@ -22,8 +18,6 @@
 // bindata/v4.0.0/configmap-cabundle-controller/signing-cabundle.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/clusterrole.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/clusterrolebinding.yaml
-// bindata/v4.0.0/service-serving-cert-signer-controller/cm.yaml
-// bindata/v4.0.0/service-serving-cert-signer-controller/defaultconfig.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/deployment.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/ns.yaml
 // bindata/v4.0.0/service-serving-cert-signer-controller/role.yaml
@@ -144,50 +138,6 @@ func v400ApiserviceCabundleControllerClusterrolebindingYaml() (*asset, error) {
 	return a, nil
 }
 
-var _v400ApiserviceCabundleControllerCmYaml = []byte(`apiVersion: v1
-kind: ConfigMap
-metadata:
-  namespace: openshift-service-ca
-  name: apiservice-cabundle-injector-config
-data:
-  controller-config.yaml:
-`)
-
-func v400ApiserviceCabundleControllerCmYamlBytes() ([]byte, error) {
-	return _v400ApiserviceCabundleControllerCmYaml, nil
-}
-
-func v400ApiserviceCabundleControllerCmYaml() (*asset, error) {
-	bytes, err := v400ApiserviceCabundleControllerCmYamlBytes()
-	if err != nil {
-		return nil, err
-	}
-
-	info := bindataFileInfo{name: "v4.0.0/apiservice-cabundle-controller/cm.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
-	a := &asset{bytes: bytes, info: info}
-	return a, nil
-}
-
-var _v400ApiserviceCabundleControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
-kind: APIServiceCABundleInjectorConfig
-caBundleFile: /var/run/configmaps/signing-cabundle/ca-bundle.crt
-`)
-
-func v400ApiserviceCabundleControllerDefaultconfigYamlBytes() ([]byte, error) {
-	return _v400ApiserviceCabundleControllerDefaultconfigYaml, nil
-}
-
-func v400ApiserviceCabundleControllerDefaultconfigYaml() (*asset, error) {
-	bytes, err := v400ApiserviceCabundleControllerDefaultconfigYamlBytes()
-	if err != nil {
-		return nil, err
-	}
-
-	info := bindataFileInfo{name: "v4.0.0/apiservice-cabundle-controller/defaultconfig.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
-	a := &asset{bytes: bytes, info: info}
-	return a, nil
-}
-
 var _v400ApiserviceCabundleControllerDeploymentYaml = []byte(`apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -216,8 +166,6 @@ spec:
         image: ${IMAGE}
         imagePullPolicy: IfNotPresent
         command: ["service-ca-operator", "apiservice-cabundle-injector"]
-        args:
-        - "--config=/var/run/configmaps/config/controller-config.yaml"
         ports:
         - containerPort: 8443
         resources:
@@ -225,17 +173,12 @@ spec:
             memory: 50Mi
             cpu: 10m
         volumeMounts:
-        - mountPath: /var/run/configmaps/config
-          name: config
         - mountPath: /var/run/configmaps/signing-cabundle
           name: signing-cabundle
       volumes:
       - name: signing-cabundle
         configMap:
           name: signing-cabundle
-      - name: config
-        configMap:
-          name: apiservice-cabundle-injector-config
       nodeSelector:
         node-role.kubernetes.io/master: ""
       priorityClassName: "system-cluster-critical"
@@ -483,50 +426,6 @@ func v400ConfigmapCabundleControllerClusterrolebindingYaml() (*asset, error) {
 	return a, nil
 }
 
-var _v400ConfigmapCabundleControllerCmYaml = []byte(`apiVersion: v1
-kind: ConfigMap
-metadata:
-  namespace: openshift-service-ca
-  name: configmap-cabundle-injector-config
-data:
-  controller-config.yaml:
-`)
-
-func v400ConfigmapCabundleControllerCmYamlBytes() ([]byte, error) {
-	return _v400ConfigmapCabundleControllerCmYaml, nil
-}
-
-func v400ConfigmapCabundleControllerCmYaml() (*asset, error) {
-	bytes, err := v400ConfigmapCabundleControllerCmYamlBytes()
-	if err != nil {
-		return nil, err
-	}
-
-	info := bindataFileInfo{name: "v4.0.0/configmap-cabundle-controller/cm.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
-	a := &asset{bytes: bytes, info: info}
-	return a, nil
-}
-
-var _v400ConfigmapCabundleControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
-kind: ConfigMapCABundleInjectorConfig
-caBundleFile: /var/run/configmaps/signing-cabundle/ca-bundle.crt
-`)
-
-func v400ConfigmapCabundleControllerDefaultconfigYamlBytes() ([]byte, error) {
-	return _v400ConfigmapCabundleControllerDefaultconfigYaml, nil
-}
-
-func v400ConfigmapCabundleControllerDefaultconfigYaml() (*asset, error) {
-	bytes, err := v400ConfigmapCabundleControllerDefaultconfigYamlBytes()
-	if err != nil {
-		return nil, err
-	}
-
-	info := bindataFileInfo{name: "v4.0.0/configmap-cabundle-controller/defaultconfig.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
-	a := &asset{bytes: bytes, info: info}
-	return a, nil
-}
-
 var _v400ConfigmapCabundleControllerDeploymentYaml = []byte(`apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -555,8 +454,6 @@ spec:
         image: ${IMAGE}
         imagePullPolicy: IfNotPresent
         command: ["service-ca-operator", "configmap-cabundle-injector"]
-        args:
-        - "--config=/var/run/configmaps/config/controller-config.yaml"
         ports:
         - containerPort: 8443
         resources:
@@ -564,17 +461,12 @@ spec:
             memory: 50Mi
             cpu: 10m
         volumeMounts:
-        - mountPath: /var/run/configmaps/config
-          name: config
         - mountPath: /var/run/configmaps/signing-cabundle
           name: signing-cabundle
       volumes:
       - name: signing-cabundle
         configMap:
           name: signing-cabundle
-      - name: config
-        configMap:
-          name: configmap-cabundle-injector-config
       nodeSelector:
         node-role.kubernetes.io/master: ""
       priorityClassName: "system-cluster-critical"
@@ -844,53 +736,6 @@ func v400ServiceServingCertSignerControllerClusterrolebindingYaml() (*asset, err
 	return a, nil
 }
 
-var _v400ServiceServingCertSignerControllerCmYaml = []byte(`apiVersion: v1
-kind: ConfigMap
-metadata:
-  namespace: openshift-service-ca
-  name: service-serving-cert-signer-config
-data:
-  controller-config.yaml:
-`)
-
-func v400ServiceServingCertSignerControllerCmYamlBytes() ([]byte, error) {
-	return _v400ServiceServingCertSignerControllerCmYaml, nil
-}
-
-func v400ServiceServingCertSignerControllerCmYaml() (*asset, error) {
-	bytes, err := v400ServiceServingCertSignerControllerCmYamlBytes()
-	if err != nil {
-		return nil, err
-	}
-
-	info := bindataFileInfo{name: "v4.0.0/service-serving-cert-signer-controller/cm.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
-	a := &asset{bytes: bytes, info: info}
-	return a, nil
-}
-
-var _v400ServiceServingCertSignerControllerDefaultconfigYaml = []byte(`apiVersion: servicecertsigner.config.openshift.io/v1alpha1
-kind: ServiceServingCertSignerConfig
-signer:
-  certFile: /var/run/secrets/signing-key/tls.crt
-  keyFile: /var/run/secrets/signing-key/tls.key
-intermediateCertFile: /var/run/secrets/signing-key/intermediate-ca.crt
-`)
-
-func v400ServiceServingCertSignerControllerDefaultconfigYamlBytes() ([]byte, error) {
-	return _v400ServiceServingCertSignerControllerDefaultconfigYaml, nil
-}
-
-func v400ServiceServingCertSignerControllerDefaultconfigYaml() (*asset, error) {
-	bytes, err := v400ServiceServingCertSignerControllerDefaultconfigYamlBytes()
-	if err != nil {
-		return nil, err
-	}
-
-	info := bindataFileInfo{name: "v4.0.0/service-serving-cert-signer-controller/defaultconfig.yaml", size: 0, mode: os.FileMode(0), modTime: time.Unix(0, 0)}
-	a := &asset{bytes: bytes, info: info}
-	return a, nil
-}
-
 var _v400ServiceServingCertSignerControllerDeploymentYaml = []byte(`apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -919,8 +764,6 @@ spec:
         image: ${IMAGE}
         imagePullPolicy: IfNotPresent
         command: ["service-ca-operator", "serving-cert-signer"]
-        args:
-        - "--config=/var/run/configmaps/config/controller-config.yaml"
         ports:
         - containerPort: 8443
         resources:
@@ -928,17 +771,12 @@ spec:
             memory: 120Mi
             cpu: 10m
         volumeMounts:
-        - mountPath: /var/run/configmaps/config
-          name: config
         - mountPath: /var/run/secrets/signing-key
           name: signing-key
       volumes:
       - name: signing-key
         secret:
           secretName: signing-key
-      - name: config
-        configMap:
-          name: service-serving-cert-signer-config
       nodeSelector:
         node-role.kubernetes.io/master: ""
       priorityClassName: "system-cluster-critical"
@@ -1183,8 +1021,6 @@ func AssetNames() []string {
 var _bindata = map[string]func() (*asset, error){
 	"v4.0.0/apiservice-cabundle-controller/clusterrole.yaml":                v400ApiserviceCabundleControllerClusterroleYaml,
 	"v4.0.0/apiservice-cabundle-controller/clusterrolebinding.yaml":         v400ApiserviceCabundleControllerClusterrolebindingYaml,
-	"v4.0.0/apiservice-cabundle-controller/cm.yaml":                         v400ApiserviceCabundleControllerCmYaml,
-	"v4.0.0/apiservice-cabundle-controller/defaultconfig.yaml":              v400ApiserviceCabundleControllerDefaultconfigYaml,
 	"v4.0.0/apiservice-cabundle-controller/deployment.yaml":                 v400ApiserviceCabundleControllerDeploymentYaml,
 	"v4.0.0/apiservice-cabundle-controller/ns.yaml":                         v400ApiserviceCabundleControllerNsYaml,
 	"v4.0.0/apiservice-cabundle-controller/role.yaml":                       v400ApiserviceCabundleControllerRoleYaml,
@@ -1193,8 +1029,6 @@ var _bindata = map[string]func() (*asset, error){
 	"v4.0.0/apiservice-cabundle-controller/signing-cabundle.yaml":           v400ApiserviceCabundleControllerSigningCabundleYaml,
 	"v4.0.0/configmap-cabundle-controller/clusterrole.yaml":                 v400ConfigmapCabundleControllerClusterroleYaml,
 	"v4.0.0/configmap-cabundle-controller/clusterrolebinding.yaml":          v400ConfigmapCabundleControllerClusterrolebindingYaml,
-	"v4.0.0/configmap-cabundle-controller/cm.yaml":                          v400ConfigmapCabundleControllerCmYaml,
-	"v4.0.0/configmap-cabundle-controller/defaultconfig.yaml":               v400ConfigmapCabundleControllerDefaultconfigYaml,
 	"v4.0.0/configmap-cabundle-controller/deployment.yaml":                  v400ConfigmapCabundleControllerDeploymentYaml,
 	"v4.0.0/configmap-cabundle-controller/ns.yaml":                          v400ConfigmapCabundleControllerNsYaml,
 	"v4.0.0/configmap-cabundle-controller/role.yaml":                        v400ConfigmapCabundleControllerRoleYaml,
@@ -1203,8 +1037,6 @@ var _bindata = map[string]func() (*asset, error){
 	"v4.0.0/configmap-cabundle-controller/signing-cabundle.yaml":            v400ConfigmapCabundleControllerSigningCabundleYaml,
 	"v4.0.0/service-serving-cert-signer-controller/clusterrole.yaml":        v400ServiceServingCertSignerControllerClusterroleYaml,
 	"v4.0.0/service-serving-cert-signer-controller/clusterrolebinding.yaml": v400ServiceServingCertSignerControllerClusterrolebindingYaml,
-	"v4.0.0/service-serving-cert-signer-controller/cm.yaml":                 v400ServiceServingCertSignerControllerCmYaml,
-	"v4.0.0/service-serving-cert-signer-controller/defaultconfig.yaml":      v400ServiceServingCertSignerControllerDefaultconfigYaml,
 	"v4.0.0/service-serving-cert-signer-controller/deployment.yaml":         v400ServiceServingCertSignerControllerDeploymentYaml,
 	"v4.0.0/service-serving-cert-signer-controller/ns.yaml":                 v400ServiceServingCertSignerControllerNsYaml,
 	"v4.0.0/service-serving-cert-signer-controller/role.yaml":               v400ServiceServingCertSignerControllerRoleYaml,
@@ -1258,8 +1090,6 @@ var _bintree = &bintree{nil, map[string]*bintree{
 		"apiservice-cabundle-controller": {nil, map[string]*bintree{
 			"clusterrole.yaml":        {v400ApiserviceCabundleControllerClusterroleYaml, map[string]*bintree{}},
 			"clusterrolebinding.yaml": {v400ApiserviceCabundleControllerClusterrolebindingYaml, map[string]*bintree{}},
-			"cm.yaml":                 {v400ApiserviceCabundleControllerCmYaml, map[string]*bintree{}},
-			"defaultconfig.yaml":      {v400ApiserviceCabundleControllerDefaultconfigYaml, map[string]*bintree{}},
 			"deployment.yaml":         {v400ApiserviceCabundleControllerDeploymentYaml, map[string]*bintree{}},
 			"ns.yaml":                 {v400ApiserviceCabundleControllerNsYaml, map[string]*bintree{}},
 			"role.yaml":               {v400ApiserviceCabundleControllerRoleYaml, map[string]*bintree{}},
@@ -1270,8 +1100,6 @@ var _bintree = &bintree{nil, map[string]*bintree{
 		"configmap-cabundle-controller": {nil, map[string]*bintree{
 			"clusterrole.yaml":        {v400ConfigmapCabundleControllerClusterroleYaml, map[string]*bintree{}},
 			"clusterrolebinding.yaml": {v400ConfigmapCabundleControllerClusterrolebindingYaml, map[string]*bintree{}},
-			"cm.yaml":                 {v400ConfigmapCabundleControllerCmYaml, map[string]*bintree{}},
-			"defaultconfig.yaml":      {v400ConfigmapCabundleControllerDefaultconfigYaml, map[string]*bintree{}},
 			"deployment.yaml":         {v400ConfigmapCabundleControllerDeploymentYaml, map[string]*bintree{}},
 			"ns.yaml":                 {v400ConfigmapCabundleControllerNsYaml, map[string]*bintree{}},
 			"role.yaml":               {v400ConfigmapCabundleControllerRoleYaml, map[string]*bintree{}},
@@ -1282,8 +1110,6 @@ var _bintree = &bintree{nil, map[string]*bintree{
 		"service-serving-cert-signer-controller": {nil, map[string]*bintree{
 			"clusterrole.yaml":        {v400ServiceServingCertSignerControllerClusterroleYaml, map[string]*bintree{}},
 			"clusterrolebinding.yaml": {v400ServiceServingCertSignerControllerClusterrolebindingYaml, map[string]*bintree{}},
-			"cm.yaml":                 {v400ServiceServingCertSignerControllerCmYaml, map[string]*bintree{}},
-			"defaultconfig.yaml":      {v400ServiceServingCertSignerControllerDefaultconfigYaml, map[string]*bintree{}},
 			"deployment.yaml":         {v400ServiceServingCertSignerControllerDeploymentYaml, map[string]*bintree{}},
 			"ns.yaml":                 {v400ServiceServingCertSignerControllerNsYaml, map[string]*bintree{}},
 			"role.yaml":               {v400ServiceServingCertSignerControllerRoleYaml, map[string]*bintree{}},

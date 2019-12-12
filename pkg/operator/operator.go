@@ -52,9 +52,6 @@ func NewServiceCAOperator(
 
 	configEvents := operator.FilterByNames(api.OperatorConfigInstanceName)
 	configMapEvents := operator.FilterByNames(
-		api.SignerControllerConfigMapName,
-		api.APIServiceInjectorConfigMapName,
-		api.ConfigMapInjectorConfigMapName,
 		api.SigningCABundleConfigMapName,
 	)
 	saEvents := operator.FilterByNames(

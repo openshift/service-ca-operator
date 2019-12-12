@@ -1,16 +1,42 @@
 package operator
 
 import (
+	"sync"
+
 	"k8s.io/klog"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 )
+
+type TryOnce struct {
+	lock      sync.Mutex
+	succeeded bool
+}
+
+func (o *TryOnce) Do(f func() error) error {
+	o.lock.Lock()
+	defer o.lock.Unlock()
+
+	if o.succeeded {
+		return nil
+	}
+
+	err := f()
+	o.succeeded = err == nil
+	return err
+}
+
+var once = TryOnce{}
 
 func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) error {
 	// Any modification of resource we want to trickle down to force deploy all of the controllers.
 	// Sync the controller NS and the other resources. These should be mostly static.
 	needsDeploy, err := manageControllerNS(c)
 	if err != nil {
+		return err
+	}
+
+	if err := once.Do(func() error { return cleanupDeprecatedResources(c) }); err != nil {
 		return err
 	}
 
@@ -41,31 +67,19 @@ func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) 
 	}
 
 	// Sync the signing controller.
-	configModified, err := manageSignerControllerConfig(c.corev1Client, c.eventRecorder)
-	if err != nil {
-		return err
-	}
-	_, err = manageSignerControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified || configModified)
+	_, err = manageSignerControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified)
 	if err != nil {
 		return err
 	}
 
 	// Sync the API service controller.
-	configModified, err = manageAPIServiceControllerConfig(c.corev1Client, c.eventRecorder)
-	if err != nil {
-		return err
-	}
-	_, err = manageAPIServiceControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified || configModified)
+	_, err = manageAPIServiceControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified)
 	if err != nil {
 		return err
 	}
 
 	// Sync the API service controller.
-	configModified, err = manageConfigMapCABundleControllerConfig(c.corev1Client, c.eventRecorder)
-	if err != nil {
-		return err
-	}
-	_, err = manageConfigMapCABundleControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified || configModified)
+	_, err = manageConfigMapCABundleControllerDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified)
 	if err != nil {
 		return err
 	}

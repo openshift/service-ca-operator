@@ -23,6 +23,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
 
@@ -200,39 +201,6 @@ func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder eve
 	return mod, err
 }
 
-func manageSignerControllerConfig(client coreclientv1.ConfigMapsGetter, eventRecorder events.Recorder) (bool, error) {
-	configMap := resourceread.ReadConfigMapV1OrDie(v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/cm.yaml"))
-	defaultConfig := v4_00_assets.MustAsset("v4.0.0/service-serving-cert-signer-controller/defaultconfig.yaml")
-	requiredConfigMap, _, err := resourcemerge.MergeConfigMap(configMap, "controller-config.yaml", nil, defaultConfig)
-	if err != nil {
-		return false, err
-	}
-	_, mod, err := resourceapply.ApplyConfigMap(client, eventRecorder, requiredConfigMap)
-	return mod, err
-}
-
-func manageAPIServiceControllerConfig(client coreclientv1.ConfigMapsGetter, eventRecorder events.Recorder) (bool, error) {
-	configMap := resourceread.ReadConfigMapV1OrDie(v4_00_assets.MustAsset("v4.0.0/apiservice-cabundle-controller/cm.yaml"))
-	defaultConfig := v4_00_assets.MustAsset("v4.0.0/apiservice-cabundle-controller/defaultconfig.yaml")
-	requiredConfigMap, _, err := resourcemerge.MergeConfigMap(configMap, "controller-config.yaml", nil, defaultConfig)
-	if err != nil {
-		return false, err
-	}
-	_, mod, err := resourceapply.ApplyConfigMap(client, eventRecorder, requiredConfigMap)
-	return mod, err
-}
-
-func manageConfigMapCABundleControllerConfig(client coreclientv1.ConfigMapsGetter, eventRecorder events.Recorder) (bool, error) {
-	configMap := resourceread.ReadConfigMapV1OrDie(v4_00_assets.MustAsset("v4.0.0/configmap-cabundle-controller/cm.yaml"))
-	defaultConfig := v4_00_assets.MustAsset("v4.0.0/configmap-cabundle-controller/defaultconfig.yaml")
-	requiredConfigMap, _, err := resourcemerge.MergeConfigMap(configMap, "controller-config.yaml", nil, defaultConfig)
-	if err != nil {
-		return false, err
-	}
-	_, mod, err := resourceapply.ApplyConfigMap(client, eventRecorder, requiredConfigMap)
-	return mod, err
-}
-
 func manageSignerControllerDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.Recorder, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
 	return manageDeployment(client, eventRecorder, options, "v4.0.0/service-serving-cert-signer-controller/", forceDeployment)
 }
@@ -261,4 +229,24 @@ func manageDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.
 
 func serviceServingCertSignerName() string {
 	return fmt.Sprintf("%s@%d", "openshift-service-serving-signer", time.Now().Unix())
+}
+
+// cleanupDeprecatedResources ensures the deletion of resources no longer required by the operator.
+func cleanupDeprecatedResources(c serviceCAOperator) error {
+	klog.V(4).Infof("attempting removal of deprecated resources in namespace %q", operatorclient.TargetNamespace)
+
+	// Configmaps are no longer used to configure the controllers
+	namespace := operatorclient.TargetNamespace
+	configMapNames := []string{
+		"service-serving-cert-signer-config",
+		"apiservice-cabundle-injector-config",
+		"configmap-cabundle-injector-config",
+	}
+	for _, configMapName := range configMapNames {
+		err := c.corev1Client.ConfigMaps(namespace).Delete(configMapName, &metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
 }

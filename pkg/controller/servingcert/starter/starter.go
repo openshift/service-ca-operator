@@ -2,46 +2,34 @@ package starter
 
 import (
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/cert"
 	"k8s.io/klog"
 
-	scsv1alpha1 "github.com/openshift/api/servicecertsigner/v1alpha1"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/controller"
 )
 
 func StartServiceServingCertSigner(ctx *controllercmd.ControllerContext) error {
+	// TODO(marun) Allow the following values to be supplied via argument
+	certFile := "/var/run/secrets/signing-key/tls.crt"
+	keyFile := "/var/run/secrets/signing-key/tls.key"
+	intermediateCertFile := "/var/run/secrets/signing-key/intermediate-ca.crt"
 
-	config := &scsv1alpha1.ServiceServingCertSignerConfig{}
-	if ctx.ComponentConfig != nil {
-		// make a copy we can mutate
-		configCopy := ctx.ComponentConfig.DeepCopy()
-		// force the config to our version to read it
-		configCopy.SetGroupVersionKind(scsv1alpha1.GroupVersion.WithKind("ServiceServingCertSignerConfig"))
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(configCopy.Object, config); err != nil {
-			return err
-		}
-	}
-	ca, err := crypto.GetCA(config.Signer.CertFile, config.Signer.KeyFile, "")
+	ca, err := crypto.GetCA(certFile, keyFile, "")
 	if err != nil {
 		return err
 	}
 
-	if len(config.IntermediateCertFile) == 0 {
-		return errors.New("the filename for the intermediate certificate was not provided")
-	}
 	// An intermediate cert will only be present after a successful CA rotation.
-	intermediateCACert, err := readIntermediateCACert(config.IntermediateCertFile)
+	intermediateCACert, err := readIntermediateCACert(intermediateCertFile)
 	if err != nil {
 		return err
 	}
@@ -72,12 +60,14 @@ func StartServiceServingCertSigner(ctx *controllercmd.ControllerContext) error {
 		"cluster.local",
 	)
 
-	kubeInformers.Start(ctx.Done())
+	stopChan := ctx.Ctx.Done()
 
-	go servingCertController.Run(5, ctx.Done())
-	go servingCertUpdateController.Run(5, ctx.Done())
+	kubeInformers.Start(stopChan)
 
-	<-ctx.Done()
+	go servingCertController.Run(5, stopChan)
+	go servingCertUpdateController.Run(5, stopChan)
+
+	<-stopChan
 
 	return fmt.Errorf("stopped")
 }

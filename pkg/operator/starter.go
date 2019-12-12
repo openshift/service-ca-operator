@@ -109,15 +109,17 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		ctx.EventRecorder,
 	)
 
-	operatorConfigInformers.Start(ctx.Done())
-	configInformers.Start(ctx.Done())
-	kubeInformersNamespaced.Start(ctx.Done())
-	kubeInformersForNamespaces.Start(ctx.Done())
+	stopChan := ctx.Ctx.Done()
 
-	go operator.Run(ctx.Done())
-	go clusterOperatorStatus.Run(1, ctx.Done())
-	go resourceSyncController.Run(1, ctx.Done())
+	operatorConfigInformers.Start(stopChan)
+	configInformers.Start(stopChan)
+	kubeInformersNamespaced.Start(stopChan)
+	kubeInformersForNamespaces.Start(stopChan)
 
-	<-ctx.Done()
+	go operator.Run(stopChan)
+	go clusterOperatorStatus.Run(ctx.Ctx, 1)
+	go resourceSyncController.Run(ctx.Ctx, 1)
+
+	<-stopChan
 	return fmt.Errorf("stopped")
 }

@@ -6,10 +6,7 @@ const (
 	OperatorConfigInstanceName = "cluster"
 
 	// ConfigMaps
-	SignerControllerConfigMapName   = "service-serving-cert-signer-config"
-	APIServiceInjectorConfigMapName = "apiservice-cabundle-injector-config"
-	ConfigMapInjectorConfigMapName  = "configmap-cabundle-injector-config"
-	SigningCABundleConfigMapName    = "signing-cabundle"
+	SigningCABundleConfigMapName = "signing-cabundle"
 
 	// SAs
 	SignerControllerSAName   = "service-serving-cert-signer-sa"
