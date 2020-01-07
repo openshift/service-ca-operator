@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/model"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -22,9 +26,11 @@ import (
 	"k8s.io/client-go/util/cert"
 
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
+	routeclient "github.com/openshift/client-go/route/clientset/versioned"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
+	"github.com/openshift/library-go/test/library/metrics"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
@@ -585,6 +591,57 @@ func pollForResource(t *testing.T, resourceID string, timeout time.Duration, acc
 	return obj, err
 }
 
+// newPrometheusClientForConfig returns a new prometheus client for
+// the provided kubeconfig.
+func newPrometheusClientForConfig(config *rest.Config) (prometheusv1.API, error) {
+	routeClient, err := routeclient.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("error creating route client: %v", err)
+	}
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("error creating kube client: %v", err)
+	}
+	return metrics.NewPrometheusClient(kubeClient, routeClient)
+}
+
+// checkMetricsCollection tests whether metrics are being successfully scraped from at
+// least one target in a namespace.
+func checkMetricsCollection(t *testing.T, promClient prometheusv1.API, namespace string) {
+	// Metrics are scraped every 30s. Wait as long as 2 intervals to avoid failing if
+	// the target is temporarily unhealthy.
+	timeout := 60 * time.Second
+
+	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
+		query := fmt.Sprintf("up{namespace=\"%s\"}", namespace)
+		rawResult, warnings, err := promClient.Query(context.Background(), query, time.Now())
+		if err != nil {
+			t.Errorf("failed to execute prometheus query: %v", err)
+			return false, nil
+		}
+		if len(warnings) > 0 {
+			t.Logf("prometheus query emitted warnings: %v", warnings)
+		}
+
+		resultVector, ok := rawResult.(model.Vector)
+		if !ok {
+			t.Fatalf("expected prometheus query to return type Vector, got %T", resultVector)
+		}
+		metricsCollected := false
+		for _, sample := range resultVector {
+			metricsCollected = sample.Value == 1
+			if metricsCollected {
+				// Metrics are successfully being scraped for at least one target in the namespace
+				break
+			}
+		}
+		return metricsCollected, nil
+	})
+	if err != nil {
+		t.Fatalf("Health check of metrics collection in namespace %s did not succeed within %v", serviceCAOperatorNamespace, timeout)
+	}
+}
+
 func TestE2E(t *testing.T) {
 	// use /tmp/admin.conf (placed by ci-operator) or KUBECONFIG env
 	confPath := "/tmp/admin.conf"
@@ -834,6 +891,15 @@ func TestE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("secret cert did not change: %v", err)
 		}
+	})
+
+	// Test that the operator's metrics endpoint is being read by prometheus
+	t.Run("metrics", func(t *testing.T) {
+		promClient, err := newPrometheusClientForConfig(adminConfig)
+		if err != nil {
+			t.Fatalf("error initializing prometheus client: %v", err)
+		}
+		checkMetricsCollection(t, promClient, "openshift-service-ca-operator")
 	})
 
 	// This test triggers rotation by updating the CA to have an

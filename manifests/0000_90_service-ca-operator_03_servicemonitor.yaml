@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: service-ca-operator
+  namespace: openshift-service-ca-operator
+spec:
+  endpoints:
+  - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+    interval: 30s
+    port: https
+    scheme: https
+    tlsConfig:
+      caFile: /etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt
+      serverName: metrics.openshift-service-ca-operator.svc
+  jobLabel: component
+  namespaceSelector:
+    matchNames:
+    - openshift-service-ca-operator
+  selector:
+    matchLabels:
+      app: service-ca-operator
