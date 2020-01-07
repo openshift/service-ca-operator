@@ -1,6 +1,7 @@
 package starter
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"time"
@@ -12,7 +13,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/controller/apiservicecabundle/controller"
 )
 
-func StartAPIServiceCABundleInjector(ctx *controllercmd.ControllerContext) error {
+func StartAPIServiceCABundleInjector(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
 	// TODO(marun) Allow this value to be supplied via argument
 	caBundleFile := "/var/run/configmaps/signing-cabundle/ca-bundle.crt"
 
@@ -21,7 +22,7 @@ func StartAPIServiceCABundleInjector(ctx *controllercmd.ControllerContext) error
 		return err
 	}
 
-	apiServiceClient, err := apiserviceclient.NewForConfig(ctx.ProtoKubeConfig)
+	apiServiceClient, err := apiserviceclient.NewForConfig(controllerContext.ProtoKubeConfig)
 	if err != nil {
 		return err
 	}
@@ -33,7 +34,7 @@ func StartAPIServiceCABundleInjector(ctx *controllercmd.ControllerContext) error
 		caBundleContent,
 	)
 
-	stopChan := ctx.Ctx.Done()
+	stopChan := ctx.Done()
 
 	apiServiceInformers.Start(stopChan)
 

@@ -1,6 +1,7 @@
 package starter
 
 import (
+	"context"
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
@@ -17,7 +18,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/controller"
 )
 
-func StartServiceServingCertSigner(ctx *controllercmd.ControllerContext) error {
+func StartServiceServingCertSigner(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
 	// TODO(marun) Allow the following values to be supplied via argument
 	certFile := "/var/run/secrets/signing-key/tls.crt"
 	keyFile := "/var/run/secrets/signing-key/tls.key"
@@ -34,7 +35,7 @@ func StartServiceServingCertSigner(ctx *controllercmd.ControllerContext) error {
 		return err
 	}
 
-	kubeClient, err := kubernetes.NewForConfig(ctx.ProtoKubeConfig)
+	kubeClient, err := kubernetes.NewForConfig(controllerContext.ProtoKubeConfig)
 	if err != nil {
 		return err
 	}
@@ -60,7 +61,7 @@ func StartServiceServingCertSigner(ctx *controllercmd.ControllerContext) error {
 		"cluster.local",
 	)
 
-	stopChan := ctx.Ctx.Done()
+	stopChan := ctx.Done()
 
 	kubeInformers.Start(stopChan)
 
