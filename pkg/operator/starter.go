@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -35,18 +36,18 @@ var targetDeploymentNames = sets.NewString(
 	api.ConfigMapInjectorDeploymentName,
 )
 
-func RunOperator(ctx *controllercmd.ControllerContext) error {
+func RunOperator(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
 
 	// This kube client uses protobuf, do not use it for CRs
-	kubeClient, err := kubernetes.NewForConfig(ctx.ProtoKubeConfig)
+	kubeClient, err := kubernetes.NewForConfig(controllerContext.ProtoKubeConfig)
 	if err != nil {
 		return err
 	}
-	operatorConfigClient, err := operatorv1client.NewForConfig(ctx.KubeConfig)
+	operatorConfigClient, err := operatorv1client.NewForConfig(controllerContext.KubeConfig)
 	if err != nil {
 		return err
 	}
-	configClient, err := configv1client.NewForConfig(ctx.KubeConfig)
+	configClient, err := configv1client.NewForConfig(controllerContext.KubeConfig)
 	if err != nil {
 		return err
 	}
@@ -82,7 +83,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		configInformers.Config().V1().ClusterOperators(),
 		operatorClient,
 		versionGetter,
-		ctx.EventRecorder,
+		controllerContext.EventRecorder,
 	)
 
 	resourceSyncController := resourcesynccontroller.NewResourceSyncController(
@@ -90,7 +91,7 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		kubeInformersForNamespaces,
 		v1helpers.CachedSecretGetter(kubeClient.CoreV1(), kubeInformersForNamespaces),
 		v1helpers.CachedConfigMapGetter(kubeClient.CoreV1(), kubeInformersForNamespaces),
-		ctx.EventRecorder,
+		controllerContext.EventRecorder,
 	)
 	if err := resourceSyncController.SyncConfigMap(
 		resourcesynccontroller.ResourceLocation{Namespace: operatorclient.GlobalMachineSpecifiedConfigNamespace, Name: clusterOperatorName},
@@ -106,10 +107,10 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 		kubeClient.CoreV1(),
 		kubeClient.RbacV1(),
 		versionGetter,
-		ctx.EventRecorder,
+		controllerContext.EventRecorder,
 	)
 
-	stopChan := ctx.Ctx.Done()
+	stopChan := ctx.Done()
 
 	operatorConfigInformers.Start(stopChan)
 	configInformers.Start(stopChan)
@@ -117,8 +118,8 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 	kubeInformersForNamespaces.Start(stopChan)
 
 	go operator.Run(stopChan)
-	go clusterOperatorStatus.Run(ctx.Ctx, 1)
-	go resourceSyncController.Run(ctx.Ctx, 1)
+	go clusterOperatorStatus.Run(ctx, 1)
+	go resourceSyncController.Run(ctx, 1)
 
 	<-stopChan
 	return fmt.Errorf("stopped")

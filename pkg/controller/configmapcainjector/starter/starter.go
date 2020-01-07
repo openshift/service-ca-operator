@@ -1,6 +1,7 @@
 package starter
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -14,7 +15,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/controller/configmapcainjector/controller"
 )
 
-func StartConfigMapCABundleInjector(ctx *controllercmd.ControllerContext) error {
+func StartConfigMapCABundleInjector(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
 	// TODO(marun) Allow this value to be supplied via argument
 	caBundleFile := "/var/run/configmaps/signing-cabundle/ca-bundle.crt"
 
@@ -32,7 +33,7 @@ func StartConfigMapCABundleInjector(ctx *controllercmd.ControllerContext) error 
 	}
 	caBundle := string(ca)
 
-	kubeClient, err := kubernetes.NewForConfig(ctx.ProtoKubeConfig)
+	kubeClient, err := kubernetes.NewForConfig(controllerContext.ProtoKubeConfig)
 	if err != nil {
 		return err
 	}
@@ -44,7 +45,7 @@ func StartConfigMapCABundleInjector(ctx *controllercmd.ControllerContext) error 
 		caBundle,
 	)
 
-	stopChan := ctx.Ctx.Done()
+	stopChan := ctx.Done()
 
 	kubeInformers.Start(stopChan)
 
