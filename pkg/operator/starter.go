@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
 
 	configv1 "github.com/openshift/api/config/v1"
 	operatorv1 "github.com/openshift/api/operator/v1"
@@ -114,10 +118,60 @@ func RunOperator(ctx *controllercmd.ControllerContext) error {
 	kubeInformersNamespaced.Start(ctx.Done())
 	kubeInformersForNamespaces.Start(ctx.Done())
 
+	cleanupUnifiedDeployment(kubeClient, ctx.Done())
+
 	go operator.Run(ctx.Done())
 	go clusterOperatorStatus.Run(1, ctx.Done())
 	go resourceSyncController.Run(1, ctx.Done())
 
 	<-ctx.Done()
 	return fmt.Errorf("stopped")
+}
+
+// cleanupUnifiedDeployment removes resources associated with the unified service ca
+// controller deployment created by the 4.4 operator. This is intended to remove the
+// possibility of contention between the 4.4 deployment and the multiple deployments
+// managed by the 4.3 operator in the event of a downgrade from 4.4 to 4.3.
+func cleanupUnifiedDeployment(kubeClient *kubernetes.Clientset, stopCh <-chan struct{}) error {
+	controllerName := "service-ca"
+	namespace := operatorclient.TargetNamespace
+	configName := fmt.Sprintf("%s-config", controllerName)
+	lockName := fmt.Sprintf("%s-lock", controllerName)
+	saName := fmt.Sprintf("%s-sa", controllerName)
+	roleAndBindingName := fmt.Sprintf("system:openshift:controller:%s", controllerName)
+	delOpts := &metav1.DeleteOptions{}
+	deletionFuncs := []func() error{
+		// Delete deployment openshift-service-ca/<controller-name>
+		func() error { return kubeClient.AppsV1().Deployments(namespace).Delete(controllerName, delOpts) },
+		// Delete ClusterRole system:openshift:controller:{controller name}
+		func() error { return kubeClient.RbacV1().ClusterRoles().Delete(roleAndBindingName, delOpts) },
+		// Delete ClusterRole system:openshift:controller:{controller name}
+		func() error { return kubeClient.RbacV1().ClusterRoles().Delete(roleAndBindingName, delOpts) },
+		// Delete ClusterRoleBinding system:openshift:controller:{controller name}
+		func() error { return kubeClient.RbacV1().ClusterRoleBindings().Delete(roleAndBindingName, delOpts) },
+		// Delete ConfigMap openshift-service-ca/{controller name}-config
+		func() error { return kubeClient.CoreV1().ConfigMaps(namespace).Delete(configName, delOpts) },
+		// Delete ConfigMap openshift-service-ca/{controller name}-lock
+		func() error { return kubeClient.CoreV1().ConfigMaps(namespace).Delete(lockName, delOpts) },
+		// Delete Role openshift-service-ca/system:openshift:controller:{controller name}
+		func() error { return kubeClient.RbacV1().Roles(namespace).Delete(roleAndBindingName, delOpts) },
+		// Delete RoleBinding openshift-service-ca/system:openshift:controller:{controller name}
+		func() error { return kubeClient.RbacV1().RoleBindings(namespace).Delete(roleAndBindingName, delOpts) },
+		// Delete ServiceAccount openshift-service-ca/{controller name}-sa
+		func() error { return kubeClient.CoreV1().ServiceAccounts(namespace).Delete(saName, delOpts) },
+	}
+	go wait.Until(func() {
+		klog.V(4).Infof("attempting removal of the unified service ca controller created by the 4.4 operator in namespace %q", operatorclient.TargetNamespace)
+		for _, deletionFunc := range deletionFuncs {
+			err := deletionFunc()
+			if apierrors.IsNotFound(err) {
+				// Already removed
+				continue
+			}
+			if err != nil {
+				klog.Errorf("Error deleting 4.4 resource: %v", err)
+			}
+		}
+	}, 20*time.Minute, stopCh)
+	return nil
 }
