@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -662,18 +663,10 @@ func checkMetricsCollection(t *testing.T, promClient prometheusv1.API, namespace
 
 	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
 		query := fmt.Sprintf("up{namespace=\"%s\"}", namespace)
-		rawResult, warnings, err := promClient.Query(context.Background(), query, time.Now())
+		resultVector, err := runPromQueryForVector(t, promClient, query, time.Now())
 		if err != nil {
 			t.Errorf("failed to execute prometheus query: %v", err)
 			return false, nil
-		}
-		if len(warnings) > 0 {
-			t.Logf("prometheus query emitted warnings: %v", warnings)
-		}
-
-		resultVector, ok := rawResult.(model.Vector)
-		if !ok {
-			t.Fatalf("expected prometheus query to return type Vector, got %T", resultVector)
 		}
 		metricsCollected := false
 		for _, sample := range resultVector {
@@ -687,6 +680,68 @@ func checkMetricsCollection(t *testing.T, promClient prometheusv1.API, namespace
 	})
 	if err != nil {
 		t.Fatalf("Health check of metrics collection in namespace %s did not succeed within %v", serviceCAOperatorNamespace, timeout)
+	}
+}
+
+func runPromQueryForVector(t *testing.T, promClient prometheusv1.API, query string, sampleTime time.Time) (model.Vector, error) {
+	results, warnings, err := promClient.Query(context.Background(), query, sampleTime)
+	if err != nil {
+		return model.Vector{}, err
+	}
+	if len(warnings) > 0 {
+		t.Logf("prometheus query emitted warnings: %v", warnings)
+	}
+
+	result, ok := results.(model.Vector)
+	if !ok {
+		return model.Vector{}, fmt.Errorf("expecting vector type result, found: %v ", reflect.TypeOf(results))
+	}
+
+	return result, nil
+}
+
+func getSampleForPromQuery(t *testing.T, promClient prometheusv1.API, query string, sampleTime time.Time) (*model.Sample, error) {
+	res, err := runPromQueryForVector(t, promClient, query, sampleTime)
+	if err != nil {
+		return nil, err
+	}
+	if len(res) == 0 {
+		return nil, fmt.Errorf("no matching metrics found for query %s", query)
+	}
+	return res[0], nil
+}
+
+func checkServiceCAMetrics(t *testing.T, client *kubernetes.Clientset, promClient prometheusv1.API) {
+	timeout := 60 * time.Second
+
+	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(signingKeySecretName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error retrieving signing key secret: %v", err)
+	}
+	currentCACerts, err := util.PemToCerts(secret.Data[v1.TLSCertKey])
+	if err != nil {
+		t.Fatalf("error unmarshaling %q: %v", v1.TLSCertKey, err)
+	}
+	if len(currentCACerts) == 0 {
+		t.Fatalf("no signing keys found")
+	}
+
+	want := currentCACerts[0].NotAfter
+	err = wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
+		rawExpiryTime, err := getSampleForPromQuery(t, promClient, `service_ca_expiry_time_seconds`, time.Now())
+		if err != nil {
+			t.Logf("failed to get sample value: %v", err)
+			return false, nil
+		}
+
+		if float64(want.Unix()) != float64(rawExpiryTime.Value) {
+			t.Fatalf("service ca expiry time mismatch expected %v observed %v", float64(want.UnixNano()), float64(rawExpiryTime.Value))
+		}
+
+		return true, nil
+	})
+	if err != nil {
+		t.Fatalf("service ca expiry timer metrics collection failed: %v", err)
 	}
 }
 
@@ -877,13 +932,20 @@ func TestE2E(t *testing.T) {
 		}
 	})
 
-	// Test that the operator's metrics endpoint is being read by prometheus
 	t.Run("metrics", func(t *testing.T) {
 		promClient, err := newPrometheusClientForConfig(adminConfig)
 		if err != nil {
 			t.Fatalf("error initializing prometheus client: %v", err)
 		}
-		checkMetricsCollection(t, promClient, "openshift-service-ca-operator")
+		// Test that the operator's metrics endpoint is being read by prometheus
+		t.Run("collection", func(t *testing.T) {
+			checkMetricsCollection(t, promClient, "openshift-service-ca-operator")
+		})
+
+		// Test that service CA metrics are collected
+		t.Run("service-ca-metrics", func(t *testing.T) {
+			checkServiceCAMetrics(t, adminClient, promClient)
+		})
 	})
 
 	t.Run("refresh-CA", func(t *testing.T) {
