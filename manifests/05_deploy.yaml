@@ -37,6 +37,8 @@ spec:
         volumeMounts:
         - mountPath: /var/run/configmaps/config
           name: config
+        - mountPath: /var/run/secrets/serving-cert
+          name: serving-cert
       volumes:
       - name: serving-cert
         secret:
