@@ -1,5 +1,9 @@
 package api
 
+import (
+	"k8s.io/apimachinery/pkg/util/sets"
+)
+
 // Common controller/operator resource names
 const (
 	// Config instance
@@ -9,18 +13,20 @@ const (
 	SigningCABundleConfigMapName = "signing-cabundle"
 
 	// SAs
-	SignerControllerSAName   = "service-serving-cert-signer-sa"
-	APIServiceInjectorSAName = "apiservice-cabundle-injector-sa"
-	ConfigMapInjectorSAName  = "configmap-cabundle-injector-sa"
-
-	// Services
-	SignerControllerServiceName = "service-serving-cert-signer"
+	ServiceCASAName = "service-ca"
 
 	// Deployments
-	SignerControllerDeploymentName   = "service-serving-cert-signer"
-	APIServiceInjectorDeploymentName = "apiservice-cabundle-injector"
-	ConfigMapInjectorDeploymentName  = "configmap-cabundle-injector"
+	ServiceCADeploymentName = "service-ca"
 
 	// Secrets
-	SignerControllerSecretName = "signing-key"
+	ServiceCASecretName = "signing-key"
+)
+
+// Names of deployments for running service ca controllers independently. Intended
+// to support the operator identifying old resources to be removed after upgrade and
+// allowing the unified controller to detect when a downgrade has occurred.
+var IndependentDeploymentNames = sets.NewString(
+	"apiservice-cabundle-injector",
+	"configmap-cabundle-injector",
+	"service-serving-cert-signer",
 )

@@ -2,40 +2,45 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   namespace: openshift-service-ca
-  name: configmap-cabundle-injector
+  name: service-ca
   labels:
-    app: configmap-cabundle-injector
-    configmap-cabundle-injector: "true"
+    app: service-ca
+    service-ca: "true"
 spec:
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: configmap-cabundle-injector
-      configmap-cabundle-injector: "true"
+      app: service-ca
+      service-ca: "true"
   template:
     metadata:
-      name: configmap-cabundle-injector
+      name: service-ca
       labels:
-        app: configmap-cabundle-injector
-        configmap-cabundle-injector: "true"
+        app: service-ca
+        service-ca: "true"
     spec:
-      serviceAccountName: configmap-cabundle-injector-sa
+      serviceAccountName: service-ca
       containers:
-      - name: configmap-cabundle-injector-controller
+      - name: service-ca-controller
         image: ${IMAGE}
         imagePullPolicy: IfNotPresent
-        command: ["service-ca-operator", "configmap-cabundle-injector"]
+        command: ["service-ca-operator", "controller"]
         ports:
         - containerPort: 8443
         resources:
           requests:
-            memory: 50Mi
+            memory: 120Mi
             cpu: 10m
         volumeMounts:
+        - mountPath: /var/run/secrets/signing-key
+          name: signing-key
         - mountPath: /var/run/configmaps/signing-cabundle
           name: signing-cabundle
       volumes:
+      - name: signing-key
+        secret:
+          secretName: signing-key
       - name: signing-cabundle
         configMap:
           name: signing-cabundle

@@ -41,10 +41,8 @@ const (
 	serviceCAOperatorNamespace   = operatorclient.OperatorNamespace
 	serviceCAOperatorPodPrefix   = operatorclient.OperatorName
 	serviceCAControllerNamespace = operatorclient.TargetNamespace
-	apiInjectorPodPrefix         = api.APIServiceInjectorDeploymentName
-	configMapInjectorPodPrefix   = api.ConfigMapInjectorDeploymentName
-	caControllerPodPrefix        = api.SignerControllerDeploymentName
-	signingKeySecretName         = api.SignerControllerSecretName
+	serviceCAPodPrefix           = api.ServiceCADeploymentName
+	signingKeySecretName         = api.ServiceCASecretName
 
 	pollInterval = time.Second
 	pollTimeout  = 30 * time.Second
@@ -62,9 +60,7 @@ func checkComponents(t *testing.T, client *kubernetes.Clientset) {
 		podPrefix string
 	}{
 		{serviceCAOperatorNamespace, serviceCAOperatorPodPrefix},
-		{serviceCAControllerNamespace, apiInjectorPodPrefix},
-		{serviceCAControllerNamespace, configMapInjectorPodPrefix},
-		{serviceCAControllerNamespace, caControllerPodPrefix},
+		{serviceCAControllerNamespace, serviceCAPodPrefix},
 	}
 	for _, cfg := range componentConfigs {
 		pods, err := client.CoreV1().Pods(cfg.namespace).List(metav1.ListOptions{})
@@ -829,6 +825,15 @@ func TestE2E(t *testing.T) {
 		}
 	})
 
+	// Test that the operator's metrics endpoint is being read by prometheus
+	t.Run("metrics", func(t *testing.T) {
+		promClient, err := newPrometheusClientForConfig(adminConfig)
+		if err != nil {
+			t.Fatalf("error initializing prometheus client: %v", err)
+		}
+		checkMetricsCollection(t, promClient, "openshift-service-ca-operator")
+	})
+
 	t.Run("refresh-CA", func(t *testing.T) {
 		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
 		if err != nil {
@@ -891,15 +896,6 @@ func TestE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("secret cert did not change: %v", err)
 		}
-	})
-
-	// Test that the operator's metrics endpoint is being read by prometheus
-	t.Run("metrics", func(t *testing.T) {
-		promClient, err := newPrometheusClientForConfig(adminConfig)
-		if err != nil {
-			t.Fatalf("error initializing prometheus client: %v", err)
-		}
-		checkMetricsCollection(t, promClient, "openshift-service-ca-operator")
 	})
 
 	// This test triggers rotation by updating the CA to have an

@@ -51,27 +51,15 @@ func NewServiceCAOperator(
 	}
 
 	configEvents := operator.FilterByNames(api.OperatorConfigInstanceName)
-	configMapEvents := operator.FilterByNames(
-		api.SigningCABundleConfigMapName,
-	)
-	saEvents := operator.FilterByNames(
-		api.SignerControllerSAName,
-		api.APIServiceInjectorSAName,
-		api.ConfigMapInjectorSAName,
-	)
-	serviceEvents := operator.FilterByNames(api.SignerControllerServiceName)
-	secretEvents := operator.FilterByNames(api.SignerControllerSecretName)
-	deploymentEvents := operator.FilterByNames(
-		api.SignerControllerDeploymentName,
-		api.APIServiceInjectorDeploymentName,
-		api.ConfigMapInjectorDeploymentName,
-	)
+	configMapEvents := operator.FilterByNames(api.SigningCABundleConfigMapName)
+	saEvents := operator.FilterByNames(api.ServiceCASAName)
+	secretEvents := operator.FilterByNames(api.ServiceCASecretName)
+	deploymentEvents := operator.FilterByNames(api.ServiceCADeploymentName)
 	namespaceEvents := operator.FilterByNames(operatorclient.TargetNamespace)
 
 	return operator.New("ServiceCAOperator", c,
 		operator.WithInformer(namespacedKubeInformers.Core().V1().ConfigMaps(), configMapEvents),
 		operator.WithInformer(namespacedKubeInformers.Core().V1().ServiceAccounts(), saEvents),
-		operator.WithInformer(namespacedKubeInformers.Core().V1().Services(), serviceEvents),
 		operator.WithInformer(namespacedKubeInformers.Core().V1().Secrets(), secretEvents),
 		operator.WithInformer(namespacedKubeInformers.Apps().V1().Deployments(), deploymentEvents),
 		operator.WithInformer(namespacedKubeInformers.Core().V1().Namespaces(), namespaceEvents),

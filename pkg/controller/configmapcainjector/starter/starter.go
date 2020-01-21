@@ -51,7 +51,5 @@ func StartConfigMapCABundleInjector(ctx context.Context, controllerContext *cont
 
 	go configMapInjectorController.Run(5, stopChan)
 
-	<-stopChan
-
-	return fmt.Errorf("stopped")
+	return nil
 }

@@ -68,9 +68,7 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	go servingCertController.Run(5, stopChan)
 	go servingCertUpdateController.Run(5, stopChan)
 
-	<-stopChan
-
-	return fmt.Errorf("stopped")
+	return nil
 }
 
 // readIntermediateCACert attempts to read an intermediate certificate
