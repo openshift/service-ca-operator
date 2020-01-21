@@ -285,31 +285,6 @@ rules:
   - get
   - list
   - watch
-# The rules that follow can be removed in 4.5. They are only required
-# to support removal of legacy 4.3-only resources for clusters that
-# were upgraded from 4.3 to 4.4.
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - serviceaccounts
-  verbs:
-  - delete
-- apiGroups:
-  - "apps"
-  resources:
-  - deployments
-  verbs:
-  - delete
-- apiGroups:
-  - "rbac.authorization.k8s.io"
-  resources:
-  - clusteerroles
-  - clusterrolebindings
-  - roles
-  - rolebindings
-  verbs:
-  - delete
 `)
 
 func v400ControllerRoleYamlBytes() ([]byte, error) {
