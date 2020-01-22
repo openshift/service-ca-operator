@@ -45,12 +45,14 @@ const (
 	signingKeySecretName         = api.ServiceCASecretName
 
 	pollInterval = time.Second
-	pollTimeout  = 30 * time.Second
 
 	// Rotation of all certs and bundles is expected to take a considerable amount of time
 	// due to the operator having to restart each controller and then each controller having
 	// to acquire the leader election lease and update all targeted resources.
 	rotationTimeout = 3 * time.Minute
+	// Polling for resources related to rotation may be delayed by the number of resources
+	// that are updated in the cluster in response to rotation.
+	rotationPollTimeout = 60 * time.Second
 )
 
 // checkComponents verifies that the components of the operator are running.
@@ -338,13 +340,13 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	}
 
 	// Retrieve the pre-rotation service cert
-	oldCertPEM, oldKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, pollTimeout, nil, nil)
+	oldCertPEM, oldKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, rotationPollTimeout, nil, nil)
 	if err != nil {
 		t.Fatalf("error retrieving service cert: %v", err)
 	}
 
 	// Retrieve the pre-rotation ca bundle
-	oldBundlePEM, err := pollForUpdatedCABundle(t, client, ns.Name, testConfigMapName, pollTimeout, nil)
+	oldBundlePEM, err := pollForUpdatedCABundle(t, client, ns.Name, testConfigMapName, rotationPollTimeout, nil)
 	if err != nil {
 		t.Fatalf("error retrieving ca bundle: %v", err)
 	}
@@ -494,7 +496,7 @@ func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, timeBasedR
 // pollForCARotation polls for the signing secret to be changed in
 // response to CA rotation.
 func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, caKeyPEM []byte) *v1.Secret {
-	secret, err := pollForUpdatedSecret(t, client, serviceCAControllerNamespace, signingKeySecretName, pollTimeout, map[string][]byte{
+	secret, err := pollForUpdatedSecret(t, client, serviceCAControllerNamespace, signingKeySecretName, rotationPollTimeout, map[string][]byte{
 		v1.TLSCertKey:           caCertPEM,
 		v1.TLSPrivateKeyKey:     caKeyPEM,
 		api.BundleDataKey:       nil,
