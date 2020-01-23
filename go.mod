@@ -17,6 +17,7 @@ require (
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	go.uber.org/atomic v1.4.0 // indirect
 	k8s.io/api v0.17.0
+	k8s.io/apiextensions-apiserver v0.17.0
 	k8s.io/apimachinery v0.17.0
 	k8s.io/client-go v0.17.0
 	k8s.io/component-base v0.17.0
