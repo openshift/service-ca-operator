@@ -24,6 +24,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/cert"
+	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
+	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
+	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
 
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	routeclient "github.com/openshift/client-go/route/clientset/versioned"
@@ -45,6 +48,7 @@ const (
 	signingKeySecretName         = api.ServiceCASecretName
 
 	pollInterval = time.Second
+	pollTimeout  = 30 * time.Second
 
 	// Rotation of all certs and bundles is expected to take a considerable amount of time
 	// due to the operator having to restart each controller and then each controller having
@@ -114,15 +118,14 @@ func createServingCertAnnotatedService(client *kubernetes.Clientset, secretName,
 }
 
 func createAnnotatedCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapName, namespace string) error {
-	_, err := client.CoreV1().ConfigMaps(namespace).Create(&v1.ConfigMap{
+	obj := &v1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: configMapName,
-			Annotations: map[string]string{
-				api.InjectCABundleAnnotationName: "true",
-			},
 		},
-	})
+	}
+	setInjectionAnnotation(&obj.ObjectMeta)
+	_, err := client.CoreV1().ConfigMaps(namespace).Create(obj)
 	return err
 }
 
@@ -346,7 +349,7 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	}
 
 	// Retrieve the pre-rotation ca bundle
-	oldBundlePEM, err := pollForUpdatedCABundle(t, client, ns.Name, testConfigMapName, rotationPollTimeout, nil)
+	oldBundlePEM, err := pollForInjectedCABundle(t, client, ns.Name, testConfigMapName, rotationPollTimeout, nil)
 	if err != nil {
 		t.Fatalf("error retrieving ca bundle: %v", err)
 	}
@@ -361,7 +364,7 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	}
 
 	// Retrieve the post-rotation ca bundle
-	newBundlePEM, err := pollForUpdatedCABundle(t, client, ns.Name, testConfigMapName, rotationTimeout, oldBundlePEM)
+	newBundlePEM, err := pollForInjectedCABundle(t, client, ns.Name, testConfigMapName, rotationTimeout, oldBundlePEM)
 	if err != nil {
 		t.Fatalf("error retrieving ca bundle: %v", err)
 	}
@@ -542,9 +545,23 @@ func pollForUpdatedSecret(t *testing.T, client *kubernetes.Clientset, namespace,
 	return obj.(*v1.Secret), nil
 }
 
-// pollForUpdatedCABundle returns the given configmap if its data changes from
+// pollForInjectedCABundle returns the bytes for the injection key in
+// the targeted configmap if the value of the key changes from that
+// provided before the polling timeout.
+func pollForInjectedCABundle(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldValue []byte) ([]byte, error) {
+	return pollForUpdatedConfigMap(t, client, namespace, name, api.InjectionDataKey, timeout, oldValue)
+}
+
+// pollForSigningCABundle returns the bytes for the bundle key of the
+// signing ca bundle configmap if the value is non-empty before the
+// polling timeout.
+func pollForSigningCABundle(t *testing.T, client *kubernetes.Clientset) ([]byte, error) {
+	return pollForUpdatedConfigMap(t, client, serviceCAControllerNamespace, api.SigningCABundleConfigMapName, api.BundleDataKey, pollTimeout, nil)
+}
+
+// pollForUpdatedConfigMap returns the given configmap if its data changes from
 // that provided before the polling timeout.
-func pollForUpdatedCABundle(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldValue []byte) ([]byte, error) {
+func pollForUpdatedConfigMap(t *testing.T, client *kubernetes.Clientset, namespace, name, key string, timeout time.Duration, oldValue []byte) ([]byte, error) {
 	resourceID := fmt.Sprintf("ConfigMap \"%s/%s\"", namespace, name)
 	expectedDataSize := 1
 	obj, err := pollForResource(t, resourceID, timeout, func() (kruntime.Object, error) {
@@ -555,12 +572,12 @@ func pollForUpdatedCABundle(t *testing.T, client *kubernetes.Clientset, namespac
 		if len(configMap.Data) != expectedDataSize {
 			return nil, fmt.Errorf("expected data size %d, got %d", expectedDataSize, len(configMap.Data))
 		}
-		value, ok := configMap.Data[api.InjectionDataKey]
+		value, ok := configMap.Data[key]
 		if !ok {
-			return nil, fmt.Errorf("key %q is missing", api.InjectionDataKey)
+			return nil, fmt.Errorf("key %q is missing", key)
 		}
 		if value == string(oldValue) {
-			return nil, fmt.Errorf("value for key %q has not changed", api.InjectionDataKey)
+			return nil, fmt.Errorf("value for key %q has not changed", key)
 		}
 		return configMap, nil
 	})
@@ -568,7 +585,40 @@ func pollForUpdatedCABundle(t *testing.T, client *kubernetes.Clientset, namespac
 		return nil, err
 	}
 	configMap := obj.(*v1.ConfigMap)
-	return []byte(configMap.Data[api.InjectionDataKey]), nil
+	return []byte(configMap.Data[key]), nil
+}
+
+// pollForAPIService returns the specified APIService if its ca bundle
+// matches the provided value before the polling timeout.
+func pollForAPIService(t *testing.T, client apiserviceclientv1.APIServiceInterface, name string, expectedCABundle []byte) (*apiregv1.APIService, error) {
+	resourceID := fmt.Sprintf("APIService %q", name)
+	obj, err := pollForResource(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
+		apiService, err := client.Get(name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		actualCABundle := apiService.Spec.CABundle
+		if len(actualCABundle) == 0 {
+			return nil, fmt.Errorf("ca bundle not injected")
+		}
+		if !bytes.Equal(actualCABundle, expectedCABundle) {
+			return nil, fmt.Errorf("ca bundle does match the expected value")
+		}
+		return apiService, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*apiregv1.APIService), nil
+}
+
+// setInjectionAnnotation sets the annotation that will trigger the
+// injection of a ca bundle.
+func setInjectionAnnotation(objMeta *metav1.ObjectMeta) {
+	if objMeta.Annotations == nil {
+		objMeta.Annotations = map[string]string{}
+	}
+	objMeta.Annotations[api.InjectCABundleAnnotationName] = "true"
 }
 
 // pollForResource returns a kruntime.Object if the accessor returns without error before the timeout.
@@ -916,8 +966,66 @@ func TestE2E(t *testing.T) {
 		checkCARotation(t, adminClient, adminConfig, triggerForcedRotation)
 	})
 
-	// TODO: additional tests
-	// - API service CA bundle injection
+	t.Run("apiservice-ca-bundle-injection", func(t *testing.T) {
+		client := apiserviceclient.NewForConfigOrDie(adminConfig).ApiregistrationV1().APIServices()
+
+		// Create an api service with the injection annotation
+		randomGroup := fmt.Sprintf("e2e-%s", randSeq(10))
+		version := "v1alpha1"
+		obj := &apiregv1.APIService{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fmt.Sprintf("%s.%s", version, randomGroup),
+			},
+			Spec: apiregv1.APIServiceSpec{
+				Group:                randomGroup,
+				Version:              version,
+				GroupPriorityMinimum: 1,
+				VersionPriority:      1,
+				// A service must be specified for validation to
+				// accept a cabundle.
+				Service: &apiregv1.ServiceReference{
+					Namespace: "foo",
+					Name:      "foo",
+				},
+			},
+		}
+		setInjectionAnnotation(&obj.ObjectMeta)
+		createdObj, err := client.Create(obj)
+		if err != nil {
+			t.Fatalf("error creating api service: %v", err)
+		}
+		defer func() {
+			err := client.Delete(obj.Name, &metav1.DeleteOptions{})
+			if err != nil {
+				t.Errorf("Failed to cleanup api service: %v", err)
+			}
+		}()
+
+		// Retrieve the expected CA bundle
+		expectedCABundle, err := pollForSigningCABundle(t, adminClient)
+		if err != nil {
+			t.Fatalf("error retrieving the signing ca bundle: %v", err)
+		}
+
+		// Wait for the expected bundle to be injected
+		injectedObj, err := pollForAPIService(t, client, createdObj.Name, expectedCABundle)
+		if err != nil {
+			t.Fatalf("error waiting for ca bundle to be injected: %v", err)
+		}
+
+		// Set an invalid ca bundle
+		injectedObj.Spec.CABundle = append(injectedObj.Spec.CABundle, []byte("garbage")...)
+		_, err = client.Update(injectedObj)
+		if err != nil {
+			t.Fatalf("error updated api service: %v", err)
+		}
+
+		// Check that the expected ca bundle is restored
+		_, err = pollForAPIService(t, client, createdObj.Name, expectedCABundle)
+		if err != nil {
+			t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
+		}
+	})
 }
 
 func init() {
