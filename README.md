@@ -61,8 +61,8 @@ metadata:
   uid: afee501b-b61c-11e8-833b-c85b762603b0
 ```
 
-* **apiservice cabundle injector:**
-  * Watches for apiservices annotated with 'service.beta.openshift.io/inject-cabundle=true' and updates the apiservice spec.caBundle with a base64url-encoded CA signing bundle. This is simply an apiservice variant of the above configmap injection feature.
+* **generic cabundle injector:**
+  * Watches for apiservices and crds annotated with 'service.beta.openshift.io/inject-cabundle=true' and sets the appropriate ca bundle field (apiservice -> spec.caBundle, spec.conversion.webhook.clientConfig.caBundle) with a base64url-encoded CA signing bundle. The following example is for apiservices:
 
 ```
 $ oc get apiservice/v1.build.openshift.io -o yaml

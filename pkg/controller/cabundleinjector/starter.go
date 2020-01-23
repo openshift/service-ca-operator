@@ -60,6 +60,7 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 	configConstructors := []configBuilderFunc{
 		newAPIServiceInjectorConfig,
 		newConfigMapInjectorConfig,
+		newCRDInjectorConfig,
 	}
 	controllerRunners := []controller.Runner{}
 	for _, configConstructor := range configConstructors {

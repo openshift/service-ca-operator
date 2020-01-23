@@ -80,6 +80,15 @@ rules:
   - update
   - patch
 - apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+- apiGroups:
   - apiregistration.k8s.io
   resources:
   - apiservices
