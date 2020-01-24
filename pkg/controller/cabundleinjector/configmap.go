@@ -29,6 +29,10 @@ func newConfigMapInjectorConfig(config *caBundleInjectorConfig) controllerConfig
 		name:           "ConfigMapCABundleInjector",
 		keySyncer:      keySyncer,
 		informerGetter: informer,
+		supportedAnnotations: []string{
+			api.InjectCABundleAnnotationName,
+			api.AlphaInjectCABundleAnnotationName,
+		},
 	}
 }
 
