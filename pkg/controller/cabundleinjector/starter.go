@@ -7,12 +7,12 @@ import (
 
 	"monis.app/go/openshift/controller"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
-	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
 type caBundleInjectorConfig struct {
@@ -26,10 +26,11 @@ type caBundleInjectorConfig struct {
 type startInformersFunc func(stopChan <-chan struct{})
 
 type controllerConfig struct {
-	name           string
-	keySyncer      controller.KeySyncer
-	informerGetter controller.InformerGetter
-	startInformers startInformersFunc
+	name                 string
+	keySyncer            controller.KeySyncer
+	informerGetter       controller.InformerGetter
+	startInformers       startInformersFunc
+	supportedAnnotations []string
 }
 
 type configBuilderFunc func(config *caBundleInjectorConfig) controllerConfig
@@ -69,8 +70,12 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 		ctlConfig := configConstructor(injectorConfig)
 		controllerRunner := controller.New(ctlConfig.name, ctlConfig.keySyncer,
 			controller.WithInformer(ctlConfig.informerGetter, controller.FilterFuncs{
-				AddFunc:    api.HasInjectCABundleAnnotation,
-				UpdateFunc: api.HasInjectCABundleAnnotationUpdate,
+				AddFunc: func(obj v1.Object) bool {
+					return hasSupportedInjectionAnnotation(obj, ctlConfig.supportedAnnotations)
+				},
+				UpdateFunc: func(old, cur v1.Object) bool {
+					return hasSupportedInjectionAnnotation(cur, ctlConfig.supportedAnnotations)
+				},
 			}),
 		)
 		controllerRunners = append(controllerRunners, controllerRunner)
@@ -90,4 +95,14 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 	}
 
 	return nil
+}
+
+func hasSupportedInjectionAnnotation(obj v1.Object, supportedAnnotations []string) bool {
+	annotations := obj.GetAnnotations()
+	for _, key := range supportedAnnotations {
+		if annotations[key] == "true" {
+			return true
+		}
+	}
+	return false
 }

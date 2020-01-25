@@ -1,11 +1,5 @@
 package api
 
-import (
-	"strings"
-
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
 // Constants for Service CA
 const (
 	// ForcedRotationReasonAnnotationName is the name of an annotation indicating
@@ -27,15 +21,6 @@ const (
 	AlphaInjectCABundleAnnotationName = "service.alpha.openshift.io/inject-cabundle"
 	InjectionDataKey                  = "service-ca.crt"
 )
-
-func HasInjectCABundleAnnotation(metadata v1.Object) bool {
-	return strings.EqualFold(metadata.GetAnnotations()[AlphaInjectCABundleAnnotationName], "true") ||
-		strings.EqualFold(metadata.GetAnnotations()[InjectCABundleAnnotationName], "true")
-}
-
-func HasInjectCABundleAnnotationUpdate(old, cur v1.Object) bool {
-	return HasInjectCABundleAnnotation(cur)
-}
 
 // Annotations on service
 const (

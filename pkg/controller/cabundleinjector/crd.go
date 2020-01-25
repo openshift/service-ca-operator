@@ -10,6 +10,8 @@ import (
 	apiextlister "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
+
+	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
 type crdCABundleInjector struct {
@@ -33,6 +35,9 @@ func newCRDInjectorConfig(config *caBundleInjectorConfig) controllerConfig {
 		informerGetter: informer,
 		startInformers: func(stopChan <-chan struct{}) {
 			informers.Start(stopChan)
+		},
+		supportedAnnotations: []string{
+			api.InjectCABundleAnnotationName,
 		},
 	}
 }

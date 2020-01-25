@@ -8,6 +8,8 @@ import (
 	admissionregclient "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
 	admissionreglister "k8s.io/client-go/listers/admissionregistration/v1"
 	"k8s.io/klog"
+
+	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
 type mutatingWebhookCABundleInjector struct {
@@ -27,6 +29,9 @@ func newMutatingWebhookInjectorConfig(config *caBundleInjectorConfig) controller
 		name:           "MutatingWebhookCABundleInjector",
 		keySyncer:      keySyncer,
 		informerGetter: informer,
+		supportedAnnotations: []string{
+			api.InjectCABundleAnnotationName,
+		},
 	}
 }
 

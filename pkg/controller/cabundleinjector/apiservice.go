@@ -10,6 +10,8 @@ import (
 	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
 	apiserviceinformer "k8s.io/kube-aggregator/pkg/client/informers/externalversions"
 	apiservicelister "k8s.io/kube-aggregator/pkg/client/listers/apiregistration/v1"
+
+	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
 type apiServiceCABundleInjector struct {
@@ -35,6 +37,10 @@ func newAPIServiceInjectorConfig(config *caBundleInjectorConfig) controllerConfi
 		informerGetter: informer,
 		startInformers: func(stopChan <-chan struct{}) {
 			informers.Start(stopChan)
+		},
+		supportedAnnotations: []string{
+			api.InjectCABundleAnnotationName,
+			api.AlphaInjectCABundleAnnotationName,
 		},
 	}
 }
