@@ -3,6 +3,7 @@ package cabundleinjector
 import (
 	"context"
 	"io/ioutil"
+	"strings"
 	"time"
 
 	"monis.app/go/openshift/controller"
@@ -100,7 +101,7 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 func hasSupportedInjectionAnnotation(obj v1.Object, supportedAnnotations []string) bool {
 	annotations := obj.GetAnnotations()
 	for _, key := range supportedAnnotations {
-		if annotations[key] == "true" {
+		if strings.EqualFold(annotations[key], "true") {
 			return true
 		}
 	}
