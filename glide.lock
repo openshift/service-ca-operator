@@ -1,5 +1,5 @@
-hash: 56d1e300bef9eb8c730080f589e3b2d6762644d2ab859b340161f78c869ef319
-updated: 2019-09-04T17:31:26.474804+02:00
+hash: 5fdc0d878c9c89c11572d15e0ebf1616840ff0fdd45350fd453461d668c8095f
+updated: 2020-02-22T07:46:48.738180303-08:00
 imports:
 - name: github.com/beorn7/perks
   version: 3ac7bf7a47d159a033b107610db8a1b6575507a4
@@ -31,11 +31,11 @@ imports:
   subpackages:
   - log
 - name: github.com/evanphx/json-patch
-  version: 5858425f75500d40c52783dce87d085a483ce135
+  version: bf22ed9311622d93e213ba31e4ae7a5771e5d379
 - name: github.com/getsentry/raven-go
   version: c977f96e109525a5d8fa10a19165341f601f38b0
 - name: github.com/ghodss/yaml
-  version: 73d445a93680fa1a78ae23a5839bad48f32ba1ee
+  version: 25d852aebe32c875e9c044af3eef9c7dc6bc777f
 - name: github.com/go-openapi/jsonpointer
   version: ef5f0afec364d3b9396b7b77b43dbe26bf1f8004
 - name: github.com/go-openapi/jsonreference
@@ -104,7 +104,7 @@ imports:
 - name: github.com/NYTimes/gziphandler
   version: 56545f4a5d46df9a6648819d1664c3a03a13ffdb
 - name: github.com/openshift/api
-  version: 922d36944de3ed37a938bf5d609acfa700d53f7c
+  version: 8ce0047d664fc92a53ded23caef9ede2dc4468c6
   subpackages:
   - apps
   - apps/v1
@@ -172,7 +172,7 @@ imports:
   - operator/listers/operator/v1
   - operator/listers/operator/v1alpha1
 - name: github.com/openshift/library-go
-  version: 7d4acc018c610623ee1413b1e7aebe2ac675d35f
+  version: 2cf86bbd930b78997e198b204a59b1711bad3c02
   subpackages:
   - pkg/config/client
   - pkg/config/clusteroperator/v1helpers
@@ -186,6 +186,7 @@ imports:
   - pkg/crypto
   - pkg/operator/condition
   - pkg/operator/events
+  - pkg/operator/loglevel
   - pkg/operator/management
   - pkg/operator/resource/resourceapply
   - pkg/operator/resource/resourcemerge
@@ -196,8 +197,10 @@ imports:
   - pkg/serviceability
 - name: github.com/pborman/uuid
   version: ca53cad383cad2479bbba7f7a1a05797ec1386e4
+- name: github.com/pkg/errors
+  version: 645ef00459ed84a119197bfb8d8205042c6df63d
 - name: github.com/pkg/profile
-  version: f6fe06335df110bcf1ed6d4e852b760bfc15beee
+  version: acd64d450fd45fb2afa41f833f3788c8a7797219
 - name: github.com/prometheus/client_golang
   version: 505eaef017263e299324067d40ca2c48f6a2cf50
   subpackages:
@@ -224,9 +227,9 @@ imports:
 - name: github.com/sirupsen/logrus
   version: 89742aefa4b206dcf400792f3bd35b542998eb3b
 - name: github.com/spf13/cobra
-  version: f2b07da1e2c38d5f12845a4f607e2e1018cbb1f5
+  version: 39cf99f556817dc31535a3fbc8a60c7fbd70ba56
 - name: github.com/spf13/pflag
-  version: 298182f68c66c05229eb03ac171abe6e309ee79a
+  version: 2e9d26c8c37aae03e3f9d4e90b7116f5accb7cab
 - name: golang.org/x/crypto
   version: de0752318171da717af4ce24d0a2e8626afaeb11
   subpackages:
@@ -270,7 +273,7 @@ imports:
   subpackages:
   - rate
 - name: google.golang.org/appengine
-  version: 54a98f90d1c46b7731eb8fb305d2a321c30ef610
+  version: b6ce0843b556e44e6416df5c2fd05db0869cc8d4
   subpackages:
   - internal
   - internal/base
@@ -764,5 +767,7 @@ imports:
   - typed
   - value
 - name: sigs.k8s.io/yaml
-  version: fd68e9863619f6ec2fdd8625fe1f02e7c877e480
-testImports: []
+  version: 9fc95527decd95bb9d28cc2eab08179b2d0f6971
+testImports:
+- name: github.com/google/uuid
+  version: c2e93f3ae59f2904160ceaab466009f965df46d6
