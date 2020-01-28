@@ -3,6 +3,7 @@ package operator
 import (
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -25,6 +26,13 @@ const (
 	// trusted) should be valid for at least this long.
 	minimumTrustDuration = 182 * 24 * time.Hour
 )
+
+type unsupportedServiceCAConfig struct {
+	ForceRotation forceRotationConfig `json:"forceRotation"`
+}
+type forceRotationConfig struct {
+	Reason string `json:"reason"`
+}
 
 type signingCA struct {
 	config             *crypto.TLSCertificateConfig
@@ -64,19 +72,14 @@ func (ca *signingCA) updateSigningSecret(secret *corev1.Secret) error {
 // current CA is not more than half-way expired or if a forced rotation was not
 // requested, and in this case an empty rotation message will be returned.
 func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certificate, rawUnsupportedServiceCAConfig []byte) (string, error) {
-	serviceCAConfig, err := loadUnsupportedServiceCAConfig(rawUnsupportedServiceCAConfig)
+	reason, err := forceRotationReason(rawUnsupportedServiceCAConfig)
 	if err != nil {
-		return "", fmt.Errorf("failed to load unsupportedConfigOverrides: %v", err)
+		return "", fmt.Errorf("failed to read force rotation reason: %v", err)
 	}
-
-	reason := serviceCAConfig.ForceRotation.Reason
 	forcedRotation := forcedRotationRequired(secret, reason)
 
-	timeBasedRotation := false
-	if serviceCAConfig.TimeBasedRotation.Enabled {
-		minimumExpiry := time.Now().Add(minimumTrustDuration)
-		timeBasedRotation = currentCACert.NotAfter.Before(minimumExpiry)
-	}
+	minimumExpiry := time.Now().Add(minimumTrustDuration)
+	timeBasedRotation := currentCACert.NotAfter.Before(minimumExpiry)
 
 	if !(forcedRotation || timeBasedRotation) {
 		return "", nil
@@ -191,6 +194,30 @@ func createIntermediateCACert(targetCACert, signingCACert *x509.Certificate, sig
 	}
 
 	return caCert, nil
+}
+
+// forceRotationReason attempts to retrieve a force rotation reason
+// from the provided raw UnsupportedConfigOverrides.
+func forceRotationReason(rawUnsupportedServiceCAConfig []byte) (string, error) {
+	serviceCAConfig := &unsupportedServiceCAConfig{}
+	if raw := rawUnsupportedServiceCAConfig; len(raw) > 0 {
+		if err := json.Unmarshal(raw, serviceCAConfig); err != nil {
+			return "", err
+		}
+	}
+
+	return serviceCAConfig.ForceRotation.Reason, nil
+}
+
+// RawUnsupportedServiceCAConfig returns the raw value of the operator field
+// UnsupportedConfigOverrides for the given force rotation reason.
+func RawUnsupportedServiceCAConfig(reason string) ([]byte, error) {
+	config := &unsupportedServiceCAConfig{
+		ForceRotation: forceRotationConfig{
+			Reason: reason,
+		},
+	}
+	return json.Marshal(config)
 }
 
 // forcedRotationRequired indicates whether the force rotation reason is not empty and
