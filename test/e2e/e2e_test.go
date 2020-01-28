@@ -60,7 +60,7 @@ const (
 	rotationTimeout = 3 * time.Minute
 	// Polling for resources related to rotation may be delayed by the number of resources
 	// that are updated in the cluster in response to rotation.
-	rotationPollTimeout = 60 * time.Second
+	rotationPollTimeout = 2 * time.Minute
 )
 
 // checkComponents verifies that the components of the operator are running.
@@ -731,6 +731,100 @@ func pollForResource(t *testing.T, resourceID string, timeout time.Duration, acc
 	return obj, err
 }
 
+func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Clientset, service *v1.Service, testNS, updatedServerCert string) {
+	timeout := 5 * time.Minute
+	metricsURL := fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, service.Spec.Ports[0].Port)
+	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
+		podName := "client-pod-" + randSeq(5)
+		_, err := client.CoreV1().Pods(testNS).Create(&v1.Pod{
+			TypeMeta: metav1.TypeMeta{},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: testNS,
+			},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name:    "cert-checker",
+						Image:   "nicolaka/netshoot:latest",
+						Command: []string{"/bin/bash"},
+						Args:    []string{"-c", fmt.Sprintf("openssl s_client -showcerts -connect %s < /dev/null 2>/dev/null | openssl x509", metricsURL)},
+					},
+				},
+				RestartPolicy: v1.RestartPolicyOnFailure,
+			},
+		})
+		if err != nil {
+			t.Logf("creating client pod failed: %v", err)
+			return false, nil
+		}
+		defer deletePod(t, client, podName, testNS)
+
+		err = waitForPodPhase(t, client, podName, testNS, v1.PodSucceeded)
+		if err != nil {
+			t.Logf("wait on pod to complete failed: %v", err)
+			return false, nil
+		}
+
+		serverCertClientReceived, err := getPodLogs(t, client, podName, testNS)
+		if err != nil {
+			t.Logf("fetching pod logs failed: %v", err)
+			return false, nil
+		}
+		return strings.Contains(updatedServerCert, serverCertClientReceived), nil
+	})
+	if err != nil {
+		t.Fatalf("failed to verify updated certs within timeout(%v)", timeout)
+	}
+
+}
+
+func waitForPodPhase(t *testing.T, client *kubernetes.Clientset, name, namespace string, phase v1.PodPhase) error {
+	return wait.PollImmediate(10*time.Second, time.Minute, func() (bool, error) {
+		pod, err := client.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{})
+		if err != nil {
+			t.Logf("fetching test pod from apiserver failed: %v", err)
+			return false, nil
+		}
+		return pod.Status.Phase == phase, nil
+	})
+}
+
+func getPodLogs(t *testing.T, client *kubernetes.Clientset, name, namespace string) (string, error) {
+	rc, err := client.CoreV1().Pods(namespace).GetLogs(name, &v1.PodLogOptions{}).Stream()
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(rc)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func deletePod(t *testing.T, client *kubernetes.Clientset, name, namespace string) {
+	err := client.CoreV1().Pods(namespace).Delete(name, &metav1.DeleteOptions{})
+	if errors.IsNotFound(err) {
+		return
+	}
+	if err != nil {
+		t.Errorf("failed to delete pod: %v", err)
+	}
+}
+
+func deleteNamespace(t *testing.T, client *kubernetes.Clientset, name string) {
+	err := client.CoreV1().Namespaces().Delete(name, &metav1.DeleteOptions{})
+	if errors.IsNotFound(err) {
+		return
+	}
+	if err != nil {
+		t.Errorf("failed to delete namespace: %v", err)
+	}
+}
+
 // newPrometheusClientForConfig returns a new prometheus client for
 // the provided kubeconfig.
 func newPrometheusClientForConfig(config *rest.Config) (prometheusv1.API, error) {
@@ -907,6 +1001,36 @@ func TestE2E(t *testing.T) {
 		if !bytes.Equal(originalBytes, updatedBytes) {
 			t.Fatalf("did not expect TLSCertKey to be replaced with a new cert")
 		}
+	})
+
+	// make sure that deleting service-cert-secret regenerates a working secret again
+	t.Run("serving-cert-secret-delete-data", func(t *testing.T) {
+		serviceName := "metrics"
+		operatorNamespace := "openshift-service-ca-operator"
+		testNamespace := "test-" + randSeq(5)
+		_, err := createTestNamespace(adminClient, testNamespace)
+		if err != nil {
+			t.Fatalf("could not create test namespace: %v", err)
+		}
+		defer deleteNamespace(t, adminClient, testNamespace)
+		service, err := adminClient.CoreV1().Services(operatorNamespace).Get(serviceName, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("fetching service from apiserver failed: %v", err)
+		}
+		secretName, ok := service.ObjectMeta.Annotations[api.ServingCertSecretAnnotation]
+		if !ok {
+			t.Fatalf("secret name not found in service annotations")
+		}
+		err = adminClient.CoreV1().Secrets(operatorNamespace).Delete(secretName, &metav1.DeleteOptions{})
+		if err != nil {
+			t.Fatalf("deleting secret %s in namespace %s failed: %v", secretName, operatorNamespace, err)
+		}
+		updatedBytes, _, err := pollForUpdatedServingCert(t, adminClient, operatorNamespace, secretName, rotationPollTimeout, nil, nil)
+		if err != nil {
+			t.Fatalf("error fetching re-created serving cert secret: %v", err)
+		}
+
+		checkClientPodRcvdUpdatedServerCert(t, adminClient, service, testNamespace, string(updatedBytes))
 	})
 
 	// test ca bundle injection configmap
