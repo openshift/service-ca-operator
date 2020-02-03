@@ -116,6 +116,7 @@ func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Reco
 			return false, fmt.Errorf("failed to rotate signing CA: %v", err)
 		}
 		if len(rotationMsg) == 0 {
+			metrics.SetCAExpiry(existingCert.NotAfter)
 			return false, nil
 		}
 		// Ensure the updated existing secret is applied below

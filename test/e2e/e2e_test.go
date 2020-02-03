@@ -686,7 +686,7 @@ func checkMetricsCollection(t *testing.T, promClient prometheusv1.API, namespace
 func runPromQueryForVector(t *testing.T, promClient prometheusv1.API, query string, sampleTime time.Time) (model.Vector, error) {
 	results, warnings, err := promClient.Query(context.Background(), query, sampleTime)
 	if err != nil {
-		return model.Vector{}, err
+		return nil, err
 	}
 	if len(warnings) > 0 {
 		t.Logf("prometheus query emitted warnings: %v", warnings)
@@ -694,7 +694,7 @@ func runPromQueryForVector(t *testing.T, promClient prometheusv1.API, query stri
 
 	result, ok := results.(model.Vector)
 	if !ok {
-		return model.Vector{}, fmt.Errorf("expecting vector type result, found: %v ", reflect.TypeOf(results))
+		return nil, fmt.Errorf("expecting vector type result, found: %v ", reflect.TypeOf(results))
 	}
 
 	return result, nil
@@ -735,7 +735,7 @@ func checkServiceCAMetrics(t *testing.T, client *kubernetes.Clientset, promClien
 		}
 
 		if float64(want.Unix()) != float64(rawExpiryTime.Value) {
-			t.Fatalf("service ca expiry time mismatch expected %v observed %v", float64(want.UnixNano()), float64(rawExpiryTime.Value))
+			t.Fatalf("service ca expiry time mismatch expected %v observed %v", float64(want.Unix()), float64(rawExpiryTime.Value))
 		}
 
 		return true, nil
