@@ -17,14 +17,28 @@ import (
 )
 
 const (
-	signingCertificateLifetimeInDays = 365 // 1 year
+	// The minimum remaining duration of the service CA needs to exceeds the maximum
+	// supported upgrade interval (currently 12 months). A duration of 26 months
+	// (rotated at 13 months) ensures that an upgrade will occur after automated
+	// rotation and before the expiry of the pre-rotation CA. Since an upgrade restarts
+	// all services, those services will always be using valid material.
+	//
+	// Example timeline using a 26 month service CA duration:
+	//
+	// - T+0m  - Cluster installed with new CA or existing CA is rotated (CA-1)
+	// - T+12m - Cluster is upgraded and all pods are restarted
+	// - T+13m - Automated rotation replaces CA-1 with CA-2 when CA-1 duration < 13m
+	// - T+24m - Cluster is upgraded and all pods are restarted
+	// - T+26m - CA-1 expires. No impact because of the restart at time of upgrade
+	//
+	signingCertificateLifetimeInDays = 790 // 26 months
 
 	// The minimum duration that a CA should be trusted is approximately half
 	// the default signing certificate lifetime. If a signing CA is valid for
 	// less than this duration, it is due for rotation. An intermediate
 	// certificate created by rotation (to ensure that the previous CA remains
 	// trusted) should be valid for at least this long.
-	minimumTrustDuration = 182 * 24 * time.Hour
+	minimumTrustDuration = 395 * 24 * time.Hour // 13 months
 )
 
 type unsupportedServiceCAConfig struct {
