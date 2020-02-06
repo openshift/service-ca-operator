@@ -94,9 +94,6 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 				CAConfig: caConfig{
 					ValidityDurationForTesting: 0,
 				},
-				TimeBasedRotation: timeBasedRotationConfig{
-					Enabled: tc.rotationExpected,
-				},
 				ForceRotation: forceRotationConfig{
 					Reason: tc.reason,
 				},

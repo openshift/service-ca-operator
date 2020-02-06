@@ -80,11 +80,8 @@ func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certifi
 	reason := serviceCAConfig.ForceRotation.Reason
 	forcedRotation := forcedRotationRequired(secret, reason)
 
-	timeBasedRotation := false
-	if serviceCAConfig.TimeBasedRotation.Enabled {
-		minimumExpiry := time.Now().Add(minimumTrustDuration)
-		timeBasedRotation = currentCACert.NotAfter.Before(minimumExpiry)
-	}
+	minimumExpiry := time.Now().Add(minimumTrustDuration)
+	timeBasedRotation := currentCACert.NotAfter.Before(minimumExpiry)
 
 	if !(forcedRotation || timeBasedRotation) {
 		return "", nil
