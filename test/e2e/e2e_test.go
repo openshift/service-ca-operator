@@ -410,11 +410,6 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 		Key:   currentCAKey,
 	}
 
-	// Enable time-based rotation by updating the operator config.
-	timeBasedRotationEnabled := true
-	forceRotationReason := ""
-	setUnsupportedServiceCAConfig(t, config, timeBasedRotationEnabled, forceRotationReason, 0)
-
 	// Trigger rotation by renewing the current ca with an expiry that
 	// is sooner than the minimum required duration.
 	renewedCAConfig, err := operator.RenewSelfSignedCertificate(currentCAConfig, 1*time.Hour, true)
@@ -465,7 +460,7 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 
 	// Trigger a forced rotation by updating the operator config
 	// with a reason.
-	setUnsupportedServiceCAConfig(t, config, false, "42", customDuration)
+	setUnsupportedServiceCAConfig(t, config, "42", customDuration)
 
 	signingSecret := pollForCARotation(t, client, caCertPEM, caKeyPEM)
 
@@ -480,7 +475,7 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 	}
 }
 
-func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, timeBasedRotationEnabled bool, forceRotationReason string, validityDuration time.Duration) {
+func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, forceRotationReason string, validityDuration time.Duration) {
 	operatorClient, err := operatorv1client.NewForConfig(config)
 	if err != nil {
 		t.Fatalf("error creating operator client: %v", err)
@@ -489,7 +484,7 @@ func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, timeBasedR
 	if err != nil {
 		t.Fatalf("error retrieving operator config: %v", err)
 	}
-	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(timeBasedRotationEnabled, forceRotationReason, validityDuration)
+	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(forceRotationReason, validityDuration)
 	if err != nil {
 		t.Fatalf("failed to create raw unsupported config overrides: %v", err)
 	}
