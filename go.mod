@@ -20,9 +20,9 @@ require (
 	k8s.io/api v0.17.1
 	k8s.io/apiextensions-apiserver v0.17.0
 	k8s.io/apimachinery v0.17.1
-	k8s.io/client-go v0.17.0
-	k8s.io/component-base v0.17.0
+	k8s.io/client-go v0.17.1
+	k8s.io/component-base v0.17.1
 	k8s.io/klog v1.0.0
-	k8s.io/kube-aggregator v0.17.0
+	k8s.io/kube-aggregator v0.17.1
 	monis.app/go v0.0.0-20190702030534-c65526068664
 )
