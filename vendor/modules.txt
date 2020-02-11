@@ -89,7 +89,7 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 github.com/munnerz/goautoneg
-# github.com/openshift/api v3.9.1-0.20191212095247-c1898f32de35+incompatible
+# github.com/openshift/api v0.0.0-20200121180347-3b42f2648b08
 github.com/openshift/api
 github.com/openshift/api/apps
 github.com/openshift/api/apps/v1
@@ -136,6 +136,15 @@ github.com/openshift/api/template
 github.com/openshift/api/template/v1
 github.com/openshift/api/user
 github.com/openshift/api/user/v1
+# github.com/openshift/build-machinery-go v0.0.0-20200211121458-5e3d6e570160
+github.com/openshift/build-machinery-go
+github.com/openshift/build-machinery-go/make
+github.com/openshift/build-machinery-go/make/lib
+github.com/openshift/build-machinery-go/make/targets
+github.com/openshift/build-machinery-go/make/targets/golang
+github.com/openshift/build-machinery-go/make/targets/openshift
+github.com/openshift/build-machinery-go/make/targets/openshift/operator
+github.com/openshift/build-machinery-go/scripts
 # github.com/openshift/client-go v0.0.0-20191216194936-57f413491e9e
 github.com/openshift/client-go/config/clientset/versioned
 github.com/openshift/client-go/config/clientset/versioned/scheme
@@ -160,14 +169,6 @@ github.com/openshift/client-go/route/clientset/versioned
 github.com/openshift/client-go/route/clientset/versioned/scheme
 github.com/openshift/client-go/route/clientset/versioned/typed/route/v1
 # github.com/openshift/library-go v0.0.0-20200113183004-f2ca9aafdf5a
-github.com/openshift/library-go/alpha-build-machinery
-github.com/openshift/library-go/alpha-build-machinery/make
-github.com/openshift/library-go/alpha-build-machinery/make/lib
-github.com/openshift/library-go/alpha-build-machinery/make/targets
-github.com/openshift/library-go/alpha-build-machinery/make/targets/golang
-github.com/openshift/library-go/alpha-build-machinery/make/targets/openshift
-github.com/openshift/library-go/alpha-build-machinery/make/targets/openshift/operator
-github.com/openshift/library-go/alpha-build-machinery/scripts
 github.com/openshift/library-go/pkg/config/client
 github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers
 github.com/openshift/library-go/pkg/config/configdefaults
@@ -246,7 +247,7 @@ go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
-# golang.org/x/crypto v0.0.0-20190820162420-60c769a6c586
+# golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/internal/subtle
@@ -254,7 +255,7 @@ golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/poly1305
 golang.org/x/crypto/salsa20/salsa
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
+# golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
 golang.org/x/net/http/httpguts
@@ -329,7 +330,7 @@ gopkg.in/inf.v0
 gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/yaml.v2 v2.2.4
 gopkg.in/yaml.v2
-# k8s.io/api v0.17.0
+# k8s.io/api v0.17.1
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
 k8s.io/api/admissionregistration/v1
@@ -388,7 +389,7 @@ k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions/apiextensio
 k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions/internalinterfaces
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1beta1
-# k8s.io/apimachinery v0.17.0
+# k8s.io/apimachinery v0.17.1
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
