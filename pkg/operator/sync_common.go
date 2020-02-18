@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"fmt"
+	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
 	"os"
 	"time"
 
@@ -115,11 +116,18 @@ func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Reco
 			return false, fmt.Errorf("failed to rotate signing CA: %v", err)
 		}
 		if len(rotationMsg) == 0 {
+			metrics.SetCAExpiry(existingCert.NotAfter)
 			return false, nil
 		}
 		// Ensure the updated existing secret is applied below
 		secret = existing
 	}
+
+	certs, err := cert.ParseCertsPEM(secret.Data[corev1.TLSCertKey])
+	if err != nil {
+		return false, err
+	}
+	metrics.SetCAExpiry(certs[0].NotAfter)
 
 	_, mod, err := resourceapply.ApplySecret(client, eventRecorder, secret)
 
