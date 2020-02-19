@@ -3,6 +3,7 @@ package operator
 import (
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -16,15 +17,36 @@ import (
 )
 
 const (
-	signingCertificateLifetimeInDays = 365 // 1 year
+	// The minimum remaining duration of the service CA needs to exceeds the maximum
+	// supported upgrade interval (currently 12 months). A duration of 26 months
+	// (rotated at 13 months) ensures that an upgrade will occur after automated
+	// rotation and before the expiry of the pre-rotation CA. Since an upgrade restarts
+	// all services, those services will always be using valid material.
+	//
+	// Example timeline using a 26 month service CA duration:
+	//
+	// - T+0m  - Cluster installed with new CA or existing CA is rotated (CA-1)
+	// - T+12m - Cluster is upgraded and all pods are restarted
+	// - T+13m - Automated rotation replaces CA-1 with CA-2 when CA-1 duration < 13m
+	// - T+24m - Cluster is upgraded and all pods are restarted
+	// - T+26m - CA-1 expires. No impact because of the restart at time of upgrade
+	//
+	signingCertificateLifetimeInDays = 790 // 26 months
 
 	// The minimum duration that a CA should be trusted is approximately half
 	// the default signing certificate lifetime. If a signing CA is valid for
 	// less than this duration, it is due for rotation. An intermediate
 	// certificate created by rotation (to ensure that the previous CA remains
 	// trusted) should be valid for at least this long.
-	minimumTrustDuration = 182 * 24 * time.Hour
+	minimumTrustDuration = 395 * 24 * time.Hour // 13 months
 )
+
+type unsupportedServiceCAConfig struct {
+	ForceRotation forceRotationConfig `json:"forceRotation"`
+}
+type forceRotationConfig struct {
+	Reason string `json:"reason"`
+}
 
 type signingCA struct {
 	config             *crypto.TLSCertificateConfig
@@ -64,19 +86,14 @@ func (ca *signingCA) updateSigningSecret(secret *corev1.Secret) error {
 // current CA is not more than half-way expired or if a forced rotation was not
 // requested, and in this case an empty rotation message will be returned.
 func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certificate, rawUnsupportedServiceCAConfig []byte) (string, error) {
-	serviceCAConfig, err := loadUnsupportedServiceCAConfig(rawUnsupportedServiceCAConfig)
+	reason, err := forceRotationReason(rawUnsupportedServiceCAConfig)
 	if err != nil {
-		return "", fmt.Errorf("failed to load unsupportedConfigOverrides: %v", err)
+		return "", fmt.Errorf("failed to read force rotation reason: %v", err)
 	}
-
-	reason := serviceCAConfig.ForceRotation.Reason
 	forcedRotation := forcedRotationRequired(secret, reason)
 
-	timeBasedRotation := false
-	if serviceCAConfig.TimeBasedRotation.Enabled {
-		minimumExpiry := time.Now().Add(minimumTrustDuration)
-		timeBasedRotation = currentCACert.NotAfter.Before(minimumExpiry)
-	}
+	minimumExpiry := time.Now().Add(minimumTrustDuration)
+	timeBasedRotation := currentCACert.NotAfter.Before(minimumExpiry)
 
 	if !(forcedRotation || timeBasedRotation) {
 		return "", nil
@@ -191,6 +208,30 @@ func createIntermediateCACert(targetCACert, signingCACert *x509.Certificate, sig
 	}
 
 	return caCert, nil
+}
+
+// forceRotationReason attempts to retrieve a force rotation reason
+// from the provided raw UnsupportedConfigOverrides.
+func forceRotationReason(rawUnsupportedServiceCAConfig []byte) (string, error) {
+	serviceCAConfig := &unsupportedServiceCAConfig{}
+	if raw := rawUnsupportedServiceCAConfig; len(raw) > 0 {
+		if err := json.Unmarshal(raw, serviceCAConfig); err != nil {
+			return "", err
+		}
+	}
+
+	return serviceCAConfig.ForceRotation.Reason, nil
+}
+
+// RawUnsupportedServiceCAConfig returns the raw value of the operator field
+// UnsupportedConfigOverrides for the given force rotation reason.
+func RawUnsupportedServiceCAConfig(reason string) ([]byte, error) {
+	config := &unsupportedServiceCAConfig{
+		ForceRotation: forceRotationConfig{
+			Reason: reason,
+		},
+	}
+	return json.Marshal(config)
 }
 
 // forcedRotationRequired indicates whether the force rotation reason is not empty and

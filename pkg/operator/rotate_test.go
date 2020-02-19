@@ -91,13 +91,9 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 
 	for testName, tc := range testCases {
 		t.Run(testName, func(t *testing.T) {
-			var rawUnsupportedServiceCAConfig []byte
-			if len(tc.reason) > 0 || tc.rotationExpected {
-				var err error
-				rawUnsupportedServiceCAConfig, err = RawUnsupportedServiceCAConfig(true, tc.reason)
-				if err != nil {
-					t.Fatalf("failed to create raw unsupported config overrides: %v", err)
-				}
+			rawUnsupportedServiceCAConfig, err := RawUnsupportedServiceCAConfig(tc.reason)
+			if err != nil {
+				t.Fatalf("failed to create raw unsupported config overrides: %v", err)
 			}
 			secret := tc.secret.DeepCopy()
 			rotationMessage, err := maybeRotateSigningSecret(secret, tc.caCert, rawUnsupportedServiceCAConfig)
