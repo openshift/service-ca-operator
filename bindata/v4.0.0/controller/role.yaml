@@ -5,6 +5,14 @@ metadata:
   namespace: openshift-service-ca
 rules:
 - apiGroups:
+  - security.openshift.io
+  resources:
+  - securitycontextconstraints
+  resourceNames:
+  - restricted
+  verbs:
+  - use
+- apiGroups:
   - ""
   resources:
   - events
