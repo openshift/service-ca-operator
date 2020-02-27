@@ -201,6 +201,8 @@ spec:
         command: ["service-ca-operator", "controller"]
         ports:
         - containerPort: 8443
+        securityContext:
+          runAsNonRoot: true
         resources:
           requests:
             memory: 120Mi
