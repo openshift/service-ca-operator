@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"bytes"
+	"crypto/x509"
 	"fmt"
 	"strconv"
 	"time"
@@ -31,9 +33,10 @@ type serviceServingCertController struct {
 	serviceLister listers.ServiceLister
 	secretLister  listers.SecretLister
 
-	ca         *crypto.CA
-	dnsSuffix  string
-	maxRetries int
+	ca                 *crypto.CA
+	intermediateCACert *x509.Certificate
+	dnsSuffix          string
+	maxRetries         int
 
 	// standard controller loop
 	// services that need to be checked
@@ -43,7 +46,7 @@ type serviceServingCertController struct {
 	syncHandler controller.SyncFunc
 }
 
-func NewServiceServingCertController(services informers.ServiceInformer, secrets informers.SecretInformer, serviceClient kcoreclient.ServicesGetter, secretClient kcoreclient.SecretsGetter, ca *crypto.CA, dnsSuffix string) controller.Runner {
+func NewServiceServingCertController(services informers.ServiceInformer, secrets informers.SecretInformer, serviceClient kcoreclient.ServicesGetter, secretClient kcoreclient.SecretsGetter, ca *crypto.CA, intermediateCACert *x509.Certificate, dnsSuffix string) controller.Runner {
 	sc := &serviceServingCertController{
 		serviceClient: serviceClient,
 		secretClient:  secretClient,
@@ -51,9 +54,10 @@ func NewServiceServingCertController(services informers.ServiceInformer, secrets
 		serviceLister: services.Lister(),
 		secretLister:  secrets.Lister(),
 
-		ca:         ca,
-		dnsSuffix:  dnsSuffix,
-		maxRetries: 10,
+		ca:                 ca,
+		intermediateCACert: intermediateCACert,
+		dnsSuffix:          dnsSuffix,
+		maxRetries:         10,
 	}
 
 	sc.syncHandler = sc.syncService
@@ -129,7 +133,7 @@ func (sc *serviceServingCertController) generateCert(serviceCopy *corev1.Service
 	}
 
 	secret := toBaseSecret(serviceCopy)
-	if err := toRequiredSecret(sc.dnsSuffix, sc.ca, serviceCopy, secret); err != nil {
+	if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, serviceCopy, secret); err != nil {
 		return err
 	}
 
@@ -212,8 +216,13 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 	return true
 }
 
-// Returns true if the secret certificate has the same issuer common name as the current CA, false
-// if not or if there is a parsing error.
+// Returns true if the secret certificate was issued by the current CA,
+// false if not or if there was a parsing error.
+//
+// Determination of issuance will default to comparison of the certificate's
+// AuthorityKeyID and the CA's SubjectKeyId, and fall back to comparison of the
+// certificate's Issuer.CommonName and the CA's Subject.CommonName (in case the CA was
+// generated prior to the addition of key identifiers).
 func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret) bool {
 	certs, err := cert.ParseCertsPEM(secret.Data[corev1.TLSCertKey])
 	if err != nil {
@@ -227,6 +236,17 @@ func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret)
 		return false
 	}
 
+	certAuthorityKeyId := certs[0].AuthorityKeyId
+	caSubjectKeyId := sc.ca.Config.Certs[0].SubjectKeyId
+	// Use key identifier chaining if the SubjectKeyId is populated in the CA
+	// certificate. AuthorityKeyId may not be set in the serving certificate if it was
+	// generated before serving cert generation was updated to include the field.
+	if len(caSubjectKeyId) > 0 {
+		return bytes.Compare(certAuthorityKeyId, caSubjectKeyId) == 0
+	}
+
+	// Fall back to name-based chaining for a legacy service CA that was generated
+	// without SubjectKeyId or AuthorityKeyId.
 	return certs[0].Issuer.CommonName == sc.commonName()
 }
 
@@ -301,23 +321,31 @@ func toBaseSecret(service *corev1.Service) *corev1.Secret {
 	}
 }
 
-func getServingCert(dnsSuffix string, ca *crypto.CA, service *corev1.Service) (*crypto.TLSCertificateConfig, error) {
-	dnsName := service.Name + "." + service.Namespace + ".svc"
+func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, serviceObjectMeta *metav1.ObjectMeta) (*crypto.TLSCertificateConfig, error) {
+	dnsName := serviceObjectMeta.Name + "." + serviceObjectMeta.Namespace + ".svc"
 	fqDNSName := dnsName + "." + dnsSuffix
 	certificateLifetime := 365 * 2 // 2 years
 	servingCert, err := ca.MakeServerCert(
 		sets.NewString(dnsName, fqDNSName),
 		certificateLifetime,
-		cryptoextensions.ServiceServerCertificateExtensionV1(service),
+		cryptoextensions.ServiceServerCertificateExtensionV1(serviceObjectMeta.UID),
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	// Including the intermediate cert will ensure that clients with a
+	// stale ca bundle (containing the previous CA but not the current
+	// one) will be able to trust the serving cert.
+	if intermediateCACert != nil {
+		servingCert.Certs = append(servingCert.Certs, intermediateCACert)
+	}
+
 	return servingCert, nil
 }
 
-func toRequiredSecret(dnsSuffix string, ca *crypto.CA, service *corev1.Service, secretCopy *corev1.Secret) error {
-	servingCert, err := getServingCert(dnsSuffix, ca, service)
+func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, secretCopy *corev1.Secret) error {
+	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, &service.ObjectMeta)
 	if err != nil {
 		return err
 	}

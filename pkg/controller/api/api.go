@@ -6,6 +6,22 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Constants for Service CA
+const (
+	// ForcedRotationReasonAnnotationName is the name of an annotation indicating
+	// the most recent reason that a service CA rotation was forced. The annotation
+	// will be set on the signing secret after the successful completion of a forced
+	// rotation.
+	ForcedRotationReasonAnnotationName = "service-ca.operators.openshift.io/forced-rotation-reason"
+	// BundleDataKey is the key used to identify the CA bundle in the signing
+	// secret.
+	BundleDataKey = "ca-bundle.crt"
+	// IntermediateDataKey is the key used to identify the post-rotation
+	// trust-bridging certificate in the signing secret.
+	IntermediateDataKey = "intermediate-ca.crt"
+)
+
+// Constants for CA bundle injection
 const (
 	InjectCABundleAnnotationName      = "service.beta.openshift.io/inject-cabundle"
 	AlphaInjectCABundleAnnotationName = "service.alpha.openshift.io/inject-cabundle"
@@ -23,6 +39,14 @@ func HasInjectCABundleAnnotationUpdate(old, cur v1.Object) bool {
 
 // Annotations on service
 const (
+	// TODO(marun) When adding a GA serving cert annotation, consider
+	// discontinuing the practice of including the issuing cert with the serving
+	// cert. This behavior was accidental (at some point the issuing CA was an
+	// intermediate rather than the current self-signed root) but had to be
+	// maintained to support legacy clients that ended up reusing the serving cert
+	// as a CA bundle. Clients of a GA annotation should be expected to use a
+	// proper CA bundle.
+
 	// ServingCertSecretAnnotation stores the name of the secret to generate into.
 	ServingCertSecretAnnotation      = "service.beta.openshift.io/serving-cert-secret-name"
 	AlphaServingCertSecretAnnotation = "service.alpha.openshift.io/serving-cert-secret-name"

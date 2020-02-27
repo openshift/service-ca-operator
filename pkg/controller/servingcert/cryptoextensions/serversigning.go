@@ -5,7 +5,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 
-	kapiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/openshift/library-go/pkg/crypto"
 )
@@ -26,16 +26,16 @@ var (
 
 // ServiceServerCertificateExtensionV1 returns a CertificateExtensionFunc that will add the
 // service UID as an x509 v3 extension to the server certificate.
-func ServiceServerCertificateExtensionV1(svc *kapiv1.Service) crypto.CertificateExtensionFunc {
+func ServiceServerCertificateExtensionV1(uid types.UID) crypto.CertificateExtensionFunc {
 	return func(cert *x509.Certificate) error {
-		uid, err := asn1.Marshal(svc.UID)
+		marshalledUID, err := asn1.Marshal(uid)
 		if err != nil {
 			return err
 		}
 		cert.ExtraExtensions = append(cert.ExtraExtensions, pkix.Extension{
 			Id:       OpenShiftServerSigningServiceUIDOID,
 			Critical: false,
-			Value:    uid,
+			Value:    marshalledUID,
 		})
 		return nil
 	}
