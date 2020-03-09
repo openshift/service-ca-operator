@@ -247,3 +247,35 @@ func TestRotateSigningCA(t *testing.T) {
 	dnsName := oldServingCert.Certs[0].Subject.CommonName
 	util.CheckRotation(t, dnsName, oldCertPEM, oldKeyPEM, oldBundlePEM, newCertPEM, newKeyPEM, newBundlePEM)
 }
+
+// TestCreateIntermediateCACert checks that the intermediate CA cert
+// created by signing a target CA cert supports identity key chaining
+// and uses a serial number distinct from that of the target CA cert.
+func TestCreateIntermediateCACert(t *testing.T) {
+	// Create the signing CA
+	signingCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", SigningCertificateLifetimeInDays)
+	if err != nil {
+		t.Fatalf("error generating a new ca: %v", err)
+	}
+	signingCACert := signingCAConfig.Certs[0]
+
+	// Create the CA targeted for signing
+	targetCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", SigningCertificateLifetimeInDays)
+	if err != nil {
+		t.Fatalf("error generating a new ca: %v", err)
+	}
+	targetCACert := targetCAConfig.Certs[0]
+
+	intermediateCACert, err := createIntermediateCACert(targetCACert, signingCACert, signingCAConfig.Key.(*rsa.PrivateKey), nil)
+	if err != nil {
+		t.Fatalf("Failed to create intermediate CA cert: %v", err)
+	}
+
+	if bytes.Compare(intermediateCACert.AuthorityKeyId, signingCACert.SubjectKeyId) != 0 {
+		t.Fatalf("Expected intermediate CA cert AuthorityKeyId to match signing CA cert SubjectKeyId")
+	}
+
+	if intermediateCACert.SerialNumber.Cmp(targetCACert.SerialNumber) == 0 {
+		t.Fatalf("Expected intermediate CA cert serial number to differ from serial number of target CA cert")
+	}
+}
