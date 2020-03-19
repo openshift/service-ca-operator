@@ -1,5 +1,5 @@
 hash: 5fdc0d878c9c89c11572d15e0ebf1616840ff0fdd45350fd453461d668c8095f
-updated: 2020-02-22T07:46:48.738180303-08:00
+updated: 2020-03-18T08:36:55.623354484-07:00
 imports:
 - name: github.com/beorn7/perks
   version: 3ac7bf7a47d159a033b107610db8a1b6575507a4
@@ -31,11 +31,11 @@ imports:
   subpackages:
   - log
 - name: github.com/evanphx/json-patch
-  version: bf22ed9311622d93e213ba31e4ae7a5771e5d379
+  version: 5858425f75500d40c52783dce87d085a483ce135
 - name: github.com/getsentry/raven-go
   version: c977f96e109525a5d8fa10a19165341f601f38b0
 - name: github.com/ghodss/yaml
-  version: 25d852aebe32c875e9c044af3eef9c7dc6bc777f
+  version: 73d445a93680fa1a78ae23a5839bad48f32ba1ee
 - name: github.com/go-openapi/jsonpointer
   version: ef5f0afec364d3b9396b7b77b43dbe26bf1f8004
 - name: github.com/go-openapi/jsonreference
@@ -172,7 +172,7 @@ imports:
   - operator/listers/operator/v1
   - operator/listers/operator/v1alpha1
 - name: github.com/openshift/library-go
-  version: 2cf86bbd930b78997e198b204a59b1711bad3c02
+  version: d58edcb9e7bca8b6c77e261db8df547364f69fb2
   subpackages:
   - pkg/config/client
   - pkg/config/clusteroperator/v1helpers
@@ -197,10 +197,8 @@ imports:
   - pkg/serviceability
 - name: github.com/pborman/uuid
   version: ca53cad383cad2479bbba7f7a1a05797ec1386e4
-- name: github.com/pkg/errors
-  version: 645ef00459ed84a119197bfb8d8205042c6df63d
 - name: github.com/pkg/profile
-  version: acd64d450fd45fb2afa41f833f3788c8a7797219
+  version: f6fe06335df110bcf1ed6d4e852b760bfc15beee
 - name: github.com/prometheus/client_golang
   version: 505eaef017263e299324067d40ca2c48f6a2cf50
   subpackages:
@@ -227,7 +225,7 @@ imports:
 - name: github.com/sirupsen/logrus
   version: 89742aefa4b206dcf400792f3bd35b542998eb3b
 - name: github.com/spf13/cobra
-  version: 39cf99f556817dc31535a3fbc8a60c7fbd70ba56
+  version: 95f2f73ed97e57387762620175ccdc277a8597a0
 - name: github.com/spf13/pflag
   version: 2e9d26c8c37aae03e3f9d4e90b7116f5accb7cab
 - name: golang.org/x/crypto
@@ -273,7 +271,7 @@ imports:
   subpackages:
   - rate
 - name: google.golang.org/appengine
-  version: b6ce0843b556e44e6416df5c2fd05db0869cc8d4
+  version: 54a98f90d1c46b7731eb8fb305d2a321c30ef610
   subpackages:
   - internal
   - internal/base
@@ -767,7 +765,7 @@ imports:
   - typed
   - value
 - name: sigs.k8s.io/yaml
-  version: 9fc95527decd95bb9d28cc2eab08179b2d0f6971
+  version: fd68e9863619f6ec2fdd8625fe1f02e7c877e480
 testImports:
 - name: github.com/google/uuid
-  version: c2e93f3ae59f2904160ceaab466009f965df46d6
+  version: 0cd6bf5da1e1c83f8b45653022c74f71af0538a4
