@@ -13,3 +13,6 @@ service-ca-operator
 *.out
 *.idea
 _output
+
+# Log output from telepresence
+telepresence.log
