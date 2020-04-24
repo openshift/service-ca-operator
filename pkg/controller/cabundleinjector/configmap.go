@@ -1,6 +1,8 @@
 package cabundleinjector
 
 import (
+	"context"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -55,6 +57,6 @@ func (bi *configMapCABundleInjector) Sync(obj metav1.Object) error {
 	// make a copy to avoid mutating cache state
 	configMapCopy := configMap.DeepCopy()
 	configMapCopy.Data = map[string]string{api.InjectionDataKey: bi.caBundle}
-	_, err := bi.client.ConfigMaps(configMapCopy.Namespace).Update(configMapCopy)
+	_, err := bi.client.ConfigMaps(configMapCopy.Namespace).Update(context.TODO(), configMapCopy, metav1.UpdateOptions{})
 	return err
 }

@@ -2,9 +2,11 @@ package operator
 
 import (
 	"bytes"
+	"context"
 	"crypto/x509"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
@@ -80,7 +82,7 @@ func manageSignerCA(client coreclientv1.SecretsGetter, eventRecorder events.Reco
 	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset(resourcePath + "signing-secret.yaml"))
 
 	var existingCert *x509.Certificate
-	existing, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
+	existing, err := client.Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		// Secret will need to be created
 	} else if err != nil {
@@ -175,7 +177,7 @@ func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder eve
 	configMap := resourceread.ReadConfigMapV1OrDie(v4_00_assets.MustAsset(resourcePath + "signing-cabundle.yaml"))
 	if !forceUpdate {
 		// We don't need to force an update; return if the configmap already exists (or error getting).
-		_, err := client.ConfigMaps(configMap.Namespace).Get(configMap.Name, metav1.GetOptions{})
+		_, err := client.ConfigMaps(configMap.Namespace).Get(context.TODO(), configMap.Name, metav1.GetOptions{})
 		if !apierrors.IsNotFound(err) {
 			return false, err
 		}
@@ -183,7 +185,7 @@ func manageSignerCABundle(client coreclientv1.CoreV1Interface, eventRecorder eve
 
 	klog.V(4).Infof("updating CA bundle configmap")
 	secret := resourceread.ReadSecretV1OrDie(v4_00_assets.MustAsset(resourcePath + "signing-secret.yaml"))
-	currentSigningKeySecret, err := client.Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
+	currentSigningKeySecret, err := client.Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
 	// Return err or if the signing secret has no data (should not normally happen).
 	if err != nil || len(currentSigningKeySecret.Data[corev1.TLSCertKey]) == 0 {
 		return false, err
@@ -245,19 +247,29 @@ func cleanupDeprecatedController(c serviceCAOperator, controllerName string) err
 	delOpts := &metav1.DeleteOptions{}
 	deletionFuncs := []func() error{
 		// Delete ClusterRole system:openshift:controller:{controller name}
-		func() error { return c.rbacv1Client.ClusterRoles().Delete(roleAndBindingName, delOpts) },
+		func() error {
+			return c.rbacv1Client.ClusterRoles().Delete(context.TODO(), roleAndBindingName, *delOpts)
+		},
 		// Delete ClusterRoleBinding system:openshift:controller:{controller name}
-		func() error { return c.rbacv1Client.ClusterRoleBindings().Delete(roleAndBindingName, delOpts) },
+		func() error {
+			return c.rbacv1Client.ClusterRoleBindings().Delete(context.TODO(), roleAndBindingName, *delOpts)
+		},
 		// Delete ConfigMap openshift-service-ca/{controller name}-config
-		func() error { return c.corev1Client.ConfigMaps(namespace).Delete(configName, delOpts) },
+		func() error { return c.corev1Client.ConfigMaps(namespace).Delete(context.TODO(), configName, *delOpts) },
 		// Delete ConfigMap openshift-service-ca/{controller name}-lock
-		func() error { return c.corev1Client.ConfigMaps(namespace).Delete(lockName, delOpts) },
+		func() error { return c.corev1Client.ConfigMaps(namespace).Delete(context.TODO(), lockName, *delOpts) },
 		// Delete Role openshift-service-ca/system:openshift:controller:{controller name}
-		func() error { return c.rbacv1Client.Roles(namespace).Delete(roleAndBindingName, delOpts) },
+		func() error {
+			return c.rbacv1Client.Roles(namespace).Delete(context.TODO(), roleAndBindingName, *delOpts)
+		},
 		// Delete RoleBinding openshift-service-ca/system:openshift:controller:{controller name}
-		func() error { return c.rbacv1Client.RoleBindings(namespace).Delete(roleAndBindingName, delOpts) },
+		func() error {
+			return c.rbacv1Client.RoleBindings(namespace).Delete(context.TODO(), roleAndBindingName, *delOpts)
+		},
 		// Delete ServiceAccount openshift-service-ca/{controller name}-sa
-		func() error { return c.corev1Client.ServiceAccounts(namespace).Delete(saName, delOpts) },
+		func() error {
+			return c.corev1Client.ServiceAccounts(namespace).Delete(context.TODO(), saName, *delOpts)
+		},
 	}
 	for _, deletionFunc := range deletionFuncs {
 		err := deletionFunc()

@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"context"
 	"fmt"
 
 	"monis.app/go/openshift/operator"
@@ -68,7 +69,7 @@ func NewServiceCAOperator(
 }
 
 func (c serviceCAOperator) Key() (metav1.Object, error) {
-	return c.operatorClient.Client.ServiceCAs().Get(api.OperatorConfigInstanceName, metav1.GetOptions{})
+	return c.operatorClient.Client.ServiceCAs().Get(context.TODO(), api.OperatorConfigInstanceName, metav1.GetOptions{})
 }
 
 func (c serviceCAOperator) Sync(obj metav1.Object) error {
@@ -86,7 +87,7 @@ func (c serviceCAOperator) Sync(obj metav1.Object) error {
 			setDegradedTrue(operatorConfigCopy, "OperatorSyncLoopError", err.Error())
 		} else {
 			setDegradedFalse(operatorConfigCopy, "OperatorSyncLoopComplete")
-			existingDeployments, err := c.appsv1Client.Deployments(operatorclient.TargetNamespace).List(metav1.ListOptions{})
+			existingDeployments, err := c.appsv1Client.Deployments(operatorclient.TargetNamespace).List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
 				return fmt.Errorf("Error listing deployments in %s: %v", operatorclient.TargetNamespace, err)
 			}
@@ -99,7 +100,7 @@ func (c serviceCAOperator) Sync(obj metav1.Object) error {
 }
 
 func getGeneration(client appsclientv1.AppsV1Interface, ns, name string) int64 {
-	deployment, err := client.Deployments(ns).Get(name, metav1.GetOptions{})
+	deployment, err := client.Deployments(ns).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return -1
 	}

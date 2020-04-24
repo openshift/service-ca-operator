@@ -2,6 +2,7 @@ package cabundleinjector
 
 import (
 	"bytes"
+	"context"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
@@ -60,6 +61,6 @@ func (bi *apiServiceCABundleInjector) Sync(obj v1.Object) error {
 	// avoid mutating our cache
 	apiServiceCopy := apiService.DeepCopy()
 	apiServiceCopy.Spec.CABundle = bi.caBundle
-	_, err := bi.client.Update(apiServiceCopy)
+	_, err := bi.client.Update(context.TODO(), apiServiceCopy, v1.UpdateOptions{})
 	return err
 }
