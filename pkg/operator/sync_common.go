@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
@@ -206,7 +205,7 @@ func manageDeployment(client appsclientv1.AppsV1Interface, eventRecorder events.
 	required := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset(resourcePath + "deployment.yaml"))
 	required.Spec.Template.Spec.Containers[0].Image = os.Getenv("CONTROLLER_IMAGE")
 	required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, fmt.Sprintf("-v=%d", loglevel.LogLevelToVerbosity(options.Spec.LogLevel)))
-	deployment, mod, err := resourceapply.ApplyDeployment(client, eventRecorder, required, resourcemerge.ExpectedDeploymentGeneration(required, options.Status.Generations), forceDeployment)
+	deployment, mod, err := resourceapply.ApplyDeploymentWithForce(client, eventRecorder, required, resourcemerge.ExpectedDeploymentGeneration(required, options.Status.Generations), forceDeployment)
 	if err != nil {
 		return mod, err
 	}
