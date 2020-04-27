@@ -7,10 +7,10 @@ require (
 	github.com/golang/groupcache v0.0.0-20190129154638-5b532d6fd5ef // indirect
 	github.com/google/uuid v1.1.1
 	github.com/jteeuwen/go-bindata v3.0.8-0.20151023091102-a0ff2567cfb7+incompatible
-	github.com/openshift/api v0.0.0-20200422085536-f24cbf292bdd
-	github.com/openshift/build-machinery-go v0.0.0-20200211121458-5e3d6e570160
+	github.com/openshift/api v0.0.0-20200424083944-0422dc17083e
+	github.com/openshift/build-machinery-go v0.0.0-20200424080330-082bf86082cc
 	github.com/openshift/client-go v0.0.0-20200422192633-6f6c07fc2a70
-	github.com/openshift/library-go v0.0.0-20200423145702-b0e5b39cd9e7
+	github.com/openshift/library-go v0.0.0-20200427130628-9b02543ac833
 	github.com/prometheus/client_golang v1.1.0
 	github.com/prometheus/common v0.6.0
 	github.com/spf13/cobra v0.0.5
