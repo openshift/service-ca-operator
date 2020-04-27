@@ -124,7 +124,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	go wait.Until(func() {
 		// List rather than blindly deleting so that there are max 1 request/minute
 		// instead of 3 (one for each 4.3 deployment).
-		deploys, err := deployClient.List(metav1.ListOptions{})
+		deploys, err := deployClient.List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			klog.Warningf("Failed to list deployments when searching for 4.3 deployments to remove: %v", err)
 		}
@@ -133,7 +133,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		}
 		for _, deploy := range deploys.Items {
 			if api.IndependentDeploymentNames.Has(deploy.Name) {
-				err := deployClient.Delete(deploy.Name, &metav1.DeleteOptions{})
+				err := deployClient.Delete(context.TODO(), deploy.Name, metav1.DeleteOptions{})
 				if err != nil {
 					klog.Warningf("Failed to delete 4.3 deployment: %v", err)
 				}

@@ -2,6 +2,7 @@ package cabundleinjector
 
 import (
 	"bytes"
+	"context"
 
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -67,6 +68,6 @@ func (bi *crdCABundleInjector) Sync(obj metav1.Object) error {
 	// make a copy to avoid mutating cache state
 	crdCopy := crd.DeepCopy()
 	crdCopy.Spec.Conversion.Webhook.ClientConfig.CABundle = bi.caBundle
-	_, err := bi.client.Update(crdCopy)
+	_, err := bi.client.Update(context.TODO(), crdCopy, metav1.UpdateOptions{})
 	return err
 }

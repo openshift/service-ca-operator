@@ -74,7 +74,7 @@ func checkComponents(t *testing.T, client *kubernetes.Clientset) {
 		{serviceCAControllerNamespace, serviceCAPodPrefix},
 	}
 	for _, cfg := range componentConfigs {
-		pods, err := client.CoreV1().Pods(cfg.namespace).List(metav1.ListOptions{})
+		pods, err := client.CoreV1().Pods(cfg.namespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			t.Fatalf("Failed to list pods in namespace %q: %v", cfg.namespace, err)
 		}
@@ -92,17 +92,17 @@ func checkComponents(t *testing.T, client *kubernetes.Clientset) {
 }
 
 func createTestNamespace(client *kubernetes.Clientset, namespaceName string) (*v1.Namespace, error) {
-	ns, err := client.CoreV1().Namespaces().Create(&v1.Namespace{
+	ns, err := client.CoreV1().Namespaces().Create(context.TODO(), &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: namespaceName,
 		},
-	})
+	}, metav1.CreateOptions{})
 	return ns, err
 }
 
 // on success returns serviceName, secretName, nil
 func createServingCertAnnotatedService(client *kubernetes.Clientset, secretName, serviceName, namespace string) error {
-	_, err := client.CoreV1().Services(namespace).Create(&v1.Service{
+	_, err := client.CoreV1().Services(namespace).Create(context.TODO(), &v1.Service{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: serviceName,
@@ -118,7 +118,7 @@ func createServingCertAnnotatedService(client *kubernetes.Clientset, secretName,
 				},
 			},
 		},
-	})
+	}, metav1.CreateOptions{})
 	return err
 }
 
@@ -130,13 +130,13 @@ func createAnnotatedCABundleInjectionConfigMap(client *kubernetes.Clientset, con
 		},
 	}
 	setInjectionAnnotation(&obj.ObjectMeta)
-	_, err := client.CoreV1().ConfigMaps(namespace).Create(obj)
+	_, err := client.CoreV1().ConfigMaps(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
 	return err
 }
 
 func pollForServiceServingSecret(client *kubernetes.Clientset, secretName, namespace string) error {
 	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
-		_, err := client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+		_, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return false, nil
 		}
@@ -149,7 +149,7 @@ func pollForServiceServingSecret(client *kubernetes.Clientset, secretName, names
 
 func pollForCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapName, namespace string) error {
 	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
-		_, err := client.CoreV1().ConfigMaps(namespace).Get(configMapName, metav1.GetOptions{})
+		_, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return false, nil
 		}
@@ -161,7 +161,7 @@ func pollForCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapNa
 }
 
 func editServiceServingSecretData(client *kubernetes.Clientset, secretName, namespace, edit string) error {
-	sss, err := client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func editServiceServingSecretData(client *kubernetes.Clientset, secretName, name
 	case "extraData":
 		scopy.Data["foo"] = []byte("blah")
 	}
-	_, err = client.CoreV1().Secrets(namespace).Update(scopy)
+	_, err = client.CoreV1().Secrets(namespace).Update(context.TODO(), scopy, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func editServiceServingSecretData(client *kubernetes.Clientset, secretName, name
 }
 
 func editConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
-	cm, err := client.CoreV1().ConfigMaps(namespace).Get(configMapName, metav1.GetOptions{})
+	cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func editConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapN
 		return fmt.Errorf("ca bundle injection configmap missing data")
 	}
 	cmcopy.Data["foo"] = "blah"
-	_, err = client.CoreV1().ConfigMaps(namespace).Update(cmcopy)
+	_, err = client.CoreV1().ConfigMaps(namespace).Update(context.TODO(), cmcopy, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func editConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapN
 }
 
 func checkServiceServingCertSecretData(client *kubernetes.Clientset, secretName, namespace string) ([]byte, bool, error) {
-	sss, err := client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, false, err
 	}
@@ -224,7 +224,7 @@ func checkServiceServingCertSecretData(client *kubernetes.Clientset, secretName,
 }
 
 func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
-	cm, err := client.CoreV1().ConfigMaps(namespace).Get(configMapName, metav1.GetOptions{})
+	cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMap
 func pollForServiceServingSecretWithReturn(client *kubernetes.Clientset, secretName, namespace string) (*v1.Secret, error) {
 	var secret *v1.Secret
 	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
-		s, err := client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+		s, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return false, nil
 		}
@@ -258,7 +258,7 @@ func pollForServiceServingSecretWithReturn(client *kubernetes.Clientset, secretN
 func pollForCABundleInjectionConfigMapWithReturn(client *kubernetes.Clientset, configMapName, namespace string) (*v1.ConfigMap, error) {
 	var configmap *v1.ConfigMap
 	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
-		cm, err := client.CoreV1().ConfigMaps(namespace).Get(configMapName, metav1.GetOptions{})
+		cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return false, nil
 		}
@@ -273,7 +273,7 @@ func pollForCABundleInjectionConfigMapWithReturn(client *kubernetes.Clientset, c
 
 func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret) error {
 	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
-		s, err := client.CoreV1().Secrets(secret.Namespace).Get(secret.Name, metav1.GetOptions{})
+		s, err := client.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return false, nil
 		}
@@ -290,7 +290,7 @@ func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret) error 
 
 func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap) error {
 	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
-		cm, err := client.CoreV1().ConfigMaps(compareConfigMap.Namespace).Get(compareConfigMap.Name, metav1.GetOptions{})
+		cm, err := client.CoreV1().ConfigMaps(compareConfigMap.Namespace).Get(context.TODO(), compareConfigMap.Name, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return false, nil
 		}
@@ -306,16 +306,16 @@ func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.C
 }
 
 func cleanupServiceSignerTestObjects(client *kubernetes.Clientset, secretName, serviceName, namespace string) {
-	client.CoreV1().Secrets(namespace).Delete(secretName, &metav1.DeleteOptions{})
-	client.CoreV1().Services(namespace).Delete(serviceName, &metav1.DeleteOptions{})
-	client.CoreV1().Namespaces().Delete(namespace, &metav1.DeleteOptions{})
+	client.CoreV1().Secrets(namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
+	client.CoreV1().Services(namespace).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+	client.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
 	// TODO this should just delete the namespace and wait for it to be gone
 	// it should probably fail the test if the namespace gets stuck
 }
 
 func cleanupConfigMapCABundleInjectionTestObjects(client *kubernetes.Clientset, cmName, namespace string) {
-	client.CoreV1().ConfigMaps(namespace).Delete(cmName, &metav1.DeleteOptions{})
-	client.CoreV1().Namespaces().Delete(namespace, &metav1.DeleteOptions{})
+	client.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{})
+	client.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
 	// TODO this should just delete the namespace and wait for it to be gone
 	// it should probably fail the test if the namespace gets stuck
 }
@@ -394,7 +394,7 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 	// clients and servers.
 
 	// Retrieve current CA
-	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(signingKeySecretName, metav1.GetOptions{})
+	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("error retrieving signing key secret: %v", err)
 	}
@@ -447,7 +447,7 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *rest.Config) {
 	// Retrieve the cert and key PEM of the current CA to be able to
 	// detect when rotation has completed.
-	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(signingKeySecretName, metav1.GetOptions{})
+	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("error retrieving signing key secret: %v", err)
 	}
@@ -481,7 +481,7 @@ func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, forceRotat
 	if err != nil {
 		t.Fatalf("error creating operator client: %v", err)
 	}
-	operatorConfig, err := operatorClient.OperatorV1().ServiceCAs().Get(api.OperatorConfigInstanceName, metav1.GetOptions{})
+	operatorConfig, err := operatorClient.OperatorV1().ServiceCAs().Get(context.TODO(), api.OperatorConfigInstanceName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("error retrieving operator config: %v", err)
 	}
@@ -490,7 +490,7 @@ func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, forceRotat
 		t.Fatalf("failed to create raw unsupported config overrides: %v", err)
 	}
 	operatorConfig.Spec.UnsupportedConfigOverrides.Raw = rawUnsupportedServiceCAConfig
-	_, err = operatorClient.OperatorV1().ServiceCAs().Update(operatorConfig)
+	_, err = operatorClient.OperatorV1().ServiceCAs().Update(context.TODO(), operatorConfig, metav1.UpdateOptions{})
 	if err != nil {
 		t.Fatalf("error updating operator config: %v", err)
 	}
@@ -529,7 +529,7 @@ func pollForUpdatedServingCert(t *testing.T, client *kubernetes.Clientset, names
 func pollForUpdatedSecret(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldData map[string][]byte) (*v1.Secret, error) {
 	resourceID := fmt.Sprintf("Secret \"%s/%s\"", namespace, name)
 	obj, err := pollForResource(t, resourceID, timeout, func() (kruntime.Object, error) {
-		secret, err := client.CoreV1().Secrets(namespace).Get(name, metav1.GetOptions{})
+		secret, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -565,7 +565,7 @@ func pollForUpdatedConfigMap(t *testing.T, client *kubernetes.Clientset, namespa
 	resourceID := fmt.Sprintf("ConfigMap \"%s/%s\"", namespace, name)
 	expectedDataSize := 1
 	obj, err := pollForResource(t, resourceID, timeout, func() (kruntime.Object, error) {
-		configMap, err := client.CoreV1().ConfigMaps(namespace).Get(name, metav1.GetOptions{})
+		configMap, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -593,7 +593,7 @@ func pollForUpdatedConfigMap(t *testing.T, client *kubernetes.Clientset, namespa
 func pollForAPIService(t *testing.T, client apiserviceclientv1.APIServiceInterface, name string, expectedCABundle []byte) (*apiregv1.APIService, error) {
 	resourceID := fmt.Sprintf("APIService %q", name)
 	obj, err := pollForResource(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
-		apiService, err := client.Get(name, metav1.GetOptions{})
+		apiService, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -618,7 +618,7 @@ func pollForAPIService(t *testing.T, client apiserviceclientv1.APIServiceInterfa
 func pollForCRD(t *testing.T, client apiextclient.CustomResourceDefinitionInterface, name string, expectedCABundle []byte) (*apiext.CustomResourceDefinition, error) {
 	resourceID := fmt.Sprintf("CustomResourceDefinition %q", name)
 	obj, err := pollForResource(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
-		crd, err := client.Get(name, metav1.GetOptions{})
+		crd, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -646,7 +646,7 @@ func pollForCRD(t *testing.T, client apiextclient.CustomResourceDefinitionInterf
 func pollForMutatingWebhookConfiguration(t *testing.T, client admissionregclient.MutatingWebhookConfigurationInterface, name string, expectedCABundle []byte) (*admissionreg.MutatingWebhookConfiguration, error) {
 	resourceID := fmt.Sprintf("MutatingWebhookConfiguration %q", name)
 	obj, err := pollForResource(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
-		webhookConfig, err := client.Get(name, metav1.GetOptions{})
+		webhookConfig, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -670,7 +670,7 @@ func pollForMutatingWebhookConfiguration(t *testing.T, client admissionregclient
 func pollForValidatingWebhookConfiguration(t *testing.T, client admissionregclient.ValidatingWebhookConfigurationInterface, name string, expectedCABundle []byte) (*admissionreg.ValidatingWebhookConfiguration, error) {
 	resourceID := fmt.Sprintf("ValidatingWebhookConfiguration %q", name)
 	obj, err := pollForResource(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
-		webhookConfig, err := client.Get(name, metav1.GetOptions{})
+		webhookConfig, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -732,7 +732,7 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 	metricsURL := fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, service.Spec.Ports[0].Port)
 	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
 		podName := "client-pod-" + randSeq(5)
-		_, err := client.CoreV1().Pods(testNS).Create(&v1.Pod{
+		_, err := client.CoreV1().Pods(testNS).Create(context.TODO(), &v1.Pod{
 			TypeMeta: metav1.TypeMeta{},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      podName,
@@ -749,7 +749,7 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 				},
 				RestartPolicy: v1.RestartPolicyOnFailure,
 			},
-		})
+		}, metav1.CreateOptions{})
 		if err != nil {
 			t.Logf("creating client pod failed: %v", err)
 			return false, nil
@@ -777,7 +777,7 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 
 func waitForPodPhase(t *testing.T, client *kubernetes.Clientset, name, namespace string, phase v1.PodPhase) error {
 	return wait.PollImmediate(10*time.Second, time.Minute, func() (bool, error) {
-		pod, err := client.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{})
+		pod, err := client.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			t.Logf("fetching test pod from apiserver failed: %v", err)
 			return false, nil
@@ -787,7 +787,7 @@ func waitForPodPhase(t *testing.T, client *kubernetes.Clientset, name, namespace
 }
 
 func getPodLogs(t *testing.T, client *kubernetes.Clientset, name, namespace string) (string, error) {
-	rc, err := client.CoreV1().Pods(namespace).GetLogs(name, &v1.PodLogOptions{}).Stream()
+	rc, err := client.CoreV1().Pods(namespace).GetLogs(name, &v1.PodLogOptions{}).Stream(context.TODO())
 	if err != nil {
 		return "", err
 	}
@@ -802,7 +802,7 @@ func getPodLogs(t *testing.T, client *kubernetes.Clientset, name, namespace stri
 }
 
 func deletePod(t *testing.T, client *kubernetes.Clientset, name, namespace string) {
-	err := client.CoreV1().Pods(namespace).Delete(name, &metav1.DeleteOptions{})
+	err := client.CoreV1().Pods(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if errors.IsNotFound(err) {
 		return
 	}
@@ -812,7 +812,7 @@ func deletePod(t *testing.T, client *kubernetes.Clientset, name, namespace strin
 }
 
 func deleteNamespace(t *testing.T, client *kubernetes.Clientset, name string) {
-	err := client.CoreV1().Namespaces().Delete(name, &metav1.DeleteOptions{})
+	err := client.CoreV1().Namespaces().Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if errors.IsNotFound(err) {
 		return
 	}
@@ -832,7 +832,7 @@ func newPrometheusClientForConfig(config *rest.Config) (prometheusv1.API, error)
 	if err != nil {
 		return nil, fmt.Errorf("error creating kube client: %v", err)
 	}
-	return metrics.NewPrometheusClient(kubeClient, routeClient)
+	return metrics.NewPrometheusClient(context.TODO(), kubeClient, routeClient)
 }
 
 // checkMetricsCollection tests whether metrics are being successfully scraped from at
@@ -895,7 +895,7 @@ func getSampleForPromQuery(t *testing.T, promClient prometheusv1.API, query stri
 func checkServiceCAMetrics(t *testing.T, client *kubernetes.Clientset, promClient prometheusv1.API) {
 	timeout := 60 * time.Second
 
-	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(signingKeySecretName, metav1.GetOptions{})
+	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("error retrieving signing key secret: %v", err)
 	}
@@ -1063,7 +1063,7 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("could not create test namespace: %v", err)
 		}
 		defer deleteNamespace(t, adminClient, testNamespace)
-		service, err := adminClient.CoreV1().Services(operatorNamespace).Get(serviceName, metav1.GetOptions{})
+		service, err := adminClient.CoreV1().Services(operatorNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
 		if err != nil {
 			t.Fatalf("fetching service from apiserver failed: %v", err)
 		}
@@ -1071,7 +1071,7 @@ func TestE2E(t *testing.T) {
 		if !ok {
 			t.Fatalf("secret name not found in service annotations")
 		}
-		err = adminClient.CoreV1().Secrets(operatorNamespace).Delete(secretName, &metav1.DeleteOptions{})
+		err = adminClient.CoreV1().Secrets(operatorNamespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
 		if err != nil {
 			t.Fatalf("deleting secret %s in namespace %s failed: %v", secretName, operatorNamespace, err)
 		}
@@ -1201,7 +1201,7 @@ func TestE2E(t *testing.T) {
 		}
 
 		// delete ca secret
-		err = adminClient.CoreV1().Secrets(serviceCAControllerNamespace).Delete(signingKeySecretName, nil)
+		err = adminClient.CoreV1().Secrets(serviceCAControllerNamespace).Delete(context.TODO(), signingKeySecretName, metav1.DeleteOptions{})
 		if err != nil {
 			t.Fatalf("error deleting signing key: %v", err)
 		}
@@ -1263,12 +1263,12 @@ func TestE2E(t *testing.T) {
 			},
 		}
 		setInjectionAnnotation(&obj.ObjectMeta)
-		createdObj, err := client.Create(obj)
+		createdObj, err := client.Create(context.TODO(), obj, metav1.CreateOptions{})
 		if err != nil {
 			t.Fatalf("error creating api service: %v", err)
 		}
 		defer func() {
-			err := client.Delete(obj.Name, &metav1.DeleteOptions{})
+			err := client.Delete(context.TODO(), obj.Name, metav1.DeleteOptions{})
 			if err != nil {
 				t.Errorf("Failed to cleanup api service: %v", err)
 			}
@@ -1288,7 +1288,7 @@ func TestE2E(t *testing.T) {
 
 		// Set an invalid ca bundle
 		injectedObj.Spec.CABundle = append(injectedObj.Spec.CABundle, []byte("garbage")...)
-		_, err = client.Update(injectedObj)
+		_, err = client.Update(context.TODO(), injectedObj, metav1.UpdateOptions{})
 		if err != nil {
 			t.Fatalf("error updated api service: %v", err)
 		}
@@ -1349,12 +1349,12 @@ func TestE2E(t *testing.T) {
 			},
 		}
 		setInjectionAnnotation(&obj.ObjectMeta)
-		createdObj, err := client.Create(obj)
+		createdObj, err := client.Create(context.TODO(), obj, metav1.CreateOptions{})
 		if err != nil {
 			t.Fatalf("error creating crd: %v", err)
 		}
 		defer func() {
-			err := client.Delete(obj.Name, &metav1.DeleteOptions{})
+			err := client.Delete(context.TODO(), obj.Name, metav1.DeleteOptions{})
 			if err != nil {
 				t.Errorf("Failed to cleanup crd: %v", err)
 			}
@@ -1375,7 +1375,7 @@ func TestE2E(t *testing.T) {
 		// Set an invalid ca bundle
 		whClientConfig := injectedObj.Spec.Conversion.Webhook.ClientConfig
 		whClientConfig.CABundle = append(whClientConfig.CABundle, []byte("garbage")...)
-		_, err = client.Update(injectedObj)
+		_, err = client.Update(context.TODO(), injectedObj, metav1.UpdateOptions{})
 		if err != nil {
 			t.Fatalf("error updated crd: %v", err)
 		}
@@ -1421,12 +1421,12 @@ func TestE2E(t *testing.T) {
 			},
 		}
 		setInjectionAnnotation(&obj.ObjectMeta)
-		createdObj, err := client.Create(obj)
+		createdObj, err := client.Create(context.TODO(), obj, metav1.CreateOptions{})
 		if err != nil {
 			t.Fatalf("error creating mutating webhook configuration: %v", err)
 		}
 		defer func() {
-			err := client.Delete(createdObj.Name, &metav1.DeleteOptions{})
+			err := client.Delete(context.TODO(), createdObj.Name, metav1.DeleteOptions{})
 			if err != nil {
 				t.Errorf("Failed to cleanup mutating webhook configuration: %v", err)
 			}
@@ -1447,7 +1447,7 @@ func TestE2E(t *testing.T) {
 		// Set an invalid ca bundle
 		clientConfig := injectedObj.Webhooks[0].ClientConfig
 		clientConfig.CABundle = append(clientConfig.CABundle, []byte("garbage")...)
-		_, err = client.Update(injectedObj)
+		_, err = client.Update(context.TODO(), injectedObj, metav1.UpdateOptions{})
 		if err != nil {
 			t.Fatalf("error updated mutating webhook configuration: %v", err)
 		}
@@ -1482,12 +1482,12 @@ func TestE2E(t *testing.T) {
 			},
 		}
 		setInjectionAnnotation(&obj.ObjectMeta)
-		createdObj, err := client.Create(obj)
+		createdObj, err := client.Create(context.TODO(), obj, metav1.CreateOptions{})
 		if err != nil {
 			t.Fatalf("error creating validating webhook configuration: %v", err)
 		}
 		defer func() {
-			err := client.Delete(createdObj.Name, &metav1.DeleteOptions{})
+			err := client.Delete(context.TODO(), createdObj.Name, metav1.DeleteOptions{})
 			if err != nil {
 				t.Errorf("Failed to cleanup validating webhook configuration: %v", err)
 			}
@@ -1508,7 +1508,7 @@ func TestE2E(t *testing.T) {
 		// Set an invalid ca bundle
 		clientConfig := injectedObj.Webhooks[0].ClientConfig
 		clientConfig.CABundle = append(clientConfig.CABundle, []byte("garbage")...)
-		_, err = client.Update(injectedObj)
+		_, err = client.Update(context.TODO(), injectedObj, metav1.UpdateOptions{})
 		if err != nil {
 			t.Fatalf("error updated validating webhook configuration: %v", err)
 		}

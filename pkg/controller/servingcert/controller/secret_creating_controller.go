@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"crypto/x509"
 	"fmt"
 	"strconv"
@@ -137,12 +138,12 @@ func (sc *serviceServingCertController) generateCert(serviceCopy *corev1.Service
 		return err
 	}
 
-	_, err := sc.secretClient.Secrets(serviceCopy.Namespace).Create(secret)
+	_, err := sc.secretClient.Secrets(serviceCopy.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
 	if err != nil && !kapierrors.IsAlreadyExists(err) {
 		return sc.updateServiceFailure(serviceCopy, err)
 	}
 	if kapierrors.IsAlreadyExists(err) {
-		actualSecret, err := sc.secretClient.Secrets(serviceCopy.Namespace).Get(secret.Name, metav1.GetOptions{})
+		actualSecret, err := sc.secretClient.Secrets(serviceCopy.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
 		if err != nil {
 			return sc.updateServiceFailure(serviceCopy, err)
 		}
@@ -153,14 +154,14 @@ func (sc *serviceServingCertController) generateCert(serviceCopy *corev1.Service
 		}
 		klog.V(4).Infof("renewing cert in existing secret %s/%s", secret.GetNamespace(), secret.GetName())
 		// Actually update the secret in the regeneration case (the secret already exists but we want to update to a new cert).
-		_, updateErr := sc.secretClient.Secrets(secret.GetNamespace()).Update(secret)
+		_, updateErr := sc.secretClient.Secrets(secret.GetNamespace()).Update(context.TODO(), secret, metav1.UpdateOptions{})
 		if updateErr != nil {
 			return sc.updateServiceFailure(serviceCopy, updateErr)
 		}
 	}
 
 	sc.resetServiceAnnotations(serviceCopy)
-	_, err = sc.serviceClient.Services(serviceCopy.Namespace).Update(serviceCopy)
+	_, err = sc.serviceClient.Services(serviceCopy.Namespace).Update(context.TODO(), serviceCopy, metav1.UpdateOptions{})
 
 	return err
 }
@@ -260,7 +261,7 @@ func (sc *serviceServingCertController) commonName() string {
 func (sc *serviceServingCertController) updateServiceFailure(service *corev1.Service, err error) error {
 	setErrAnnotation(service, err)
 	incrementFailureNumAnnotation(service)
-	_, updateErr := sc.serviceClient.Services(service.Namespace).Update(service)
+	_, updateErr := sc.serviceClient.Services(service.Namespace).Update(context.TODO(), service, metav1.UpdateOptions{})
 	if updateErr != nil {
 		klog.V(4).Infof("warning: failed to update failure annotations on service %s: %v", service.Name, updateErr)
 	}

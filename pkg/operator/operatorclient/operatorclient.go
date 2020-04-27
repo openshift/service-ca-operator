@@ -1,12 +1,14 @@
 package operatorclient
 
 import (
+	"context"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned/typed/operator/v1"
 	operatorv1informers "github.com/openshift/client-go/operator/informers/externalversions"
-
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
@@ -37,7 +39,7 @@ func (c *OperatorClient) UpdateOperatorSpec(resourceVersion string, spec *operat
 	copy.ResourceVersion = resourceVersion
 	copy.Spec.OperatorSpec = *spec
 
-	ret, err := c.Client.ServiceCAs().Update(copy)
+	ret, err := c.Client.ServiceCAs().Update(context.TODO(), copy, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, "", err
 	}
@@ -53,7 +55,7 @@ func (c *OperatorClient) UpdateOperatorStatus(resourceVersion string, status *op
 	copy.ResourceVersion = resourceVersion
 	copy.Status.OperatorStatus = *status
 
-	ret, err := c.Client.ServiceCAs().UpdateStatus(copy)
+	ret, err := c.Client.ServiceCAs().UpdateStatus(context.TODO(), copy, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}

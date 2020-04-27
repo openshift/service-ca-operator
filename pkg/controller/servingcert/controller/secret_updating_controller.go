@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -92,7 +93,7 @@ func (sc *serviceServingCertUpdateController) Sync(obj metav1.Object) error {
 		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
 			return err
 		}
-		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(secretCopy)
+		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(context.TODO(), secretCopy, metav1.UpdateOptions{})
 		return err
 	}
 	// If not regenerating, perform checks here to
@@ -104,7 +105,7 @@ func (sc *serviceServingCertUpdateController) Sync(obj metav1.Object) error {
 		return err
 	}
 	if update {
-		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(secretCopy)
+		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(context.TODO(), secretCopy, metav1.UpdateOptions{})
 		return err
 	}
 	return nil
