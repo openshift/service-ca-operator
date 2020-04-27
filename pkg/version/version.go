@@ -1,8 +1,6 @@
 package version
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
-
 	"k8s.io/apimachinery/pkg/version"
 )
 
@@ -31,17 +29,4 @@ func Get() version.Info {
 		GitVersion: versionFromGit,
 		BuildDate:  buildDate,
 	}
-}
-
-func init() {
-	buildInfo := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "openshift_service_ca_operator_build_info",
-			Help: "A metric with a constant '1' value labeled by major, minor, git commit & git version from which OpenShift Service CA Operator was built.",
-		},
-		[]string{"major", "minor", "gitCommit", "gitVersion"},
-	)
-	buildInfo.WithLabelValues(majorFromGit, minorFromGit, commitFromGit, versionFromGit).Set(1)
-
-	prometheus.MustRegister(buildInfo)
 }
