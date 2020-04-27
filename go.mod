@@ -4,9 +4,9 @@ go 1.13
 
 require (
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
+	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/golang/groupcache v0.0.0-20190129154638-5b532d6fd5ef // indirect
 	github.com/google/uuid v1.1.1
-	github.com/jteeuwen/go-bindata v3.0.8-0.20151023091102-a0ff2567cfb7+incompatible
 	github.com/openshift/api v0.0.0-20200424083944-0422dc17083e
 	github.com/openshift/build-machinery-go v0.0.0-20200424080330-082bf86082cc
 	github.com/openshift/client-go v0.0.0-20200422192633-6f6c07fc2a70
