@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"monis.app/go/openshift/controller"
-
 	corev1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,6 +21,7 @@ import (
 
 	ocontroller "github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/operator-boilerplate-legacy/pkg/controller"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/cryptoextensions"
 )
