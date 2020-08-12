@@ -2,6 +2,7 @@ package operatorclient
 
 import (
 	"context"
+	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
@@ -15,6 +16,13 @@ import (
 type OperatorClient struct {
 	Informers operatorv1informers.SharedInformerFactory
 	Client    operatorv1client.ServiceCAsGetter
+}
+
+func (c OperatorClient) GetObjectMeta() (*metav1.ObjectMeta, error) {
+	// This method is required by the library-go interface but is
+	// unused in this repo so there's no point in implementing at this
+	// time.
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (c *OperatorClient) Informer() cache.SharedIndexInformer {
