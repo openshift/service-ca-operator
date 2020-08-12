@@ -11,17 +11,18 @@ import (
 	rbacclientv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
+	operatorv1listers "github.com/openshift/client-go/operator/listers/operator/v1"
+	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
-	"github.com/openshift/operator-boilerplate-legacy/pkg/operator"
 
-	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 )
 
 type serviceCAOperator struct {
-	operatorClient *operatorclient.OperatorClient
+	operatorClient       *operatorclient.OperatorClient
+	operatorConfigLister operatorv1listers.ServiceCALister
 
 	appsv1Client  appsclientv1.AppsV1Interface
 	corev1Client  coreclientv1.CoreV1Interface
@@ -39,9 +40,10 @@ func NewServiceCAOperator(
 	rbacv1Client rbacclientv1.RbacV1Interface,
 	versionGetter status.VersionGetter,
 	eventRecorder events.Recorder,
-) operator.Runner {
+) factory.Controller {
 	c := &serviceCAOperator{
-		operatorClient: operatorClient,
+		operatorClient:       operatorClient,
+		operatorConfigLister: operatorClient.Informers.Operator().V1().ServiceCAs().Lister(),
 
 		appsv1Client:  appsv1Client,
 		corev1Client:  corev1Client,
@@ -50,29 +52,23 @@ func NewServiceCAOperator(
 		eventRecorder: eventRecorder,
 	}
 
-	configEvents := operator.FilterByNames(api.OperatorConfigInstanceName)
-	configMapEvents := operator.FilterByNames(api.SigningCABundleConfigMapName)
-	saEvents := operator.FilterByNames(api.ServiceCASAName)
-	secretEvents := operator.FilterByNames(api.ServiceCASecretName)
-	deploymentEvents := operator.FilterByNames(api.ServiceCADeploymentName)
-	namespaceEvents := operator.FilterByNames(operatorclient.TargetNamespace)
-
-	return operator.New("ServiceCAOperator", c,
-		operator.WithInformer(namespacedKubeInformers.Core().V1().ConfigMaps(), configMapEvents),
-		operator.WithInformer(namespacedKubeInformers.Core().V1().ServiceAccounts(), saEvents),
-		operator.WithInformer(namespacedKubeInformers.Core().V1().Secrets(), secretEvents),
-		operator.WithInformer(namespacedKubeInformers.Apps().V1().Deployments(), deploymentEvents),
-		operator.WithInformer(namespacedKubeInformers.Core().V1().Namespaces(), namespaceEvents),
-		operator.WithInformer(operatorClient.Informers.Operator().V1().ServiceCAs(), configEvents),
-	)
+	return factory.New().WithInformers(
+		namespacedKubeInformers.Core().V1().ConfigMaps().Informer(),
+		namespacedKubeInformers.Core().V1().ServiceAccounts().Informer(),
+		namespacedKubeInformers.Core().V1().Secrets().Informer(),
+		namespacedKubeInformers.Apps().V1().Deployments().Informer(),
+		operatorClient.Informers.Operator().V1().ServiceCAs().Informer(),
+	).WithNamespaceInformer(
+		namespacedKubeInformers.Core().V1().Namespaces().Informer(), operatorclient.TargetNamespace,
+	).WithSync(c.Sync).
+		ToController("ServiceCAOperator", eventRecorder.WithComponentSuffix("service-ca-operator"))
 }
 
-func (c serviceCAOperator) Key() (metav1.Object, error) {
-	return c.operatorClient.Client.ServiceCAs().Get(context.TODO(), api.OperatorConfigInstanceName, metav1.GetOptions{})
-}
-
-func (c serviceCAOperator) Sync(obj metav1.Object) error {
-	operatorConfig := obj.(*operatorv1.ServiceCA)
+func (c *serviceCAOperator) Sync(ctx context.Context, syncCtx factory.SyncContext) error {
+	operatorConfig, err := c.operatorConfigLister.Get("cluster")
+	if err != nil {
+		return err
+	}
 
 	operatorConfigCopy := operatorConfig.DeepCopy()
 	switch operatorConfigCopy.Spec.ManagementState {

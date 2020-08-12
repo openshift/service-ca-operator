@@ -50,6 +50,7 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		intermediateCACert,
 		// TODO this needs to be configurable
 		"cluster.local",
+		controllerContext.EventRecorder,
 	)
 	servingCertUpdateController := controller.NewServiceServingCertUpdateController(
 		kubeInformers.Core().V1().Services(),
@@ -59,14 +60,14 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		intermediateCACert,
 		// TODO this needs to be configurable
 		"cluster.local",
+		controllerContext.EventRecorder,
 	)
 
 	stopChan := ctx.Done()
-
 	kubeInformers.Start(stopChan)
 
-	go servingCertController.Run(5, stopChan)
-	go servingCertUpdateController.Run(5, stopChan)
+	go servingCertController.Run(ctx, 5)
+	go servingCertUpdateController.Run(ctx, 5)
 
 	return nil
 }

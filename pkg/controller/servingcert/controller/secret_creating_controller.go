@@ -6,22 +6,26 @@ import (
 	"crypto/x509"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	informers "k8s.io/client-go/informers/core/v1"
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
 
-	ocontroller "github.com/openshift/library-go/pkg/controller"
+	"github.com/openshift/library-go/pkg/controller"
+	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/crypto"
-	"github.com/openshift/operator-boilerplate-legacy/pkg/controller"
+	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/cryptoextensions"
 )
@@ -37,16 +41,18 @@ type serviceServingCertController struct {
 	intermediateCACert *x509.Certificate
 	dnsSuffix          string
 	maxRetries         int
-
-	// standard controller loop
-	// services that need to be checked
-	controller.Runner
-
-	// syncHandler does the work. It's factored out for unit testing
-	syncHandler controller.SyncFunc
 }
 
-func NewServiceServingCertController(services informers.ServiceInformer, secrets informers.SecretInformer, serviceClient kcoreclient.ServicesGetter, secretClient kcoreclient.SecretsGetter, ca *crypto.CA, intermediateCACert *x509.Certificate, dnsSuffix string) controller.Runner {
+func NewServiceServingCertController(
+	services informers.ServiceInformer,
+	secrets informers.SecretInformer,
+	serviceClient kcoreclient.ServicesGetter,
+	secretClient kcoreclient.SecretsGetter,
+	ca *crypto.CA,
+	intermediateCACert *x509.Certificate,
+	dnsSuffix string,
+	recorder events.Recorder,
+) factory.Controller {
 	sc := &serviceServingCertController{
 		serviceClient: serviceClient,
 		secretClient:  secretClient,
@@ -60,62 +66,60 @@ func NewServiceServingCertController(services informers.ServiceInformer, secrets
 		maxRetries:         10,
 	}
 
-	sc.syncHandler = sc.syncService
-
-	sc.Runner = controller.New("ServiceServingCertController", sc,
-		controller.WithInformer(services, controller.FilterFuncs{
-			AddFunc: func(obj metav1.Object) bool {
-				return true // TODO we should filter these based on annotations
-			},
-			UpdateFunc: func(oldObj, newObj metav1.Object) bool {
-				return true // TODO we should filter these based on annotations
-			},
-			// TODO we may want to best effort handle deletes and clean up the secrets
-		}),
-		controller.WithInformer(secrets, controller.FilterFuncs{
-			ParentFunc: func(obj metav1.Object) (namespace, name string) {
-				secret := obj.(*corev1.Secret)
-				serviceName, _ := toServiceName(secret)
-				return secret.Namespace, serviceName
-			},
-			DeleteFunc: sc.deleteSecret,
-		}),
-	)
-
-	return sc
+	return factory.New().
+		WithInformersQueueKeyFunc(namespacedObjToQueueKey, services.Informer()).
+		WithFilteredEventsInformersQueueKeyFunc(serviceFromSecretQueueFunc, secretsQueueFilter, secrets.Informer()).
+		WithSync(sc.Sync).
+		ToController("ServiceServingCertController", recorder.WithComponentSuffix("service-serving-cert-controller"))
 }
 
-// deleteSecret handles the case when the service certificate secret is manually removed.
-// In that case the secret will be automatically recreated.
-func (sc *serviceServingCertController) deleteSecret(obj metav1.Object) bool {
-	secret := obj.(*corev1.Secret)
-	serviceName, ok := toServiceName(secret)
-	if !ok {
-		return false
+func namespacedObjToQueueKey(obj runtime.Object) string {
+	metaObj := obj.(metav1.Object)
+	return fmt.Sprintf("%s/%s", metaObj.GetNamespace(), metaObj.GetName())
+}
+
+func serviceNameFromSecretEventObj(obj interface{}) (string, bool) {
+	secret, secretOK := obj.(*corev1.Secret)
+	if !secretOK {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return "", false
+		}
+
+		secret, secretOK = tombstone.Obj.(*corev1.Secret)
+		if !secretOK {
+			return "", false
+		}
 	}
-	service, err := sc.serviceLister.Services(secret.Namespace).Get(serviceName)
+	return toServiceName(secret)
+}
+
+func serviceFromSecretQueueFunc(obj runtime.Object) string {
+	svcName, _ := serviceNameFromSecretEventObj(obj)
+	metaObj := obj.(metav1.Object)
+	return fmt.Sprintf("%s/%s", metaObj.GetNamespace(), svcName)
+}
+
+func secretsQueueFilter(obj interface{}) bool {
+	_, ok := serviceNameFromSecretEventObj(obj)
+	return ok
+}
+
+func objFromQueueKey(qKey string) (string, string) {
+	nsName := strings.SplitN(qKey, "/", 2)
+	return nsName[0], nsName[1]
+}
+
+func (sc *serviceServingCertController) Sync(ctx context.Context, syncContext factory.SyncContext) error {
+	serviceNS, serviceName := objFromQueueKey(syncContext.QueueKey())
+
+	sharedService, err := sc.serviceLister.Services(serviceNS).Get(serviceName)
 	if kapierrors.IsNotFound(err) {
-		return false
+		klog.V(4).Infof("service %s/%s not found", serviceNS, serviceName)
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("unable to get service %s/%s: %v", serviceNS, serviceName, err)
 	}
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("unable to get service %s/%s: %v", secret.Namespace, serviceName, err))
-		return false
-	}
-	klog.V(4).Infof("recreating secret for service %s/%s", service.Namespace, service.Name)
-	return true
-}
-
-func (sc *serviceServingCertController) Key(namespace, name string) (metav1.Object, error) {
-	return sc.serviceLister.Services(namespace).Get(name)
-}
-
-func (sc *serviceServingCertController) Sync(obj metav1.Object) error {
-	// need another layer of indirection so that tests can stub out syncHandler
-	return sc.syncHandler(obj)
-}
-
-func (sc *serviceServingCertController) syncService(obj metav1.Object) error {
-	sharedService := obj.(*corev1.Service)
 
 	if !sc.requiresCertGeneration(sharedService) {
 		return nil
@@ -365,7 +369,7 @@ func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.
 	secretCopy.Annotations[api.AlphaServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
 	secretCopy.Annotations[api.ServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
 
-	ocontroller.EnsureOwnerRef(secretCopy, ownerRef(service))
+	controller.EnsureOwnerRef(secretCopy, ownerRef(service))
 
 	return nil
 }

@@ -141,7 +141,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		}
 	}, 1*time.Minute, ctx.Done())
 
-	go operator.Run(stopChan)
+	go operator.Run(ctx, 1)
 	go clusterOperatorStatus.Run(ctx, 1)
 	go resourceSyncController.Run(ctx, 1)
 
