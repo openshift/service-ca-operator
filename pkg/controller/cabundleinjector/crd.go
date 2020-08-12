@@ -10,7 +10,7 @@ import (
 	apiextinformer "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	apiextlister "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )

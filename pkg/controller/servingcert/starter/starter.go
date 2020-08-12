@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/cert"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/crypto"

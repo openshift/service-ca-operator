@@ -16,7 +16,7 @@ import (
 	appsclientv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coreclientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/util/cert"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/crypto"

@@ -17,7 +17,7 @@ import (
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/util/cert"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	ocontroller "github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/crypto"
