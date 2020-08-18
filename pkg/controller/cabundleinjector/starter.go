@@ -6,14 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"monis.app/go/openshift/controller"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
+	"github.com/openshift/operator-boilerplate-legacy/pkg/controller"
 )
 
 type caBundleInjectorConfig struct {

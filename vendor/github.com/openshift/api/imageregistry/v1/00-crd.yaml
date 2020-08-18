@@ -692,6 +692,7 @@ spec:
                       description: maxWaitInQueue sets the maximum time a request
                         can wait in the queue before being rejected.
                       type: string
+                      format: duration
                 write:
                   description: write defines limits for image registry's writes.
                   type: object
@@ -708,6 +709,7 @@ spec:
                       description: maxWaitInQueue sets the maximum time a request
                         can wait in the queue before being rejected.
                       type: string
+                      format: duration
             resources:
               description: resources defines the resource requests+limits for the
                 registry pod.
@@ -718,7 +720,11 @@ spec:
                     allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
                   type: object
                   additionalProperties:
-                    type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    x-kubernetes-int-or-string: true
                 requests:
                   description: 'Requests describes the minimum amount of compute resources
                     required. If Requests is omitted for a container, it defaults
@@ -726,7 +732,11 @@ spec:
                     value. More info: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/'
                   type: object
                   additionalProperties:
-                    type: string
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    x-kubernetes-int-or-string: true
             rolloutStrategy:
               description: rolloutStrategy defines rollout strategy for the image
                 registry deployment.
@@ -766,6 +776,11 @@ spec:
                     accountName:
                       description: accountName defines the account to be used by the
                         registry.
+                      type: string
+                    cloudName:
+                      description: cloudName is the name of the Azure cloud environment
+                        to be used by the registry. If empty, the operator will set
+                        it based on the infrastructure object.
                       type: string
                     container:
                       description: container defines Azure's container to be used
@@ -839,6 +854,7 @@ spec:
                           description: duration is the duration of the Cloudfront
                             session.
                           type: string
+                          format: duration
                         keypairID:
                           description: keypairID is key pair ID provided by AWS.
                           type: string
@@ -1039,6 +1055,11 @@ spec:
                       description: accountName defines the account to be used by the
                         registry.
                       type: string
+                    cloudName:
+                      description: cloudName is the name of the Azure cloud environment
+                        to be used by the registry. If empty, the operator will set
+                        it based on the infrastructure object.
+                      type: string
                     container:
                       description: container defines Azure's container to be used
                         by registry.
@@ -1111,6 +1132,7 @@ spec:
                           description: duration is the duration of the Cloudfront
                             session.
                           type: string
+                          format: duration
                         keypairID:
                           description: keypairID is key pair ID provided by AWS.
                           type: string
