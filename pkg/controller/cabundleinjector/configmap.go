@@ -3,12 +3,13 @@ package cabundleinjector
 import (
 	"context"
 
-	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 
+	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
@@ -21,29 +22,33 @@ type configMapCABundleInjector struct {
 func newConfigMapInjectorConfig(config *caBundleInjectorConfig) controllerConfig {
 	informer := config.kubeInformers.Core().V1().ConfigMaps()
 
-	keySyncer := &configMapCABundleInjector{
+	syncer := &configMapCABundleInjector{
 		client:   config.kubeClient.CoreV1(),
 		lister:   informer.Lister(),
 		caBundle: string(config.caBundle),
 	}
 
 	return controllerConfig{
-		name:           "ConfigMapCABundleInjector",
-		keySyncer:      keySyncer,
-		informerGetter: informer,
-		supportedAnnotations: []string{
+		name:     "ConfigMapCABundleInjector",
+		sync:     syncer.Sync,
+		informer: informer.Informer(),
+		annotationsChecker: annotationsChecker(
 			api.InjectCABundleAnnotationName,
 			api.AlphaInjectCABundleAnnotationName,
-		},
+		),
+		namespaced: true,
 	}
 }
 
-func (bi *configMapCABundleInjector) Key(namespace, name string) (metav1.Object, error) {
-	return bi.lister.ConfigMaps(namespace).Get(name)
-}
+func (bi *configMapCABundleInjector) Sync(ctx context.Context, syncCtx factory.SyncContext) error {
+	namespace, name := namespacedObjectFromQueueKey(syncCtx.QueueKey())
 
-func (bi *configMapCABundleInjector) Sync(obj metav1.Object) error {
-	configMap := obj.(*corev1.ConfigMap)
+	configMap, err := bi.lister.ConfigMaps(namespace).Get(name)
+	if apierrors.IsNotFound(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
 
 	// skip updating when the CA bundle is already there
 	if data, ok := configMap.Data[api.InjectionDataKey]; ok &&
@@ -57,6 +62,6 @@ func (bi *configMapCABundleInjector) Sync(obj metav1.Object) error {
 	// make a copy to avoid mutating cache state
 	configMapCopy := configMap.DeepCopy()
 	configMapCopy.Data = map[string]string{api.InjectionDataKey: bi.caBundle}
-	_, err := bi.client.ConfigMaps(configMapCopy.Namespace).Update(context.TODO(), configMapCopy, metav1.UpdateOptions{})
+	_, err = bi.client.ConfigMaps(configMapCopy.Namespace).Update(context.TODO(), configMapCopy, metav1.UpdateOptions{})
 	return err
 }
