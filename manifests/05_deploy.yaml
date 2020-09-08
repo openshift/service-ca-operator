@@ -18,7 +18,7 @@ spec:
     spec:
       serviceAccountName: service-ca-operator
       containers:
-      - name: operator
+      - name: service-ca-operator
         image: quay.io/openshift/origin-service-ca-operator:v4.0
         imagePullPolicy: IfNotPresent
         command: ["service-ca-operator", "operator"]
