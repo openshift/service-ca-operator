@@ -77,12 +77,12 @@ func (c *serviceCAOperator) Sync(ctx context.Context, syncCtx factory.SyncContex
 		return nil
 	case operatorv1.Managed:
 		// This is to push out deployments but does not handle deployment generation like it used to. It may need tweaking.
-		err := syncControllers(c, operatorConfigCopy)
+		err := c.syncControllers(ctx, operatorConfigCopy)
 		if err != nil {
 			setDegradedTrue(operatorConfigCopy, "OperatorSyncLoopError", err.Error())
 		} else {
 			setDegradedFalse(operatorConfigCopy, "OperatorSyncLoopComplete")
-			existingDeployments, err := c.appsv1Client.Deployments(operatorclient.TargetNamespace).List(context.TODO(), metav1.ListOptions{})
+			existingDeployments, err := c.appsv1Client.Deployments(operatorclient.TargetNamespace).List(ctx, metav1.ListOptions{})
 			if err != nil {
 				return fmt.Errorf("Error listing deployments in %s: %v", operatorclient.TargetNamespace, err)
 			}

@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"context"
 	"sync"
 
 	"k8s.io/klog/v2"
@@ -28,32 +29,32 @@ func (o *TryOnce) Do(f func() error) error {
 
 var once = TryOnce{}
 
-func syncControllers(c serviceCAOperator, operatorConfig *operatorv1.ServiceCA) error {
+func (c *serviceCAOperator) syncControllers(ctx context.Context, operatorConfig *operatorv1.ServiceCA) error {
 	// Any modification of resource we want to trickle down to force deploy all of the controllers.
 	// Sync the controller NS and the other resources. These should be mostly static.
-	needsDeploy, err := manageControllerNS(c)
+	needsDeploy, err := c.manageControllerNS()
 	if err != nil {
 		return err
 	}
 
-	err = manageControllerResources(c, &needsDeploy)
+	err = c.manageControllerResources(&needsDeploy)
 	if err != nil {
 		return err
 	}
 
 	// Sync the CA (regenerate if missing).
-	caModified, err := manageSignerCA(c.corev1Client, c.eventRecorder, operatorConfig.Spec.UnsupportedConfigOverrides.Raw)
+	caModified, err := c.manageSignerCA(ctx, operatorConfig.Spec.UnsupportedConfigOverrides.Raw)
 	if err != nil {
 		return err
 	}
 	// Sync the CA bundle. This will be updated if the CA has changed.
-	_, err = manageSignerCABundle(c.corev1Client, c.eventRecorder, caModified)
+	_, err = c.manageSignerCABundle(ctx, caModified)
 	if err != nil {
 		return err
 	}
 
 	// Sync the controller.
-	_, err = manageDeployment(c.appsv1Client, c.eventRecorder, operatorConfig, needsDeploy || caModified)
+	_, err = c.manageDeployment(operatorConfig, needsDeploy || caModified)
 	if err != nil {
 		return err
 	}

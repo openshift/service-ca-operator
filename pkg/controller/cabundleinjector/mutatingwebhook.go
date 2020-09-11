@@ -60,6 +60,6 @@ func (bi *mutatingWebhookCABundleInjector) Sync(ctx context.Context, syncCtx fac
 	for i := range webhooksNeedingUpdate {
 		webhookConfigCopy.Webhooks[i].ClientConfig.CABundle = bi.caBundle
 	}
-	_, err = bi.client.Update(context.TODO(), webhookConfigCopy, metav1.UpdateOptions{})
+	_, err = bi.client.Update(ctx, webhookConfigCopy, metav1.UpdateOptions{})
 	return err
 }

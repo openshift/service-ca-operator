@@ -71,6 +71,6 @@ func (bi *crdCABundleInjector) Sync(ctx context.Context, syncCtx factory.SyncCon
 	// make a copy to avoid mutating cache state
 	crdCopy := crd.DeepCopy()
 	crdCopy.Spec.Conversion.Webhook.ClientConfig.CABundle = bi.caBundle
-	_, err = bi.client.Update(context.TODO(), crdCopy, metav1.UpdateOptions{})
+	_, err = bi.client.Update(ctx, crdCopy, metav1.UpdateOptions{})
 	return err
 }

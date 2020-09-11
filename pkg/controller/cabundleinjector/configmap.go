@@ -62,6 +62,6 @@ func (bi *configMapCABundleInjector) Sync(ctx context.Context, syncCtx factory.S
 	// make a copy to avoid mutating cache state
 	configMapCopy := configMap.DeepCopy()
 	configMapCopy.Data = map[string]string{api.InjectionDataKey: bi.caBundle}
-	_, err = bi.client.ConfigMaps(configMapCopy.Namespace).Update(context.TODO(), configMapCopy, metav1.UpdateOptions{})
+	_, err = bi.client.ConfigMaps(configMapCopy.Namespace).Update(ctx, configMapCopy, metav1.UpdateOptions{})
 	return err
 }

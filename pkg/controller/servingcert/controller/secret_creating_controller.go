@@ -127,10 +127,10 @@ func (sc *serviceServingCertController) Sync(ctx context.Context, syncContext fa
 
 	// make a copy to avoid mutating cache state
 	serviceCopy := sharedService.DeepCopy()
-	return sc.generateCert(serviceCopy)
+	return sc.generateCert(ctx, serviceCopy)
 }
 
-func (sc *serviceServingCertController) generateCert(serviceCopy *corev1.Service) error {
+func (sc *serviceServingCertController) generateCert(ctx context.Context, serviceCopy *corev1.Service) error {
 	klog.V(4).Infof("generating new cert for %s/%s", serviceCopy.GetNamespace(), serviceCopy.GetName())
 	if serviceCopy.Annotations == nil {
 		serviceCopy.Annotations = map[string]string{}
@@ -141,30 +141,30 @@ func (sc *serviceServingCertController) generateCert(serviceCopy *corev1.Service
 		return err
 	}
 
-	_, err := sc.secretClient.Secrets(serviceCopy.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
+	_, err := sc.secretClient.Secrets(serviceCopy.Namespace).Create(ctx, secret, metav1.CreateOptions{})
 	if err != nil && !kapierrors.IsAlreadyExists(err) {
-		return sc.updateServiceFailure(serviceCopy, err)
+		return sc.updateServiceFailure(ctx, serviceCopy, err)
 	}
 	if kapierrors.IsAlreadyExists(err) {
-		actualSecret, err := sc.secretClient.Secrets(serviceCopy.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
+		actualSecret, err := sc.secretClient.Secrets(serviceCopy.Namespace).Get(ctx, secret.Name, metav1.GetOptions{})
 		if err != nil {
-			return sc.updateServiceFailure(serviceCopy, err)
+			return sc.updateServiceFailure(ctx, serviceCopy, err)
 		}
 
 		if !uidsEqual(actualSecret, serviceCopy) {
 			uidErr := fmt.Errorf("secret %s/%s does not have corresponding service UID %v", actualSecret.GetNamespace(), actualSecret.GetName(), serviceCopy.UID)
-			return sc.updateServiceFailure(serviceCopy, uidErr)
+			return sc.updateServiceFailure(ctx, serviceCopy, uidErr)
 		}
 		klog.V(4).Infof("renewing cert in existing secret %s/%s", secret.GetNamespace(), secret.GetName())
 		// Actually update the secret in the regeneration case (the secret already exists but we want to update to a new cert).
-		_, updateErr := sc.secretClient.Secrets(secret.GetNamespace()).Update(context.TODO(), secret, metav1.UpdateOptions{})
+		_, updateErr := sc.secretClient.Secrets(secret.GetNamespace()).Update(ctx, secret, metav1.UpdateOptions{})
 		if updateErr != nil {
-			return sc.updateServiceFailure(serviceCopy, updateErr)
+			return sc.updateServiceFailure(ctx, serviceCopy, updateErr)
 		}
 	}
 
 	sc.resetServiceAnnotations(serviceCopy)
-	_, err = sc.serviceClient.Services(serviceCopy.Namespace).Update(context.TODO(), serviceCopy, metav1.UpdateOptions{})
+	_, err = sc.serviceClient.Services(serviceCopy.Namespace).Update(ctx, serviceCopy, metav1.UpdateOptions{})
 
 	return err
 }
@@ -261,10 +261,10 @@ func (sc *serviceServingCertController) commonName() string {
 // updateServiceFailure updates the service's error annotations with err.
 // Returns the passed in err normally, or nil if the amount of failures has hit the max. This is so it can act as a
 // return to the sync method.
-func (sc *serviceServingCertController) updateServiceFailure(service *corev1.Service, err error) error {
+func (sc *serviceServingCertController) updateServiceFailure(ctx context.Context, service *corev1.Service, err error) error {
 	setErrAnnotation(service, err)
 	incrementFailureNumAnnotation(service)
-	_, updateErr := sc.serviceClient.Services(service.Namespace).Update(context.TODO(), service, metav1.UpdateOptions{})
+	_, updateErr := sc.serviceClient.Services(service.Namespace).Update(ctx, service, metav1.UpdateOptions{})
 	if updateErr != nil {
 		klog.V(4).Infof("warning: failed to update failure annotations on service %s: %v", service.Name, updateErr)
 	}

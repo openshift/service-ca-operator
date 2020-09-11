@@ -91,7 +91,7 @@ func (sc *serviceServingCertUpdateController) Sync(ctx context.Context, syncCtx 
 		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
 			return err
 		}
-		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(context.TODO(), secretCopy, metav1.UpdateOptions{})
+		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(ctx, secretCopy, metav1.UpdateOptions{})
 		return err
 	}
 	// If not regenerating, perform checks here to
@@ -103,7 +103,7 @@ func (sc *serviceServingCertUpdateController) Sync(ctx context.Context, syncCtx 
 		return err
 	}
 	if update {
-		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(context.TODO(), secretCopy, metav1.UpdateOptions{})
+		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(ctx, secretCopy, metav1.UpdateOptions{})
 		return err
 	}
 	return nil

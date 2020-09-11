@@ -64,6 +64,6 @@ func (bi *apiServiceCABundleInjector) Sync(ctx context.Context, syncCtx factory.
 	// avoid mutating our cache
 	apiServiceCopy := apiService.DeepCopy()
 	apiServiceCopy.Spec.CABundle = bi.caBundle
-	_, err = bi.client.Update(context.TODO(), apiServiceCopy, v1.UpdateOptions{})
+	_, err = bi.client.Update(ctx, apiServiceCopy, v1.UpdateOptions{})
 	return err
 }
