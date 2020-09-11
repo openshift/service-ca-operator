@@ -94,14 +94,6 @@ func (c *serviceCAOperator) Sync(ctx context.Context, syncCtx factory.SyncContex
 	return nil
 }
 
-func getGeneration(client appsclientv1.AppsV1Interface, ns, name string) int64 {
-	deployment, err := client.Deployments(ns).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		return -1
-	}
-	return deployment.Generation
-}
-
 func (c serviceCAOperator) updateStatus(operatorConfig *operatorv1.ServiceCA) {
 	v1helpers.UpdateStatus(c.operatorClient, func(status *operatorv1.OperatorStatus) error {
 		operatorConfig.Status.OperatorStatus.DeepCopyInto(status)
