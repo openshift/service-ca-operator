@@ -205,7 +205,6 @@ func (c *serviceCAOperator) manageDeployment(options *operatorv1.ServiceCA, forc
 	if err != nil {
 		return mod, err
 	}
-	klog.V(4).Infof("current deployment of %s: %#v", resourcePath, deployment)
 	resourcemerge.SetDeploymentGeneration(&options.Status.Generations, deployment)
 
 	return mod, nil
