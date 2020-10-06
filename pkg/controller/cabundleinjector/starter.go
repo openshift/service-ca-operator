@@ -2,17 +2,20 @@ package cabundleinjector
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
-	"github.com/openshift/operator-boilerplate-legacy/pkg/controller"
+	"github.com/openshift/library-go/pkg/controller/factory"
 )
 
 type caBundleInjectorConfig struct {
@@ -26,11 +29,12 @@ type caBundleInjectorConfig struct {
 type startInformersFunc func(stopChan <-chan struct{})
 
 type controllerConfig struct {
-	name                 string
-	keySyncer            controller.KeySyncer
-	informerGetter       controller.InformerGetter
-	startInformers       startInformersFunc
-	supportedAnnotations []string
+	name               string
+	sync               factory.SyncFunc
+	informer           cache.SharedIndexInformer
+	startInformers     startInformersFunc
+	annotationsChecker factory.EventFilterFunc
+	namespaced         bool
 }
 
 type configBuilderFunc func(config *caBundleInjectorConfig) controllerConfig
@@ -65,20 +69,21 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 		newMutatingWebhookInjectorConfig,
 		newValidatingWebhookInjectorConfig,
 	}
-	controllerRunners := []controller.Runner{}
+	injectionControllers := []factory.Controller{}
 	for _, configConstructor := range configConstructors {
 		ctlConfig := configConstructor(injectorConfig)
-		controllerRunner := controller.New(ctlConfig.name, ctlConfig.keySyncer,
-			controller.WithInformer(ctlConfig.informerGetter, controller.FilterFuncs{
-				AddFunc: func(obj v1.Object) bool {
-					return hasSupportedInjectionAnnotation(obj, ctlConfig.supportedAnnotations)
-				},
-				UpdateFunc: func(old, cur v1.Object) bool {
-					return hasSupportedInjectionAnnotation(cur, ctlConfig.supportedAnnotations)
-				},
-			}),
+
+		queueFn := clusterObjToQueueKey
+		if ctlConfig.namespaced {
+			queueFn = namespacedObjToQueueKey
+		}
+
+		injectionControllers = append(injectionControllers,
+			factory.New().
+				WithSync(ctlConfig.sync).
+				WithFilteredEventsInformersQueueKeyFunc(queueFn, ctlConfig.annotationsChecker, ctlConfig.informer).
+				ToController(ctlConfig.name, controllerContext.EventRecorder),
 		)
-		controllerRunners = append(controllerRunners, controllerRunner)
 
 		// Start non-core informers
 		if ctlConfig.startInformers != nil {
@@ -90,19 +95,38 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 	informers.Start(stopChan)
 
 	// Start injector controllers once all informers have started
-	for _, controllerRunner := range controllerRunners {
-		go controllerRunner.Run(5, stopChan)
+	for _, controllerRunner := range injectionControllers {
+		go controllerRunner.Run(ctx, 5)
 	}
 
 	return nil
 }
 
-func hasSupportedInjectionAnnotation(obj v1.Object, supportedAnnotations []string) bool {
-	annotations := obj.GetAnnotations()
-	for _, key := range supportedAnnotations {
-		if strings.EqualFold(annotations[key], "true") {
-			return true
+func annotationsChecker(supportedAnnotations ...string) factory.EventFilterFunc {
+	return func(obj interface{}) bool {
+		metaObj := obj.(metav1.Object)
+		annotations := metaObj.GetAnnotations()
+		for _, key := range supportedAnnotations {
+			if strings.EqualFold(annotations[key], "true") {
+				return true
+			}
 		}
+		return false
 	}
-	return false
+}
+
+func namespacedObjToQueueKey(obj runtime.Object) string {
+	metaObj := obj.(metav1.Object)
+	return fmt.Sprintf("%s/%s", metaObj.GetNamespace(), metaObj.GetName())
+}
+
+func clusterObjToQueueKey(obj runtime.Object) string {
+	metaObj := obj.(metav1.Object)
+	return metaObj.GetName()
+}
+
+func namespacedObjectFromQueueKey(qKey string) (string, string) {
+	nsName := strings.SplitN(qKey, "/", 2)
+	// happilly panic on index errors if someone tried to use this on non-namespaced objects
+	return nsName[0], nsName[1]
 }

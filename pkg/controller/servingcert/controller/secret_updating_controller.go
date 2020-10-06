@@ -17,8 +17,9 @@ import (
 	"k8s.io/klog/v2"
 
 	ocontroller "github.com/openshift/library-go/pkg/controller"
+	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/crypto"
-	"github.com/openshift/operator-boilerplate-legacy/pkg/controller"
+	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
@@ -35,7 +36,15 @@ type serviceServingCertUpdateController struct {
 	minTimeLeftForCert time.Duration
 }
 
-func NewServiceServingCertUpdateController(services informers.ServiceInformer, secrets informers.SecretInformer, secretClient kcoreclient.SecretsGetter, ca *crypto.CA, intermediateCACert *x509.Certificate, dnsSuffix string) controller.Runner {
+func NewServiceServingCertUpdateController(
+	services informers.ServiceInformer,
+	secrets informers.SecretInformer,
+	secretClient kcoreclient.SecretsGetter,
+	ca *crypto.CA,
+	intermediateCACert *x509.Certificate,
+	dnsSuffix string,
+	recorder events.Recorder,
+) factory.Controller {
 	sc := &serviceServingCertUpdateController{
 		secretClient:  secretClient,
 		serviceLister: services.Lister(),
@@ -48,33 +57,23 @@ func NewServiceServingCertUpdateController(services informers.ServiceInformer, s
 		minTimeLeftForCert: 1 * time.Hour,
 	}
 
-	return controller.New("ServiceServingCertUpdateController", sc,
-		controller.WithInformerSynced(services),
-		controller.WithInformer(secrets, controller.FilterFuncs{
-			AddFunc:    sc.addSecret,
-			UpdateFunc: sc.updateSecret,
-		}),
-	)
+	return factory.New().
+		WithFilteredEventsInformersQueueKeyFunc(namespacedObjToQueueKey, secretsQueueFilter, secrets.Informer()).
+		WithBareInformers(services.Informer()).
+		WithSync(sc.Sync).
+		ToController("ServiceServingCertUpdateController", recorder.WithComponentSuffix("service-serving-cert-update-controller"))
 }
 
-func (sc *serviceServingCertUpdateController) addSecret(obj metav1.Object) bool {
-	secret := obj.(*v1.Secret)
-	_, ok := toServiceName(secret)
-	return ok
-}
+func (sc *serviceServingCertUpdateController) Sync(ctx context.Context, syncCtx factory.SyncContext) error {
+	secretNS, secretName := objFromQueueKey(syncCtx.QueueKey())
 
-func (sc *serviceServingCertUpdateController) updateSecret(old, cur metav1.Object) bool {
-	// if the current doesn't have a service name, check the old
-	// TODO drop this
-	return sc.addSecret(cur) || sc.addSecret(old)
-}
+	sharedSecret, err := sc.secretLister.Secrets(secretNS).Get(secretName)
+	if kapierrors.IsNotFound(err) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("unable to get secret %s/%s: %v", secretNS, secretName, err)
+	}
 
-func (sc *serviceServingCertUpdateController) Key(namespace, name string) (metav1.Object, error) {
-	return sc.secretLister.Secrets(namespace).Get(name)
-}
-
-func (sc *serviceServingCertUpdateController) Sync(obj metav1.Object) error {
-	sharedSecret := obj.(*v1.Secret)
 	service := sc.getServiceForSecret(sharedSecret)
 	if service == nil {
 		return nil
@@ -92,7 +91,7 @@ func (sc *serviceServingCertUpdateController) Sync(obj metav1.Object) error {
 		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
 			return err
 		}
-		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(context.TODO(), secretCopy, metav1.UpdateOptions{})
+		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(ctx, secretCopy, metav1.UpdateOptions{})
 		return err
 	}
 	// If not regenerating, perform checks here to
@@ -104,7 +103,7 @@ func (sc *serviceServingCertUpdateController) Sync(obj metav1.Object) error {
 		return err
 	}
 	if update {
-		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(context.TODO(), secretCopy, metav1.UpdateOptions{})
+		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(ctx, secretCopy, metav1.UpdateOptions{})
 		return err
 	}
 	return nil
