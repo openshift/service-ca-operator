@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"strings"
 	"time"
 
@@ -104,7 +105,23 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 
 func annotationsChecker(supportedAnnotations ...string) factory.EventFilterFunc {
 	return func(obj interface{}) bool {
-		metaObj := obj.(metav1.Object)
+		metaObj, ok := obj.(metav1.Object)
+
+		// this block handles the case of a deleted object without panic-ing.  We try to use the last known status,
+		// but it's only best effort.  if we're being deleted, there isn't a whole lot to be done.
+		if !ok {
+			tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+			if !ok {
+				utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
+				return false
+			}
+			metaObj, ok = tombstone.Obj.(metav1.Object)
+			if !ok {
+				utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a metav1.Object %#v", obj))
+				return false
+			}
+		}
+
 		annotations := metaObj.GetAnnotations()
 		for _, key := range supportedAnnotations {
 			if strings.EqualFold(annotations[key], "true") {
