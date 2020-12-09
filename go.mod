@@ -9,8 +9,8 @@ require (
 	github.com/google/uuid v1.1.1
 	github.com/openshift/api v0.0.0-20201117184740-859beeffd973
 	github.com/openshift/build-machinery-go v0.0.0-20200917070002-f171684f77ab
-	github.com/openshift/client-go v0.0.0-20200827190008-3062137373b5
-	github.com/openshift/library-go v0.0.0-20200921120329-c803a7b7bb2c
+	github.com/openshift/client-go v0.0.0-20201020074620-f8fd44879f7c
+	github.com/openshift/library-go v0.0.0-20201209093246-19c8a18cddcd
 	github.com/prometheus/client_golang v1.7.1
 	github.com/prometheus/common v0.10.0
 	github.com/spf13/cobra v1.0.0

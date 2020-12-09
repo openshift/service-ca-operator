@@ -201,6 +201,8 @@ spec:
         command: ["service-ca-operator", "controller"]
         ports:
         - containerPort: 8443
+        securityContext:
+          runAsNonRoot: true
         resources:
           requests:
             memory: 120Mi
@@ -253,11 +255,10 @@ var _v400ControllerNsYaml = []byte(`apiVersion: v1
 kind: Namespace
 metadata:
   name: openshift-service-ca
-  labels:
-    openshift.io/run-level: "1"
   annotations:
     openshift.io/node-selector: ""
-`)
+  labels:
+    openshift.io/run-level-: "" # remove the label on upgrades`)
 
 func v400ControllerNsYamlBytes() ([]byte, error) {
 	return _v400ControllerNsYaml, nil
@@ -280,6 +281,14 @@ metadata:
   name: system:openshift:controller:service-ca
   namespace: openshift-service-ca
 rules:
+- apiGroups:
+  - security.openshift.io
+  resources:
+  - securitycontextconstraints
+  resourceNames:
+  - restricted
+  verbs:
+  - use
 - apiGroups:
   - ""
   resources:
