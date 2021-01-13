@@ -21,6 +21,10 @@ spec:
         app: service-ca-operator
     spec:
       serviceAccountName: service-ca-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsGroup: 1001
+        runAsUser: 1001
       containers:
       - name: service-ca-operator
         image: quay.io/openshift/origin-service-ca-operator:v4.0
@@ -46,12 +50,10 @@ spec:
       volumes:
       - name: serving-cert
         secret:
-          defaultMode: 400
           secretName: serving-cert
           optional: true
       - name: config
         configMap:
-          defaultMode: 440
           name: service-ca-operator-config
       nodeSelector:
         node-role.kubernetes.io/master: ""
