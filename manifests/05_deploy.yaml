@@ -23,7 +23,7 @@ spec:
       serviceAccountName: service-ca-operator
       containers:
       - name: service-ca-operator
-        image: quay.io/openshift/origin-service-ca-operator:v4.0
+        image: quay.io/openshift/origin-service-ca-operator:4.6
         imagePullPolicy: IfNotPresent
         command: ["service-ca-operator", "operator"]
         args:
@@ -35,7 +35,7 @@ spec:
             cpu: 10m
         env:
         - name: CONTROLLER_IMAGE
-          value: quay.io/openshift/origin-service-ca-operator:v4.0
+          value: quay.io/openshift/origin-service-ca-operator:4.6
         - name: OPERATOR_IMAGE_VERSION
           value: "0.0.1-snapshot"
         volumeMounts:
