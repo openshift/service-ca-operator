@@ -49,6 +49,14 @@ const (
 	AlphaServingCertErrorNumAnnotation = "service.alpha.openshift.io/serving-cert-generation-error-num"
 )
 
+// Annotations on StatefulSet:
+// - AlphaServingCertSecretAnnotation
+// - AlphaServingCertCreatedByAnnotation
+// - AlphaServingCertErrorAnnotation
+// - AlphaServingCertErrorNumAnnotation
+// all use the semantics documented for service annotations above. The .beta. annotations are
+// not used on StatefulSets.
+
 // Annotations on secret
 const (
 	// ServiceUIDAnnotation is an annotation on a secret that indicates which service created it, by UID
@@ -58,8 +66,16 @@ const (
 	// for comparison against UIDs
 	ServiceNameAnnotation      = "service.beta.openshift.io/originating-service-name"
 	AlphaServiceNameAnnotation = "service.alpha.openshift.io/originating-service-name"
+
+	// AlphaStatefulSetUIDAnnotation is an annotation on a secret that indicates which StatefulSet created it, by UID
+	AlphaStatefulSetUIDAnnotation = "service.alpha.openshift.io/originating-StatefulSet-uid"
+	// AlphaStatefulSetNameAnnotation is an annotation on a secret that indicates which Statefulset created it, by Name to allow reverse lookups on StatefulSets
+	// for comparison against UIDs
+	AlphaStatefulSetNameAnnotation = "service.alpha.openshift.io/originating-StatefulSet-name"
+
 	// ServingCertExpiryAnnotation is an annotation that holds the expiry time of the certificate.  It accepts time in the
-	// RFC3339 format: 2018-11-29T17:44:39Z
+	// RFC3339 format: 2018-11-29T17:44:39Z .
+	// On a StatefulSet secret, this records the earliest expiry time from all certificates contained in the secret.
 	ServingCertExpiryAnnotation      = "service.beta.openshift.io/expiry"
 	AlphaServingCertExpiryAnnotation = "service.alpha.openshift.io/expiry"
 )
