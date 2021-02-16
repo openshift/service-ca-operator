@@ -169,7 +169,7 @@ func (sc *serviceServingCertController) generateCert(ctx context.Context, servic
 	return err
 }
 
-func getNumFailures(service *corev1.Service) int {
+func getServiceNumFailures(service *corev1.Service) int {
 	numFailuresString := service.Annotations[api.ServingCertErrorNumAnnotation]
 	if len(numFailuresString) == 0 {
 		numFailuresString = service.Annotations[api.AlphaServingCertErrorNumAnnotation]
@@ -211,7 +211,7 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 	}
 
 	// we have failed too many times on this service, give up
-	if getNumFailures(service) >= sc.maxRetries {
+	if getServiceNumFailures(service) >= sc.maxRetries {
 		return false
 	}
 
@@ -269,7 +269,7 @@ func (sc *serviceServingCertController) updateServiceFailure(ctx context.Context
 		klog.V(4).Infof("warning: failed to update failure annotations on service %s: %v", service.Name, updateErr)
 	}
 	// Past the max retries means we've handled this failure enough, so forget it from the queue.
-	if updateErr == nil && getNumFailures(service) >= sc.maxRetries {
+	if updateErr == nil && getServiceNumFailures(service) >= sc.maxRetries {
 		return nil
 	}
 
@@ -380,7 +380,7 @@ func setErrAnnotation(service *corev1.Service, err error) {
 }
 
 func incrementFailureNumAnnotation(service *corev1.Service) {
-	numFailure := strconv.Itoa(getNumFailures(service) + 1)
+	numFailure := strconv.Itoa(getServiceNumFailures(service) + 1)
 	service.Annotations[api.ServingCertErrorNumAnnotation] = numFailure
 	service.Annotations[api.AlphaServingCertErrorNumAnnotation] = numFailure
 }
