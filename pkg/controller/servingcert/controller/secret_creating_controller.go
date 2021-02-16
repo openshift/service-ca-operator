@@ -211,7 +211,7 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 		return false
 	}
 
-	if sc.issuedByCurrentCA(secret) {
+	if secretIsIssuedByCA(secret, corev1.TLSCertKey, sc.servingCA) {
 		return false
 	}
 
@@ -225,15 +225,15 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 	return true
 }
 
-// Returns true if the secret certificate was issued by the current CA,
+// Returns true if the secret certificate certKey was issued by the current CA,
 // false if not or if there was a parsing error.
 //
 // Determination of issuance will default to comparison of the certificate's
 // AuthorityKeyID and the CA's SubjectKeyId, and fall back to comparison of the
 // certificate's Issuer.CommonName and the CA's Subject.CommonName (in case the CA was
 // generated prior to the addition of key identifiers).
-func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret) bool {
-	certs, err := cert.ParseCertsPEM(secret.Data[corev1.TLSCertKey])
+func secretIsIssuedByCA(secret *corev1.Secret, certKey string, servingCA *ServingCA) bool {
+	certs, err := cert.ParseCertsPEM(secret.Data[certKey])
 	if err != nil {
 		klog.V(4).Infof("warning: error parsing certificate data in %s/%s during issuer check: %v",
 			secret.Namespace, secret.Name, err)
@@ -246,7 +246,7 @@ func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret)
 	}
 
 	certAuthorityKeyId := certs[0].AuthorityKeyId
-	caSubjectKeyId := sc.servingCA.ca.Config.Certs[0].SubjectKeyId
+	caSubjectKeyId := servingCA.ca.Config.Certs[0].SubjectKeyId
 	// Use key identifier chaining if the SubjectKeyId is populated in the CA
 	// certificate. AuthorityKeyId may not be set in the serving certificate if it was
 	// generated before serving cert generation was updated to include the field.
@@ -256,7 +256,7 @@ func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret)
 
 	// Fall back to name-based chaining for a legacy service CA that was generated
 	// without SubjectKeyId or AuthorityKeyId.
-	return certs[0].Issuer.CommonName == sc.servingCA.commonName()
+	return certs[0].Issuer.CommonName == servingCA.commonName()
 }
 
 // updateServiceFailure updates the service's error annotations with err.
