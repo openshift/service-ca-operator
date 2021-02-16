@@ -58,7 +58,7 @@ func NewServiceServingCertUpdateController(
 	}
 
 	return factory.New().
-		WithFilteredEventsInformersQueueKeyFunc(namespacedObjToQueueKey, secretsQueueFilter, secrets.Informer()).
+		WithFilteredEventsInformersQueueKeyFunc(namespacedObjToQueueKey, secretsServiceNameQueueFilter, secrets.Informer()).
 		WithBareInformers(services.Informer()).
 		WithSync(sc.Sync).
 		ToController("ServiceServingCertUpdateController", recorder.WithComponentSuffix("service-serving-cert-update-controller"))

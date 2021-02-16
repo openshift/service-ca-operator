@@ -68,7 +68,7 @@ func NewServiceServingCertController(
 
 	return factory.New().
 		WithInformersQueueKeyFunc(namespacedObjToQueueKey, services.Informer()).
-		WithFilteredEventsInformersQueueKeyFunc(serviceFromSecretQueueFunc, secretsQueueFilter, secrets.Informer()).
+		WithFilteredEventsInformersQueueKeyFunc(serviceFromSecretQueueFunc, secretsServiceNameQueueFilter, secrets.Informer()).
 		WithSync(sc.Sync).
 		ToController("ServiceServingCertController", recorder.WithComponentSuffix("service-serving-cert-controller"))
 }
@@ -100,7 +100,7 @@ func serviceFromSecretQueueFunc(obj runtime.Object) string {
 	return fmt.Sprintf("%s/%s", metaObj.GetNamespace(), svcName)
 }
 
-func secretsQueueFilter(obj interface{}) bool {
+func secretsServiceNameQueueFilter(obj interface{}) bool {
 	_, ok := serviceNameFromSecretEventObj(obj)
 	return ok
 }
