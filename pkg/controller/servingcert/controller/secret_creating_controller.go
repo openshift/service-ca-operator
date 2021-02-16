@@ -136,7 +136,7 @@ func (sc *serviceServingCertController) generateCert(ctx context.Context, servic
 		serviceCopy.Annotations = map[string]string{}
 	}
 
-	secret := toBaseSecret(serviceCopy)
+	secret := serviceToBaseSecret(serviceCopy)
 	if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, serviceCopy, secret); err != nil {
 		return err
 	}
@@ -296,7 +296,7 @@ func serviceOwnerRef(service *corev1.Service) metav1.OwnerReference {
 	}
 }
 
-func toBaseSecret(service *corev1.Service) *corev1.Secret {
+func serviceToBaseSecret(service *corev1.Service) *corev1.Secret {
 	// Use beta annotations
 	if _, ok := service.Annotations[api.ServingCertSecretAnnotation]; ok {
 		return &corev1.Secret{
