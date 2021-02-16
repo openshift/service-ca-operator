@@ -137,7 +137,7 @@ func (sc *serviceServingCertController) generateCert(ctx context.Context, servic
 	}
 
 	secret := serviceToBaseSecret(serviceCopy)
-	if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, serviceCopy, secret); err != nil {
+	if err := regenerateServiceSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, serviceCopy, secret); err != nil {
 		return err
 	}
 
@@ -348,7 +348,7 @@ func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.C
 	return servingCert, nil
 }
 
-func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, secretCopy *corev1.Secret) error {
+func regenerateServiceSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, secretCopy *corev1.Secret) error {
 	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, &service.ObjectMeta)
 	if err != nil {
 		return err

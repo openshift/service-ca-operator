@@ -88,7 +88,7 @@ func (sc *serviceServingCertUpdateController) Sync(ctx context.Context, syncCtx 
 
 	if sc.requiresRegeneration(service, sharedSecret, sc.minTimeLeftForCert) {
 		// Regenerate the secret
-		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
+		if err := regenerateServiceSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
 			return err
 		}
 		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(ctx, secretCopy, metav1.UpdateOptions{})
@@ -181,7 +181,7 @@ func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Servi
 	} else {
 		// if required tlscertkey,tlsprivatekey fields missing, replace with valid secret
 		// Regenerate the secret
-		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
+		if err := regenerateServiceSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
 			return update, err
 		}
 		return true, nil
@@ -193,7 +193,7 @@ func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Servi
 		// Regenerate the secret
 		klog.Infof("Error decoding cert bytes %s from secret: %s namespace: %s, replacing cert", v1.TLSCertKey, secretCopy.Name, secretCopy.Namespace)
 		// Regenerate the secret
-		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
+		if err := regenerateServiceSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
 			return update, err
 		}
 		return true, nil
@@ -202,7 +202,7 @@ func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Servi
 	if err != nil {
 		klog.Infof("Error parsing %s from secret: %s namespace: %s, replacing cert", v1.TLSCertKey, secretCopy.Name, secretCopy.Namespace)
 		// Regenerate the secret
-		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
+		if err := regenerateServiceSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy); err != nil {
 			return update, err
 		}
 		return true, nil
