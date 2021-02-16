@@ -78,18 +78,26 @@ func namespacedObjToQueueKey(obj runtime.Object) string {
 	return fmt.Sprintf("%s/%s", metaObj.GetNamespace(), metaObj.GetName())
 }
 
-func serviceNameFromSecretEventObj(obj interface{}) (string, bool) {
+func secretFromSecretEventObj(obj interface{}) *corev1.Secret {
 	secret, secretOK := obj.(*corev1.Secret)
 	if !secretOK {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			return "", false
+			return nil
 		}
 
 		secret, secretOK = tombstone.Obj.(*corev1.Secret)
 		if !secretOK {
-			return "", false
+			return nil
 		}
+	}
+	return secret
+}
+
+func serviceNameFromSecretEventObj(obj interface{}) (string, bool) {
+	secret := secretFromSecretEventObj(obj)
+	if secret == nil {
+		return "", false
 	}
 	return toServiceName(secret)
 }
