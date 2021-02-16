@@ -139,7 +139,7 @@ func (sc *serviceServingCertUpdateController) getServiceForSecret(sharedSecret *
 func (sc *serviceServingCertUpdateController) requiresRegeneration(service *v1.Service, secret *v1.Secret, minTimeLeft time.Duration) bool {
 	// if we don't have an ownerref, just go ahead and regenerate.  It's easier than writing a
 	// secondary logic flow.
-	if !ocontroller.HasOwnerRef(secret, ownerRef(service)) {
+	if !ocontroller.HasOwnerRef(secret, serviceOwnerRef(service)) {
 		return true
 	}
 	// if we don't have the annotation for expiry, just go ahead and regenerate.  It's easier than writing a

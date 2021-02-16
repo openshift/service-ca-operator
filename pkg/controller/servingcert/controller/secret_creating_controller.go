@@ -287,7 +287,7 @@ func (sc *serviceServingCertController) resetServiceAnnotations(service *corev1.
 	delete(service.Annotations, api.ServingCertErrorNumAnnotation)
 }
 
-func ownerRef(service *corev1.Service) metav1.OwnerReference {
+func serviceOwnerRef(service *corev1.Service) metav1.OwnerReference {
 	return metav1.OwnerReference{
 		APIVersion: "v1",
 		Kind:       "Service",
@@ -369,7 +369,7 @@ func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.
 	secretCopy.Annotations[api.AlphaServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
 	secretCopy.Annotations[api.ServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
 
-	controller.EnsureOwnerRef(secretCopy, ownerRef(service))
+	controller.EnsureOwnerRef(secretCopy, serviceOwnerRef(service))
 
 	return nil
 }
