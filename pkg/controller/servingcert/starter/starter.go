@@ -23,6 +23,8 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	certFile := "/var/run/secrets/signing-key/tls.crt"
 	keyFile := "/var/run/secrets/signing-key/tls.key"
 	intermediateCertFile := "/var/run/secrets/signing-key/intermediate-ca.crt"
+	// TODO this needs to be configurable
+	dnsSuffix := "cluster.local"
 
 	ca, err := crypto.GetCA(certFile, keyFile, "")
 	if err != nil {
@@ -48,8 +50,7 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		kubeClient.CoreV1(),
 		ca,
 		intermediateCACert,
-		// TODO this needs to be configurable
-		"cluster.local",
+		dnsSuffix,
 		controllerContext.EventRecorder,
 	)
 	servingCertUpdateController := controller.NewServiceServingCertUpdateController(
@@ -58,8 +59,7 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		kubeClient.CoreV1(),
 		ca,
 		intermediateCACert,
-		// TODO this needs to be configurable
-		"cluster.local",
+		dnsSuffix,
 		controllerContext.EventRecorder,
 	)
 
