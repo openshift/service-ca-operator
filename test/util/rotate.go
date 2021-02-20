@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 // CheckRotation validates that pre- and post-rotation servers and clients can communicate in a
@@ -110,7 +110,7 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 	// Start a server configured with the cert and key
 	go func() {
 		if err := srv.ServeTLS(ln, certFile.Name(), keyFile.Name()); err != nil && err != http.ErrServerClosed {
-			t.Fatalf("ServeTLS failed: %v", err)
+			t.Errorf("ServeTLS failed: %v", err)
 		}
 	}()
 	defer func() {
@@ -126,7 +126,7 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 	roots := x509.NewCertPool()
 	roots.AppendCertsFromPEM(bundlePEM)
 	dialer := &net.Dialer{
-		Timeout: 3600 * time.Second,
+		Timeout: 60 * time.Second,
 	}
 	client := http.Client{
 		Transport: &http.Transport{
@@ -143,6 +143,7 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 				ServerName: dnsName,
 			},
 		},
+		Timeout: 60 * time.Second,
 	}
 	clientAddress := fmt.Sprintf("https://%s:%s", dnsName, serverPort)
 	_, err = client.Get(clientAddress)
