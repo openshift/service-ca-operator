@@ -156,7 +156,7 @@ func (sc *serviceServingCertUpdateController) requiresRegeneration(service *v1.S
 		return true
 	}
 
-	if time.Now().Add(sc.minTimeLeftForCert).After(expiry) {
+	if time.Now().Add(minTimeLeft).After(expiry) {
 		return true
 	}
 
