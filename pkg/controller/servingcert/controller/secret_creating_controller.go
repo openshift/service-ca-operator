@@ -13,6 +13,7 @@ import (
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	informers "k8s.io/client-go/informers/core/v1"
@@ -335,12 +336,20 @@ func serviceToBaseSecret(service *corev1.Service) *corev1.Secret {
 
 func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, serviceObjectMeta *metav1.ObjectMeta) (*crypto.TLSCertificateConfig, error) {
 	dnsName := serviceObjectMeta.Name + "." + serviceObjectMeta.Namespace + ".svc"
+	return makeServingCert(dnsName, dnsSuffix, ca, intermediateCACert, &serviceObjectMeta.UID)
+}
+
+func makeServingCert(dnsName, dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, serviceUID *types.UID) (*crypto.TLSCertificateConfig, error) {
 	fqDNSName := dnsName + "." + dnsSuffix
 	certificateLifetime := 365 * 2 // 2 years
+	fns := []crypto.CertificateExtensionFunc{}
+	if serviceUID != nil {
+		fns = append(fns, cryptoextensions.ServiceServerCertificateExtensionV1(*serviceUID))
+	}
 	servingCert, err := ca.MakeServerCert(
 		sets.NewString(dnsName, fqDNSName),
 		certificateLifetime,
-		cryptoextensions.ServiceServerCertificateExtensionV1(serviceObjectMeta.UID),
+		fns...,
 	)
 	if err != nil {
 		return nil, err
