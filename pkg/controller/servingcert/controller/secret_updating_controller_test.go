@@ -13,7 +13,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
-func TestRequiresRegenerationOrReplace(t *testing.T) {
+func TestServiceSecretRequiresRegenerationOrReplace(t *testing.T) {
 	tests := []struct {
 		name           string
 		primeServices  func(cache.Indexer)
@@ -226,7 +226,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 	}
 }
 
-func TestRequiresRegenerationServiceUIDMismatchBetaAnnotation(t *testing.T) {
+func TestServiceSecretRequiresRegenerationOrReplaceBetaAnnotation(t *testing.T) {
 	tests := []struct {
 		name           string
 		primeServices  func(cache.Indexer)
