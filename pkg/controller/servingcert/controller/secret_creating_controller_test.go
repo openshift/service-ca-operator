@@ -6,7 +6,6 @@ import (
 	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"path"
 	"reflect"
 	"testing"
@@ -110,10 +109,7 @@ func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secre
 
 func TestServiceServingCertControllerSync(t *testing.T) {
 	// prepare the certs
-	certDir, err := ioutil.TempDir("", "serving-cert-unit-")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	certDir := t.TempDir()
 
 	ca, err := crypto.MakeSelfSignedCA(
 		path.Join(certDir, "service-signer.crt"),
