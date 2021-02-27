@@ -1,12 +1,10 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"crypto/x509"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -17,8 +15,6 @@ import (
 	informers "k8s.io/client-go/informers/core/v1"
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
 
 	"github.com/openshift/library-go/pkg/controller"
@@ -67,27 +63,6 @@ func NewServiceServingCertController(
 		ToController("ServiceServingCertController", recorder.WithComponentSuffix("service-serving-cert-controller"))
 }
 
-func namespacedObjToQueueKey(obj runtime.Object) string {
-	metaObj := obj.(metav1.Object)
-	return fmt.Sprintf("%s/%s", metaObj.GetNamespace(), metaObj.GetName())
-}
-
-func secretFromSecretEventObj(obj interface{}) *corev1.Secret {
-	secret, secretOK := obj.(*corev1.Secret)
-	if !secretOK {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			return nil
-		}
-
-		secret, secretOK = tombstone.Obj.(*corev1.Secret)
-		if !secretOK {
-			return nil
-		}
-	}
-	return secret
-}
-
 func serviceNameFromSecretEventObj(obj interface{}) (string, bool) {
 	secret := secretFromSecretEventObj(obj)
 	if secret == nil {
@@ -105,11 +80,6 @@ func serviceFromSecretQueueFunc(obj runtime.Object) string {
 func secretsServiceNameQueueFilter(obj interface{}) bool {
 	_, ok := serviceNameFromSecretEventObj(obj)
 	return ok
-}
-
-func objFromQueueKey(qKey string) (string, string) {
-	nsName := strings.SplitN(qKey, "/", 2)
-	return nsName[0], nsName[1]
 }
 
 func (sc *serviceServingCertController) Sync(ctx context.Context, syncContext factory.SyncContext) error {
@@ -220,40 +190,6 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 	// the secret exists but the service was either not updated to include the correct created
 	// by annotation or it does not match what we expect (i.e. the certificate has been rotated)
 	return true
-}
-
-// Returns true if the secret certificate certKey was issued by the current CA,
-// false if not or if there was a parsing error.
-//
-// Determination of issuance will default to comparison of the certificate's
-// AuthorityKeyID and the CA's SubjectKeyId, and fall back to comparison of the
-// certificate's Issuer.CommonName and the CA's Subject.CommonName (in case the CA was
-// generated prior to the addition of key identifiers).
-func secretIsIssuedByCA(secret *corev1.Secret, certKey string, servingCA *ServingCA) bool {
-	certs, err := cert.ParseCertsPEM(secret.Data[certKey])
-	if err != nil {
-		klog.V(4).Infof("warning: error parsing certificate data in %s/%s during issuer check: %v",
-			secret.Namespace, secret.Name, err)
-		return false
-	}
-
-	if len(certs) == 0 || certs[0] == nil {
-		klog.V(4).Infof("warning: no certs returned from ParseCertsPEM during issuer check")
-		return false
-	}
-
-	certAuthorityKeyId := certs[0].AuthorityKeyId
-	caSubjectKeyId := servingCA.ca.Config.Certs[0].SubjectKeyId
-	// Use key identifier chaining if the SubjectKeyId is populated in the CA
-	// certificate. AuthorityKeyId may not be set in the serving certificate if it was
-	// generated before serving cert generation was updated to include the field.
-	if len(caSubjectKeyId) > 0 {
-		return bytes.Equal(certAuthorityKeyId, caSubjectKeyId)
-	}
-
-	// Fall back to name-based chaining for a legacy service CA that was generated
-	// without SubjectKeyId or AuthorityKeyId.
-	return certs[0].Issuer.CommonName == servingCA.commonName()
 }
 
 // updateServiceFailure updates the service's error annotations with err.

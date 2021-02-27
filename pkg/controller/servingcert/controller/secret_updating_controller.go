@@ -16,7 +16,6 @@ import (
 	listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 
-	ocontroller "github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -134,35 +133,6 @@ func (sc *serviceServingCertUpdateController) getServiceForSecret(sharedSecret *
 
 func (sc *serviceServingCertUpdateController) requiresRegeneration(service *v1.Service, secret *v1.Secret, minTimeLeft time.Duration) bool {
 	return secretRequiresRegeneration(secret, serviceOwnerRef(service), minTimeLeft)
-}
-
-// secretRequiresRegeneration returns true if the secret is not owned by ownedRef or expires within minTimeLeft,
-// defaulting to true on error.
-func secretRequiresRegeneration(secret *v1.Secret, ownerRef metav1.OwnerReference, minTimeLeft time.Duration) bool {
-	// if we don't have an ownerref, just go ahead and regenerate.  It's easier than writing a
-	// secondary logic flow.
-	if !ocontroller.HasOwnerRef(secret, ownerRef) {
-		return true
-	}
-	// if we don't have the annotation for expiry, just go ahead and regenerate.  It's easier than writing a
-	// secondary logic flow that creates the expiry dates
-	expiryString, ok := secret.Annotations[api.ServingCertExpiryAnnotation]
-	if !ok {
-		expiryString, ok = secret.Annotations[api.AlphaServingCertExpiryAnnotation]
-		if !ok {
-			return true
-		}
-	}
-	expiry, err := time.Parse(time.RFC3339, expiryString)
-	if err != nil {
-		return true
-	}
-
-	if time.Now().Add(minTimeLeft).After(expiry) {
-		return true
-	}
-
-	return false
 }
 
 func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Service, secretCopy *v1.Secret) (bool, error) {
