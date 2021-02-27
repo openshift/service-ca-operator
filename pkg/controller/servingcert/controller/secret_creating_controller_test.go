@@ -388,7 +388,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				case action.Matches("update", "services"):
 					service := action.(clientgotesting.UpdateAction).GetObject().(*corev1.Service)
 					if !reflect.DeepEqual(service.Annotations, tt.expectedServiceAnnotations) {
-						t.Errorf("expected != updated: %v", kubediff.ObjectReflectDiff(service.Annotations, tt.expectedServiceAnnotations))
+						t.Errorf("expected != updated: %v", kubediff.ObjectReflectDiff(tt.expectedServiceAnnotations, service.Annotations))
 						continue
 					}
 					foundServiceUpdate = true
