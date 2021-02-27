@@ -13,9 +13,7 @@ import (
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/sets"
 	informers "k8s.io/client-go/informers/core/v1"
 	kcoreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	listers "k8s.io/client-go/listers/core/v1"
@@ -28,7 +26,6 @@ import (
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
-	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/cryptoextensions"
 )
 
 type serviceServingCertController struct {
@@ -329,33 +326,7 @@ func serviceToBaseSecret(service *corev1.Service) *corev1.Secret {
 // MakeServiceServingCert uses ServingCA to generate a TLS certificate/private key for serviceObjectMeta.
 func MakeServiceServingCert(servingCA *ServingCA, serviceObjectMeta *metav1.ObjectMeta) (*crypto.TLSCertificateConfig, error) {
 	dnsName := serviceObjectMeta.Name + "." + serviceObjectMeta.Namespace + ".svc"
-	return makeServingCert(servingCA, dnsName, &serviceObjectMeta.UID)
-}
-
-func makeServingCert(sca *ServingCA, dnsName string, serviceUID *types.UID) (*crypto.TLSCertificateConfig, error) {
-	fqDNSName := dnsName + "." + sca.dnsSuffix
-	certificateLifetime := 365 * 2 // 2 years
-	fns := []crypto.CertificateExtensionFunc{}
-	if serviceUID != nil {
-		fns = append(fns, cryptoextensions.ServiceServerCertificateExtensionV1(*serviceUID))
-	}
-	servingCert, err := sca.ca.MakeServerCert(
-		sets.NewString(dnsName, fqDNSName),
-		certificateLifetime,
-		fns...,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// Including the intermediate cert will ensure that clients with a
-	// stale ca bundle (containing the previous CA but not the current
-	// one) will be able to trust the serving cert.
-	if sca.intermediateCACert != nil {
-		servingCert.Certs = append(servingCert.Certs, sca.intermediateCACert)
-	}
-
-	return servingCert, nil
+	return servingCA.makeServingCert(dnsName, &serviceObjectMeta.UID)
 }
 
 func regenerateServiceSecret(servingCA *ServingCA, service *corev1.Service, secretCopy *corev1.Secret) error {
