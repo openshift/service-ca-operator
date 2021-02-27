@@ -38,10 +38,8 @@ type serviceServingCertController struct {
 	serviceLister listers.ServiceLister
 	secretLister  listers.SecretLister
 
-	ca                 *crypto.CA
-	intermediateCACert *x509.Certificate
-	dnsSuffix          string
-	maxRetries         int
+	servingCA  *ServingCA
+	maxRetries int
 }
 
 func NewServiceServingCertController(
@@ -61,10 +59,8 @@ func NewServiceServingCertController(
 		serviceLister: services.Lister(),
 		secretLister:  secrets.Lister(),
 
-		ca:                 ca,
-		intermediateCACert: intermediateCACert,
-		dnsSuffix:          dnsSuffix,
-		maxRetries:         10,
+		servingCA:  NewServingCA(ca, intermediateCACert, dnsSuffix),
+		maxRetries: 10,
 	}
 
 	return factory.New().
@@ -146,7 +142,7 @@ func (sc *serviceServingCertController) generateCert(ctx context.Context, servic
 	}
 
 	secret := serviceToBaseSecret(serviceCopy)
-	if err := regenerateServiceSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, serviceCopy, secret); err != nil {
+	if err := regenerateServiceSecret(sc.servingCA, serviceCopy, secret); err != nil {
 		return err
 	}
 
@@ -250,7 +246,7 @@ func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret)
 	}
 
 	certAuthorityKeyId := certs[0].AuthorityKeyId
-	caSubjectKeyId := sc.ca.Config.Certs[0].SubjectKeyId
+	caSubjectKeyId := sc.servingCA.ca.Config.Certs[0].SubjectKeyId
 	// Use key identifier chaining if the SubjectKeyId is populated in the CA
 	// certificate. AuthorityKeyId may not be set in the serving certificate if it was
 	// generated before serving cert generation was updated to include the field.
@@ -260,11 +256,7 @@ func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret)
 
 	// Fall back to name-based chaining for a legacy service CA that was generated
 	// without SubjectKeyId or AuthorityKeyId.
-	return certs[0].Issuer.CommonName == sc.commonName()
-}
-
-func (sc *serviceServingCertController) commonName() string {
-	return sc.ca.Config.Certs[0].Subject.CommonName
+	return certs[0].Issuer.CommonName == sc.servingCA.commonName()
 }
 
 // updateServiceFailure updates the service's error annotations with err.
@@ -288,8 +280,8 @@ func (sc *serviceServingCertController) updateServiceFailure(ctx context.Context
 
 // Sets the service CA common name and clears any errors.
 func (sc *serviceServingCertController) resetServiceAnnotations(service *corev1.Service) {
-	service.Annotations[api.AlphaServingCertCreatedByAnnotation] = sc.commonName()
-	service.Annotations[api.ServingCertCreatedByAnnotation] = sc.commonName()
+	service.Annotations[api.AlphaServingCertCreatedByAnnotation] = sc.servingCA.commonName()
+	service.Annotations[api.ServingCertCreatedByAnnotation] = sc.servingCA.commonName()
 	delete(service.Annotations, api.AlphaServingCertErrorAnnotation)
 	delete(service.Annotations, api.AlphaServingCertErrorNumAnnotation)
 	delete(service.Annotations, api.ServingCertErrorAnnotation)
@@ -365,8 +357,8 @@ func makeServingCert(dnsName, dnsSuffix string, ca *crypto.CA, intermediateCACer
 	return servingCert, nil
 }
 
-func regenerateServiceSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, secretCopy *corev1.Secret) error {
-	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, &service.ObjectMeta)
+func regenerateServiceSecret(servingCA *ServingCA, service *corev1.Service, secretCopy *corev1.Secret) error {
+	servingCert, err := MakeServingCert(servingCA.dnsSuffix, servingCA.ca, servingCA.intermediateCACert, &service.ObjectMeta)
 	if err != nil {
 		return err
 	}
