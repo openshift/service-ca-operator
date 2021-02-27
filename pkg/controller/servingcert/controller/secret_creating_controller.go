@@ -326,19 +326,20 @@ func serviceToBaseSecret(service *corev1.Service) *corev1.Secret {
 	}
 }
 
-func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, serviceObjectMeta *metav1.ObjectMeta) (*crypto.TLSCertificateConfig, error) {
+// MakeServiceServingCert uses ServingCA to generate a TLS certificate/private key for serviceObjectMeta.
+func MakeServiceServingCert(servingCA *ServingCA, serviceObjectMeta *metav1.ObjectMeta) (*crypto.TLSCertificateConfig, error) {
 	dnsName := serviceObjectMeta.Name + "." + serviceObjectMeta.Namespace + ".svc"
-	return makeServingCert(dnsName, dnsSuffix, ca, intermediateCACert, &serviceObjectMeta.UID)
+	return makeServingCert(servingCA, dnsName, &serviceObjectMeta.UID)
 }
 
-func makeServingCert(dnsName, dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, serviceUID *types.UID) (*crypto.TLSCertificateConfig, error) {
-	fqDNSName := dnsName + "." + dnsSuffix
+func makeServingCert(servingCA *ServingCA, dnsName string, serviceUID *types.UID) (*crypto.TLSCertificateConfig, error) {
+	fqDNSName := dnsName + "." + servingCA.dnsSuffix
 	certificateLifetime := 365 * 2 // 2 years
 	fns := []crypto.CertificateExtensionFunc{}
 	if serviceUID != nil {
 		fns = append(fns, cryptoextensions.ServiceServerCertificateExtensionV1(*serviceUID))
 	}
-	servingCert, err := ca.MakeServerCert(
+	servingCert, err := servingCA.ca.MakeServerCert(
 		sets.NewString(dnsName, fqDNSName),
 		certificateLifetime,
 		fns...,
@@ -350,15 +351,15 @@ func makeServingCert(dnsName, dnsSuffix string, ca *crypto.CA, intermediateCACer
 	// Including the intermediate cert will ensure that clients with a
 	// stale ca bundle (containing the previous CA but not the current
 	// one) will be able to trust the serving cert.
-	if intermediateCACert != nil {
-		servingCert.Certs = append(servingCert.Certs, intermediateCACert)
+	if servingCA.intermediateCACert != nil {
+		servingCert.Certs = append(servingCert.Certs, servingCA.intermediateCACert)
 	}
 
 	return servingCert, nil
 }
 
 func regenerateServiceSecret(servingCA *ServingCA, service *corev1.Service, secretCopy *corev1.Secret) error {
-	servingCert, err := MakeServingCert(servingCA.dnsSuffix, servingCA.ca, servingCA.intermediateCACert, &service.ObjectMeta)
+	servingCert, err := MakeServiceServingCert(servingCA, &service.ObjectMeta)
 	if err != nil {
 		return err
 	}
