@@ -332,14 +332,14 @@ func MakeServiceServingCert(servingCA *ServingCA, serviceObjectMeta *metav1.Obje
 	return makeServingCert(servingCA, dnsName, &serviceObjectMeta.UID)
 }
 
-func makeServingCert(servingCA *ServingCA, dnsName string, serviceUID *types.UID) (*crypto.TLSCertificateConfig, error) {
-	fqDNSName := dnsName + "." + servingCA.dnsSuffix
+func makeServingCert(sca *ServingCA, dnsName string, serviceUID *types.UID) (*crypto.TLSCertificateConfig, error) {
+	fqDNSName := dnsName + "." + sca.dnsSuffix
 	certificateLifetime := 365 * 2 // 2 years
 	fns := []crypto.CertificateExtensionFunc{}
 	if serviceUID != nil {
 		fns = append(fns, cryptoextensions.ServiceServerCertificateExtensionV1(*serviceUID))
 	}
-	servingCert, err := servingCA.ca.MakeServerCert(
+	servingCert, err := sca.ca.MakeServerCert(
 		sets.NewString(dnsName, fqDNSName),
 		certificateLifetime,
 		fns...,
@@ -351,8 +351,8 @@ func makeServingCert(servingCA *ServingCA, dnsName string, serviceUID *types.UID
 	// Including the intermediate cert will ensure that clients with a
 	// stale ca bundle (containing the previous CA but not the current
 	// one) will be able to trust the serving cert.
-	if servingCA.intermediateCACert != nil {
-		servingCert.Certs = append(servingCert.Certs, servingCA.intermediateCACert)
+	if sca.intermediateCACert != nil {
+		servingCert.Certs = append(servingCert.Certs, sca.intermediateCACert)
 	}
 
 	return servingCert, nil
