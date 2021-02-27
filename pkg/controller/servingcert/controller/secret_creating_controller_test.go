@@ -59,7 +59,7 @@ Cryo2APfUHF0zOtxK0JifCnYi47H
 `
 )
 
-func serviceServingCertControllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secret *corev1.Secret) (*fake.Clientset, *serviceServingCertController) {
+func serviceServingCertControllerSetup(t *testing.T, servingCA *ServingCA, service *corev1.Service, secret *corev1.Secret) (*fake.Clientset, *serviceServingCertController) {
 	clientObjects := []runtime.Object{} // objects to init the kubeclient with
 
 	svcIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
@@ -97,13 +97,13 @@ func serviceServingCertControllerSetup(t *testing.T, ca *crypto.CA, service *cor
 		serviceLister: svcLister,
 		secretLister:  secretLister,
 
-		servingCA:  NewServingCA(ca, nil, "cluster.local"),
+		servingCA:  servingCA,
 		maxRetries: 10,
 	}
 	return kubeclient, controller
 }
 
-func TestServiceServingCertControllerSync(t *testing.T) {
+func newTestServingCA(t *testing.T, name string) *ServingCA {
 	// prepare the certs
 	certDir := t.TempDir()
 
@@ -111,12 +111,17 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		path.Join(certDir, "service-signer.crt"),
 		path.Join(certDir, "service-signer.key"),
 		path.Join(certDir, "service-signer.serial"),
-		serviceSignerName,
+		name,
 		0,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	return NewServingCA(ca, nil, "cluster.local")
+}
+
+func TestServiceServingCertControllerSync(t *testing.T) {
+	servingCA := newTestServingCA(t, serviceSignerName)
 
 	// add test cases
 	tests := []struct {
@@ -289,7 +294,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServiceUIDAnnotation:  testServiceUID,
 				api.ServiceNameAnnotation: testServiceName,
 			},
-			secretData: generateServerCertPemForCA(t, ca),
+			secretData: generateServerCertPemForCA(t, servingCA.ca),
 			expectedSecretAnnotations: map[string]string{
 				api.ServiceUIDAnnotation:  testServiceUID,
 				api.ServiceNameAnnotation: testServiceName,
@@ -349,7 +354,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				existingSecret = createTestServiceSecret(tt.secretAnnotations, tt.secretData)
 			}
 
-			kubeclient, controller := serviceServingCertControllerSetup(t, ca, existingService, existingSecret)
+			kubeclient, controller := serviceServingCertControllerSetup(t, servingCA, existingService, existingSecret)
 			if secretExists {
 				// make the first secrets.Create fail with already exists because the kubeclient.CoreV1() derivate does not contain the actual object
 				kubeclient.PrependReactor("create", "secrets", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
