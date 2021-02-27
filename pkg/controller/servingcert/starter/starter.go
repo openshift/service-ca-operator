@@ -43,7 +43,7 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	}
 	kubeInformers := informers.NewSharedInformerFactory(kubeClient, 20*time.Minute)
 
-	servingCertController := controller.NewServiceServingCertController(
+	serviceServingCertController := controller.NewServiceServingCertController(
 		kubeInformers.Core().V1().Services(),
 		kubeInformers.Core().V1().Secrets(),
 		kubeClient.CoreV1(),
@@ -51,8 +51,23 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		servingCA,
 		controllerContext.EventRecorder,
 	)
-	servingCertUpdateController := controller.NewServiceServingCertUpdateController(
+	serviceServingCertUpdateController := controller.NewServiceServingCertUpdateController(
 		kubeInformers.Core().V1().Services(),
+		kubeInformers.Core().V1().Secrets(),
+		kubeClient.CoreV1(),
+		servingCA,
+		controllerContext.EventRecorder,
+	)
+	statefulSetServingCertController := controller.NewStatefulSetServingCertController(
+		kubeInformers.Apps().V1().StatefulSets(),
+		kubeInformers.Core().V1().Secrets(),
+		kubeClient.AppsV1(),
+		kubeClient.CoreV1(),
+		servingCA,
+		controllerContext.EventRecorder,
+	)
+	statefulSetServingCertUpdateController := controller.NewStatefulSetServingCertUpdateController(
+		kubeInformers.Apps().V1().StatefulSets(),
 		kubeInformers.Core().V1().Secrets(),
 		kubeClient.CoreV1(),
 		servingCA,
@@ -62,8 +77,10 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	stopChan := ctx.Done()
 	kubeInformers.Start(stopChan)
 
-	go servingCertController.Run(ctx, 5)
-	go servingCertUpdateController.Run(ctx, 5)
+	go serviceServingCertController.Run(ctx, 5)
+	go serviceServingCertUpdateController.Run(ctx, 5)
+	go statefulSetServingCertController.Run(ctx, 5)
+	go statefulSetServingCertUpdateController.Run(ctx, 5)
 
 	return nil
 }
