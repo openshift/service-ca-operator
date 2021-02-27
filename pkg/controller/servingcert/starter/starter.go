@@ -30,12 +30,12 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	if err != nil {
 		return err
 	}
-
 	// An intermediate cert will only be present after a successful CA rotation.
 	intermediateCACert, err := readIntermediateCACert(intermediateCertFile)
 	if err != nil {
 		return err
 	}
+	servingCA := controller.NewServingCA(ca, intermediateCACert, dnsSuffix)
 
 	kubeClient, err := kubernetes.NewForConfig(controllerContext.ProtoKubeConfig)
 	if err != nil {
@@ -48,18 +48,14 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		kubeInformers.Core().V1().Secrets(),
 		kubeClient.CoreV1(),
 		kubeClient.CoreV1(),
-		ca,
-		intermediateCACert,
-		dnsSuffix,
+		servingCA,
 		controllerContext.EventRecorder,
 	)
 	servingCertUpdateController := controller.NewServiceServingCertUpdateController(
 		kubeInformers.Core().V1().Services(),
 		kubeInformers.Core().V1().Secrets(),
 		kubeClient.CoreV1(),
-		ca,
-		intermediateCACert,
-		dnsSuffix,
+		servingCA,
 		controllerContext.EventRecorder,
 	)
 

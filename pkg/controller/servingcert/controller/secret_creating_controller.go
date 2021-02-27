@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"crypto/x509"
 	"fmt"
 	"strconv"
 	"time"
@@ -40,9 +39,7 @@ func NewServiceServingCertController(
 	secrets informers.SecretInformer,
 	serviceClient kcoreclient.ServicesGetter,
 	secretClient kcoreclient.SecretsGetter,
-	ca *crypto.CA,
-	intermediateCACert *x509.Certificate,
-	dnsSuffix string,
+	servingCA *ServingCA,
 	recorder events.Recorder,
 ) factory.Controller {
 	sc := &serviceServingCertController{
@@ -52,7 +49,7 @@ func NewServiceServingCertController(
 		serviceLister: services.Lister(),
 		secretLister:  secrets.Lister(),
 
-		servingCA:  NewServingCA(ca, intermediateCACert, dnsSuffix),
+		servingCA:  servingCA,
 		maxRetries: 10,
 	}
 

@@ -17,7 +17,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/openshift/library-go/pkg/controller/factory"
-	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
@@ -37,9 +36,7 @@ func NewServiceServingCertUpdateController(
 	services informers.ServiceInformer,
 	secrets informers.SecretInformer,
 	secretClient kcoreclient.SecretsGetter,
-	ca *crypto.CA,
-	intermediateCACert *x509.Certificate,
-	dnsSuffix string,
+	servingCA *ServingCA,
 	recorder events.Recorder,
 ) factory.Controller {
 	sc := &serviceServingCertUpdateController{
@@ -47,7 +44,7 @@ func NewServiceServingCertUpdateController(
 		serviceLister: services.Lister(),
 		secretLister:  secrets.Lister(),
 
-		servingCA: NewServingCA(ca, intermediateCACert, dnsSuffix),
+		servingCA: servingCA,
 		// TODO base the expiry time on a percentage of the time for the lifespan of the cert
 		minTimeLeftForCert: 1 * time.Hour,
 	}
