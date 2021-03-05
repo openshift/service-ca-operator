@@ -100,7 +100,6 @@ func createTestNamespace(client *kubernetes.Clientset, namespaceName string) (*v
 	return ns, err
 }
 
-// on success returns serviceName, secretName, nil
 func createServingCertAnnotatedService(client *kubernetes.Clientset, secretName, serviceName, namespace string) error {
 	_, err := client.CoreV1().Services(namespace).Create(context.TODO(), &v1.Service{
 		TypeMeta: metav1.TypeMeta{},
