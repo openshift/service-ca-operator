@@ -159,18 +159,13 @@ func pollForCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapNa
 	})
 }
 
-func editServiceServingSecretData(client *kubernetes.Clientset, secretName, namespace, edit string) error {
+func editServingSecretData(client *kubernetes.Clientset, secretName, namespace, keyName string) error {
 	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	scopy := sss.DeepCopy()
-	switch edit {
-	case "badCert":
-		scopy.Data[v1.TLSCertKey] = []byte("blah")
-	case "extraData":
-		scopy.Data["foo"] = []byte("blah")
-	}
+	scopy.Data[keyName] = []byte("blah")
 	_, err = client.CoreV1().Secrets(namespace).Update(context.TODO(), scopy, metav1.UpdateOptions{})
 	if err != nil {
 		return err
@@ -1031,7 +1026,7 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error when checking serving cert secret: %v", err)
 		}
 
-		err = editServiceServingSecretData(adminClient, testSecretName, ns.Name, "badCert")
+		err = editServingSecretData(adminClient, testSecretName, ns.Name, v1.TLSCertKey)
 		if err != nil {
 			t.Fatalf("error editing serving cert secret: %v", err)
 		}
@@ -1069,7 +1064,7 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error when checking serving cert secret: %v", err)
 		}
 
-		err = editServiceServingSecretData(adminClient, testSecretName, ns.Name, "extraData")
+		err = editServingSecretData(adminClient, testSecretName, ns.Name, "foo")
 		if err != nil {
 			t.Fatalf("error editing serving cert secret: %v", err)
 		}
