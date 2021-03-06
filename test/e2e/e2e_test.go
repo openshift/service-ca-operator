@@ -205,21 +205,23 @@ func checkServiceServingCertSecretData(client *kubernetes.Clientset, secretName,
 	if len(sss.Data) != 2 {
 		return nil, false, fmt.Errorf("unexpected service serving secret data map length: %v", len(sss.Data))
 	}
-	ok := true
-	_, ok = sss.Data[v1.TLSCertKey]
+	certBytes, ok := sss.Data[v1.TLSCertKey]
+	if !ok {
+		return nil, false, fmt.Errorf("unexpected service serving secret data: %v", sss.Data)
+	}
 	_, ok = sss.Data[v1.TLSPrivateKeyKey]
 	if !ok {
 		return nil, false, fmt.Errorf("unexpected service serving secret data: %v", sss.Data)
 	}
-	block, _ := pem.Decode([]byte(sss.Data[v1.TLSCertKey]))
+	block, _ := pem.Decode(certBytes)
 	if block == nil {
 		return nil, false, fmt.Errorf("unable to decode TLSCertKey bytes")
 	}
 	_, err = x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return sss.Data[v1.TLSCertKey], false, nil
+		return certBytes, false, nil
 	}
-	return sss.Data[v1.TLSCertKey], true, nil
+	return certBytes, true, nil
 }
 
 func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
