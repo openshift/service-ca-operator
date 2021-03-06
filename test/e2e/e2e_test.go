@@ -272,7 +272,7 @@ func pollForCABundleInjectionConfigMapWithReturn(client *kubernetes.Clientset, c
 	return configmap, err
 }
 
-func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret) error {
+func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret, keysToChange ...string) error {
 	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
 		s, err := client.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
@@ -281,15 +281,16 @@ func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret) error 
 		if err != nil {
 			return false, err
 		}
-		if !bytes.Equal(s.Data[v1.TLSCertKey], secret.Data[v1.TLSCertKey]) &&
-			!bytes.Equal(s.Data[v1.TLSPrivateKeyKey], secret.Data[v1.TLSPrivateKeyKey]) {
-			return true, nil
+		for _, key := range keysToChange {
+			if bytes.Equal(s.Data[key], secret.Data[key]) {
+				return false, nil
+			}
 		}
-		return false, nil
+		return true, nil
 	})
 }
 
-func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap) error {
+func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap, keysToChange ...string) error {
 	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
 		cm, err := client.CoreV1().ConfigMaps(compareConfigMap.Namespace).Get(context.TODO(), compareConfigMap.Name, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
@@ -298,11 +299,12 @@ func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.C
 		if err != nil {
 			return false, nil
 		}
-		if cm.Data[api.InjectionDataKey] != compareConfigMap.Data[api.InjectionDataKey] {
-			// the change happened
-			return true, nil
+		for _, key := range keysToChange {
+			if cm.Data[key] == compareConfigMap.Data[key] {
+				return false, nil
+			}
 		}
-		return false, nil
+		return true, nil
 	})
 }
 
@@ -1239,12 +1241,12 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("signing key was not recreated: %v", err)
 		}
 
-		err = pollForConfigMapChange(adminClient, configmapCopy)
+		err = pollForConfigMapChange(adminClient, configmapCopy, api.InjectionDataKey)
 		if err != nil {
 			t.Fatalf("configmap bundle did not change: %v", err)
 		}
 
-		err = pollForSecretChange(adminClient, secretCopy)
+		err = pollForSecretChange(adminClient, secretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey)
 		if err != nil {
 			t.Fatalf("secret cert did not change: %v", err)
 		}
