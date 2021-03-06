@@ -462,7 +462,7 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 
 	// Trigger a forced rotation by updating the operator config
 	// with a reason.
-	setUnsupportedServiceCAConfig(t, config, "42", customDuration)
+	forceUnsupportedServiceCAConfigRotation(t, config, secret, customDuration)
 
 	signingSecret := pollForCARotation(t, client, caCertPEM, caKeyPEM)
 
@@ -477,7 +477,7 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 	}
 }
 
-func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, forceRotationReason string, validityDuration time.Duration) {
+func forceUnsupportedServiceCAConfigRotation(t *testing.T, config *rest.Config, currentSigningKeySecret *v1.Secret, validityDuration time.Duration) {
 	operatorClient, err := operatorv1client.NewForConfig(config)
 	if err != nil {
 		t.Fatalf("error creating operator client: %v", err)
@@ -485,6 +485,13 @@ func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, forceRotat
 	operatorConfig, err := operatorClient.OperatorV1().ServiceCAs().Get(context.TODO(), api.OperatorConfigInstanceName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("error retrieving operator config: %v", err)
+	}
+	var forceRotationReason string
+	for i := 0; ; i++ {
+		forceRotationReason = fmt.Sprintf("service-ca-e2e-force-rotation-reason-%d", i)
+		if currentSigningKeySecret.Annotations[api.ForcedRotationReasonAnnotationName] != forceRotationReason {
+			break
+		}
 	}
 	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(forceRotationReason, validityDuration)
 	if err != nil {
