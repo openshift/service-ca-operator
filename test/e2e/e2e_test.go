@@ -133,7 +133,7 @@ func createAnnotatedCABundleInjectionConfigMap(client *kubernetes.Clientset, con
 	return err
 }
 
-func pollForServiceServingSecret(client *kubernetes.Clientset, secretName, namespace string) error {
+func pollForServingSecret(client *kubernetes.Clientset, secretName, namespace string) error {
 	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
 		_, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
@@ -990,7 +990,7 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error creating annotated service: %v", err)
 		}
 
-		err = pollForServiceServingSecret(adminClient, testSecretName, ns.Name)
+		err = pollForServingSecret(adminClient, testSecretName, ns.Name)
 		if err != nil {
 			t.Fatalf("error fetching created serving cert secret: %v", err)
 		}
@@ -1017,7 +1017,7 @@ func TestE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error creating annotated service: %v", err)
 		}
-		err = pollForServiceServingSecret(adminClient, testSecretName, ns.Name)
+		err = pollForServingSecret(adminClient, testSecretName, ns.Name)
 		if err != nil {
 			t.Fatalf("error fetching created serving cert secret: %v", err)
 		}
@@ -1055,7 +1055,7 @@ func TestE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error creating annotated service: %v", err)
 		}
-		err = pollForServiceServingSecret(adminClient, testSecretName, ns.Name)
+		err = pollForServingSecret(adminClient, testSecretName, ns.Name)
 		if err != nil {
 			t.Fatalf("error fetching created serving cert secret: %v", err)
 		}
