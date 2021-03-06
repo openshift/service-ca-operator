@@ -235,7 +235,7 @@ func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMap
 	return nil
 }
 
-func pollForServiceServingSecretWithReturn(client *kubernetes.Clientset, secretName, namespace string) (*v1.Secret, error) {
+func pollForServingSecretWithReturn(client *kubernetes.Clientset, secretName, namespace string) (*v1.Secret, error) {
 	var secret *v1.Secret
 	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
 		s, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
@@ -1199,7 +1199,7 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error creating annotated service: %v", err)
 		}
 
-		secret, err := pollForServiceServingSecretWithReturn(adminClient, testSecretName, ns.Name)
+		secret, err := pollForServingSecretWithReturn(adminClient, testSecretName, ns.Name)
 		if err != nil {
 			t.Fatalf("error fetching created serving cert secret: %v", err)
 		}
