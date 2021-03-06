@@ -346,7 +346,7 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	}
 
 	// Retrieve the pre-rotation service cert
-	oldCertPEM, oldKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, rotationPollTimeout, nil, nil)
+	oldCertPEM, oldKeyPEM, err := pollForUpdatedServiceServingCert(t, client, ns.Name, testSecretName, rotationPollTimeout, nil, nil)
 	if err != nil {
 		t.Fatalf("error retrieving service cert: %v", err)
 	}
@@ -361,7 +361,7 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	triggerRotation(t, client, config)
 
 	// Retrieve the post-rotation service cert
-	newCertPEM, newKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, rotationTimeout, oldCertPEM, oldKeyPEM)
+	newCertPEM, newKeyPEM, err := pollForUpdatedServiceServingCert(t, client, ns.Name, testSecretName, rotationTimeout, oldCertPEM, oldKeyPEM)
 	if err != nil {
 		t.Fatalf("error retrieving service cert: %v", err)
 	}
@@ -531,9 +531,9 @@ func pollForCARecreation(client *kubernetes.Clientset) error {
 	})
 }
 
-// pollForUpdatedServingCert returns the cert and key PEM if it changes from
+// pollForUpdatedServiceServingCert returns the cert and key PEM if it changes from
 // that provided before the polling timeout.
-func pollForUpdatedServingCert(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldCertValue, oldKeyValue []byte) ([]byte, []byte, error) {
+func pollForUpdatedServiceServingCert(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldCertValue, oldKeyValue []byte) ([]byte, []byte, error) {
 	secret, err := pollForUpdatedSecret(t, client, namespace, name, timeout, map[string][]byte{
 		v1.TLSCertKey:       oldCertValue,
 		v1.TLSPrivateKeyKey: oldKeyValue,
@@ -1099,7 +1099,7 @@ func TestE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("deleting secret %s in namespace %s failed: %v", secretName, operatorNamespace, err)
 		}
-		updatedBytes, _, err := pollForUpdatedServingCert(t, adminClient, operatorNamespace, secretName, rotationPollTimeout, nil, nil)
+		updatedBytes, _, err := pollForUpdatedServiceServingCert(t, adminClient, operatorNamespace, secretName, rotationPollTimeout, nil, nil)
 		if err != nil {
 			t.Fatalf("error fetching re-created serving cert secret: %v", err)
 		}
