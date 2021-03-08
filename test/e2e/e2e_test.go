@@ -922,6 +922,10 @@ func checkServiceCAMetrics(t *testing.T, client *kubernetes.Clientset, promClien
 			t.Logf("failed to get sample value: %v", err)
 			return false, nil
 		}
+		if rawExpiryTime.Value == 0 { // The operator is starting
+			t.Logf("got zero value")
+			return false, nil
+		}
 
 		if float64(want.Unix()) != float64(rawExpiryTime.Value) {
 			t.Fatalf("service ca expiry time mismatch expected %v observed %v", float64(want.Unix()), float64(rawExpiryTime.Value))
