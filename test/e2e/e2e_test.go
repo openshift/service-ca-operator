@@ -58,7 +58,7 @@ const (
 	// Rotation of all certs and bundles is expected to take a considerable amount of time
 	// due to the operator having to restart each controller and then each controller having
 	// to acquire the leader election lease and update all targeted resources.
-	rotationTimeout = 3 * time.Minute
+	rotationTimeout = 5 * time.Minute
 	// Polling for resources related to rotation may be delayed by the number of resources
 	// that are updated in the cluster in response to rotation.
 	rotationPollTimeout = 2 * time.Minute
