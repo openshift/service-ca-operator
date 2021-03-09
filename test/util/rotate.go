@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -148,7 +149,11 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 	clientAddress := fmt.Sprintf("https://%s:%s", dnsName, serverPort)
 	_, err = client.Get(clientAddress)
 	if err != nil {
-		t.Fatalf("Failed to receive output: %v", err)
+		t.Fatalf("Failed to receive output: %v\ncertPEM: %s\nkeyPEM: %s\nbundlePEM: %s", err,
+			base64.StdEncoding.EncodeToString(certPEM),
+			base64.StdEncoding.EncodeToString(keyPEM),
+			base64.StdEncoding.EncodeToString(bundlePEM),
+		)
 	}
 	// No error indicates that validation was successful
 }
