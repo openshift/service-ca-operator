@@ -519,6 +519,21 @@ func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, ca
 	return secret
 }
 
+// pollForCARecreation polls for the signing secret to be re-created in
+// response to CA secret deletion.
+func pollForCARecreation(client *kubernetes.Clientset) error {
+	return wait.PollImmediate(time.Second, rotationPollTimeout, func() (bool, error) {
+		_, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+}
+
 // pollForUpdatedServingCert returns the cert and key PEM if it changes from
 // that provided before the polling timeout.
 func pollForUpdatedServingCert(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldCertValue, oldKeyValue []byte) ([]byte, []byte, error) {
@@ -1219,7 +1234,7 @@ func TestE2E(t *testing.T) {
 		}
 
 		// make sure it's recreated
-		err = pollForServiceServingSecret(adminClient, signingKeySecretName, serviceCAControllerNamespace)
+		err = pollForCARecreation(adminClient)
 		if err != nil {
 			t.Fatalf("signing key was not recreated: %v", err)
 		}
