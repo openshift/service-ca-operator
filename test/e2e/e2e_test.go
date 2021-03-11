@@ -747,9 +747,8 @@ func pollForResource(t *testing.T, resourceID string, timeout time.Duration, acc
 	return obj, err
 }
 
-func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Clientset, service *v1.Service, testNS, updatedServerCert string) {
+func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Clientset, testNS, hostPort, updatedServerCert string) {
 	timeout := 5 * time.Minute
-	metricsURL := fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, service.Spec.Ports[0].Port)
 	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
 		podName := "client-pod-" + randSeq(5)
 		_, err := client.CoreV1().Pods(testNS).Create(context.TODO(), &v1.Pod{
@@ -764,7 +763,7 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 						Name:    "cert-checker",
 						Image:   "nicolaka/netshoot:latest",
 						Command: []string{"/bin/bash"},
-						Args:    []string{"-c", fmt.Sprintf("openssl s_client -showcerts -connect %s < /dev/null 2>/dev/null | openssl x509", metricsURL)},
+						Args:    []string{"-c", fmt.Sprintf("openssl s_client -showcerts -connect %s < /dev/null 2>/dev/null | openssl x509", hostPort)},
 					},
 				},
 				RestartPolicy: v1.RestartPolicyOnFailure,
@@ -1104,7 +1103,8 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error fetching re-created serving cert secret: %v", err)
 		}
 
-		checkClientPodRcvdUpdatedServerCert(t, adminClient, service, testNamespace, string(updatedBytes))
+		metricsHostPort := fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, service.Spec.Ports[0].Port)
+		checkClientPodRcvdUpdatedServerCert(t, adminClient, testNamespace, metricsHostPort, string(updatedBytes))
 	})
 
 	// test ca bundle injection configmap
