@@ -170,8 +170,8 @@ func editServingSecretData(client *kubernetes.Clientset, secretName, namespace, 
 	if err != nil {
 		return err
 	}
-	time.Sleep(10 * time.Second)
-	return nil
+
+	return pollForSecretChange(client, scopy, keyName)
 }
 
 func editConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
@@ -188,8 +188,8 @@ func editConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapN
 	if err != nil {
 		return err
 	}
-	time.Sleep(10 * time.Second)
-	return nil
+
+	return pollForConfigMapChange(client, cmcopy, "foo")
 }
 
 func checkServiceServingCertSecretData(client *kubernetes.Clientset, secretName, namespace string) ([]byte, bool, error) {
