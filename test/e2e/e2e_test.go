@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	admissionreg "k8s.io/api/admissionregistration/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
@@ -51,6 +52,10 @@ const (
 	serviceCAControllerNamespace = operatorclient.TargetNamespace
 	serviceCAPodPrefix           = api.ServiceCADeploymentName
 	signingKeySecretName         = api.ServiceCASecretName
+
+	// A label used to attach StatefulSet pods to a headless service created by
+	// createHeadlessService
+	owningHeadlessServiceLabelName = "owning-headless-service"
 
 	pollInterval = time.Second
 	pollTimeout  = 30 * time.Second
@@ -114,6 +119,88 @@ func createServingCertAnnotatedService(client *kubernetes.Clientset, secretName,
 				{
 					Name: "tests",
 					Port: 8443,
+				},
+			},
+		},
+	}, metav1.CreateOptions{})
+	return err
+}
+
+func createHeadlessService(client *kubernetes.Clientset, serviceName, namespace string) error {
+	_, err := client.CoreV1().Services(namespace).Create(context.TODO(), &v1.Service{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: serviceName,
+		},
+		Spec: v1.ServiceSpec{
+			Ports: []v1.ServicePort{
+				{
+					Name: "tests",
+					Port: 44300,
+				},
+			},
+			Selector: map[string]string{
+				owningHeadlessServiceLabelName: serviceName,
+			},
+			ClusterIP: v1.ClusterIPNone,
+		},
+	}, metav1.CreateOptions{})
+	return err
+}
+
+func createServingCertAnnotatedStatefulSet(client *kubernetes.Clientset, secretName, statefulSetName, serviceName, namespace string, numReplicas int) error {
+	const podLabelName = "pod-label"
+	podLabelValue := statefulSetName + "-pod-label"
+	replicasInt32 := int32(numReplicas)
+	_, err := client.AppsV1().StatefulSets(namespace).Create(context.TODO(), &appsv1.StatefulSet{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: statefulSetName,
+			Annotations: map[string]string{
+				api.AlphaServingCertSecretAnnotation: secretName,
+			},
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: &replicasInt32,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{podLabelName: podLabelValue},
+			},
+			ServiceName:         serviceName,
+			PodManagementPolicy: appsv1.ParallelPodManagement, // We want changes to happen fast, there isn't really state to maintain.
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						podLabelName:                   podLabelValue,
+						owningHeadlessServiceLabelName: serviceName,
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{{
+						Name:  statefulSetName + "-container",
+						Image: "docker.io/nginxinc/nginx-unprivileged:1.18-alpine",
+						Ports: []v1.ContainerPort{{
+							ContainerPort: 44300,
+						}},
+						Command: []string{
+							"/bin/sh",
+							"-c",
+							`i=$(hostname -s |sed 's/^.*-\([^-]*\)$/\1/');` +
+								`sed -i -e "s,^.*listen.*8080.*,listen 44300 ssl;\n server_name $(hostname);\n ssl_certificate /srv/certificates/$i.crt;\n ssl_certificate_key /srv/certificates/$i.key;\n," /etc/nginx/conf.d/default.conf; ` +
+								`nginx -g 'daemon off;'`,
+						},
+						VolumeMounts: []v1.VolumeMount{{
+							Name:      "serving-cert",
+							MountPath: "/srv/certificates",
+						}},
+					}},
+					Volumes: []v1.Volume{{
+						Name: "serving-cert",
+						VolumeSource: v1.VolumeSource{
+							Secret: &v1.SecretVolumeSource{
+								SecretName: secretName,
+							},
+						},
+					}},
 				},
 			},
 		},
@@ -219,6 +306,43 @@ func checkServiceServingCertSecretData(client *kubernetes.Clientset, secretName,
 	return certBytes, true, nil
 }
 
+func checkStatefulSetServingCertSecretData(client *kubernetes.Clientset, secretName, namespace string, numCerts int) ([][]byte, bool, error) {
+	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, false, err
+	}
+	if len(sss.Data) < 2*numCerts || len(sss.Data)%2 != 0 {
+		return nil, false, fmt.Errorf("unexpected service serving secret data map length: %v", len(sss.Data))
+	}
+	numCerts = len(sss.Data) / 2 // If there are more certificates than necessary, validate (and return) them all.
+
+	certsData := [][]byte{}
+	certsValid := true
+	for i := 0; i < numCerts; i++ {
+		certKey := fmt.Sprintf("%d.crt", i)
+		keyKey := fmt.Sprintf("%d.key", i)
+		certBytes, ok := sss.Data[certKey]
+		if !ok {
+			return nil, false, fmt.Errorf("missing %s in StatefulSet serving secret data: %v", certKey, sss.Data)
+
+		}
+		_, ok = sss.Data[keyKey]
+		if !ok {
+			return nil, false, fmt.Errorf("missing %s in StatefulSetƒ serving secret data: %v", keyKey, sss.Data)
+		}
+		block, _ := pem.Decode(certBytes)
+		if block == nil {
+			return nil, false, fmt.Errorf("unable to decode TLSCertKey certKey, bytes")
+		}
+		_, err = x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			certsValid = false
+		}
+		certsData = append(certsData, certBytes)
+	}
+	return certsData, certsValid, nil
+}
+
 func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
 	cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
 	if err != nil {
@@ -311,6 +435,15 @@ func cleanupServiceSignerTestObjects(client *kubernetes.Clientset, secretName, s
 	// it should probably fail the test if the namespace gets stuck
 }
 
+func cleanupStatefulSetSignerTestObjects(client *kubernetes.Clientset, secretName, statefulSetName, serviceName, namespace string) {
+	client.AppsV1().StatefulSets(namespace).Delete(context.TODO(), statefulSetName, metav1.DeleteOptions{})
+	client.CoreV1().Services(namespace).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
+	client.CoreV1().Secrets(namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
+	client.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
+	// TODO this should just delete the namespace and wait for it to be gone
+	// it should probably fail the test if the namespace gets stuck
+}
+
 func cleanupConfigMapCABundleInjectionTestObjects(client *kubernetes.Clientset, cmName, namespace string) {
 	client.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{})
 	client.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
@@ -326,14 +459,25 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 		t.Fatalf("could not create test namespace: %v", err)
 	}
 
-	// Prompt the creation of a service cert secret
+	// Prompt the creation of a service and StatefulSet serving cert secret
 	testServiceName := "test-service-" + randSeq(5)
 	testServiceSecretName := "test-service-secret-" + randSeq(5)
 	defer cleanupServiceSignerTestObjects(client, testServiceSecretName, testServiceName, ns.Name)
+	testStatefulSetName := "test-statefulset-" + randSeq(5)
+	testStatefulSetServiceName := "test-service-" + randSeq(5)
+	testStatefulSetSize := 3
+	testStatefulSetSecretName := "test-statefulset-secret-" + randSeq(5)
+	defer cleanupStatefulSetSignerTestObjects(client, testStatefulSetSecretName, testStatefulSetName, testStatefulSetServiceName, ns.Name)
 
 	err = createServingCertAnnotatedService(client, testServiceSecretName, testServiceName, ns.Name)
 	if err != nil {
 		t.Fatalf("error creating annotated service: %v", err)
+	}
+	if err = createHeadlessService(client, testStatefulSetServiceName, ns.Name); err != nil {
+		t.Fatalf("error creating headless service: %v", err)
+	}
+	if err := createServingCertAnnotatedStatefulSet(client, testStatefulSetSecretName, testStatefulSetName, testStatefulSetServiceName, ns.Name, testStatefulSetSize); err != nil {
+		t.Fatalf("error creating annotated StatefulSet: %v", err)
 	}
 
 	// Prompt the injection of the ca bundle into a configmap
@@ -350,6 +494,10 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	if err != nil {
 		t.Fatalf("error retrieving service cert: %v", err)
 	}
+	oldStatefulSetSecret, err := pollForServingSecretWithReturn(client, testStatefulSetSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error retrieving StatefulSet cert: %v", err)
+	}
 
 	// Retrieve the pre-rotation ca bundle
 	oldBundlePEM, err := pollForInjectedCABundle(t, client, ns.Name, testConfigMapName, rotationPollTimeout, nil)
@@ -365,6 +513,7 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	if err != nil {
 		t.Fatalf("error retrieving service cert: %v", err)
 	}
+	newStatefulSetSecretData, err := pollForUpdatedStatefulSetServingCert(t, client, ns.Name, testStatefulSetSecretName, rotationTimeout, oldStatefulSetSecret.Data)
 
 	// Retrieve the post-rotation ca bundle
 	newBundlePEM, err := pollForInjectedCABundle(t, client, ns.Name, testConfigMapName, rotationTimeout, oldBundlePEM)
@@ -380,6 +529,32 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	dnsName := certs[0].Subject.CommonName
 
 	util.CheckRotation(t, dnsName, oldCertPEM, oldKeyPEM, oldBundlePEM, newCertPEM, newKeyPEM, newBundlePEM)
+
+	for i := 0; i < testStatefulSetSize; i++ {
+		certKey := fmt.Sprintf("%d.crt", i)
+		keyKey := fmt.Sprintf("%d.key", i)
+
+		getSecretValue := func(m map[string][]byte, desc, key string) []byte {
+			res, ok := m[key]
+			if !ok {
+				t.Fatalf("Key %q is missing in %s", key, desc)
+			}
+			return res
+		}
+		oldCertPEM := getSecretValue(oldStatefulSetSecret.Data, "oldStatefulSetSecret", certKey)
+		oldKeyPEM := getSecretValue(oldStatefulSetSecret.Data, "oldStatefulSetSecret", keyKey)
+		newCertPEM := getSecretValue(newStatefulSetSecretData, "newStatefulSetSecret", certKey)
+		newKeyPEM := getSecretValue(newStatefulSetSecretData, "newStatefulSetSecret", keyKey)
+
+		// Determine the dns name valid for the serving cert
+		certs, err := util.PemToCerts(newCertPEM)
+		if err != nil {
+			t.Fatalf("error decoding pem %s to certs: %v", certKey, err)
+		}
+		dnsName := certs[0].Subject.CommonName
+
+		util.CheckRotation(t, dnsName, oldCertPEM, oldKeyPEM, oldBundlePEM, newCertPEM, newKeyPEM, newBundlePEM)
+	}
 }
 
 // triggerTimeBasedRotation replaces the current CA cert with one that
@@ -542,6 +717,16 @@ func pollForUpdatedServiceServingCert(t *testing.T, client *kubernetes.Clientset
 		return nil, nil, err
 	}
 	return secret.Data[v1.TLSCertKey], secret.Data[v1.TLSPrivateKeyKey], nil
+}
+
+// pollForUpdatedStatefulsetServingCert returns the secret data if it changes from
+// that provided before the polling timeout.
+func pollForUpdatedStatefulSetServingCert(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldData map[string][]byte) (map[string][]byte, error) {
+	secret, err := pollForUpdatedSecret(t, client, namespace, name, timeout, oldData)
+	if err != nil {
+		return nil, err
+	}
+	return secret.Data, nil
 }
 
 // pollForUpdatedSecret returns the given secret if its data changes from
@@ -840,6 +1025,47 @@ func deleteNamespace(t *testing.T, client *kubernetes.Clientset, name string) {
 	}
 }
 
+func restartStatefulSet(t *testing.T, client *kubernetes.Clientset, statefulSetName, namespace string, timeout time.Duration) error {
+	const annotationName = "service-ca-e2e-test-force-restart"
+	set, err := client.AppsV1().StatefulSets(namespace).Get(context.TODO(), statefulSetName, metav1.GetOptions{})
+	if err != nil {
+		t.Logf("error reading StatefulSet: %v", err)
+		return err
+	}
+	setCopy := set.DeepCopy()
+	if setCopy.Spec.Template.ObjectMeta.Annotations == nil {
+		setCopy.Spec.Template.ObjectMeta.Annotations = map[string]string{}
+	}
+	for i := 0; ; i++ {
+		v := fmt.Sprintf("%d", i)
+		if setCopy.Spec.Template.ObjectMeta.Annotations[annotationName] != v { // incl. if the annotation is not present
+			setCopy.Spec.Template.ObjectMeta.Annotations[annotationName] = v
+			break
+		}
+	}
+
+	if _, err := client.AppsV1().StatefulSets(namespace).Update(context.TODO(), setCopy, metav1.UpdateOptions{}); err != nil {
+		t.Logf("error annotating StatefulSet: %v", err)
+		return err
+	}
+
+	err = wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
+		set, err := client.AppsV1().StatefulSets(namespace).Get(context.TODO(), statefulSetName, metav1.GetOptions{})
+		if err != nil {
+			t.Logf("fetching StatefulSet failed: %v", err)
+			return false, err
+		}
+		res := set.Status.ObservedGeneration > setCopy.Generation &&
+			set.Status.ReadyReplicas == *setCopy.Spec.Replicas &&
+			set.Status.CurrentRevision != setCopy.Status.CurrentRevision
+		return res, nil
+	})
+	if err != nil {
+		t.Logf("error waiting for StatefulSet restart: %v", err)
+	}
+	return err
+}
+
 // newPrometheusClientForConfig returns a new prometheus client for
 // the provided kubeconfig.
 func newPrometheusClientForConfig(config *rest.Config) (prometheusv1.API, error) {
@@ -1003,6 +1229,40 @@ func TestE2E(t *testing.T) {
 		}
 	})
 
+	// test the main feature. annotate StatefulSet -> created secret
+	t.Run("StatefulSet-serving-cert-annotation", func(t *testing.T) {
+		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		if err != nil {
+			t.Fatalf("could not create test namespace: %v", err)
+		}
+		testServiceName := "test-service-" + randSeq(5)
+		testStatefulSetName := "test-statefulset-" + randSeq(5)
+		testStatefulSetSize := 3
+		testSecretName := "test-secret-" + randSeq(5)
+		defer cleanupStatefulSetSignerTestObjects(adminClient, testSecretName, testStatefulSetName, testServiceName, ns.Name)
+
+		if err := createHeadlessService(adminClient, testServiceName, ns.Name); err != nil {
+			t.Fatalf("error creating headless service: %v", err)
+		}
+		err = createServingCertAnnotatedStatefulSet(adminClient, testSecretName, testStatefulSetName, testServiceName, ns.Name, testStatefulSetSize)
+		if err != nil {
+			t.Fatalf("error creating annotated StatefulSet: %v", err)
+		}
+
+		err = pollForServingSecret(adminClient, testSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error fetching created serving cert secret: %v", err)
+		}
+
+		_, is509, err := checkStatefulSetServingCertSecretData(adminClient, testSecretName, ns.Name, testStatefulSetSize)
+		if err != nil {
+			t.Fatalf("error when checking serving cert secret: %v", err)
+		}
+		if !is509 {
+			t.Fatalf("a certificate does not contain valid pem bytes")
+		}
+	})
+
 	// test modified data in serving-cert-secret will regenerated
 	t.Run("service-serving-cert-secret-modify-bad-tlsCert", func(t *testing.T) {
 		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
@@ -1041,6 +1301,52 @@ func TestE2E(t *testing.T) {
 		}
 	})
 
+	// test modified data in serving-cert-secret will regenerated
+	t.Run("StatefulSet-serving-cert-secret-modify-bad-tlsCert", func(t *testing.T) {
+		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		if err != nil {
+			t.Fatalf("could not create test namespace: %v", err)
+		}
+		testServiceName := "test-service-" + randSeq(5)
+		testStatefulSetName := "test-statefulset-" + randSeq(5)
+		testStatefulSetSize := 3
+		testSecretName := "test-secret-" + randSeq(5)
+		defer cleanupStatefulSetSignerTestObjects(adminClient, testSecretName, testStatefulSetName, testServiceName, ns.Name)
+
+		if err = createHeadlessService(adminClient, testServiceName, ns.Name); err != nil {
+			t.Fatalf("error creating headless service: %v", err)
+		}
+		err = createServingCertAnnotatedStatefulSet(adminClient, testSecretName, testStatefulSetName, testServiceName, ns.Name, testStatefulSetSize)
+		if err != nil {
+			t.Fatalf("error creating annotated StatefulSet: %v", err)
+		}
+		err = pollForServingSecret(adminClient, testSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error fetching created serving cert secret: %v", err)
+		}
+		originalSecretData, _, err := checkStatefulSetServingCertSecretData(adminClient, testSecretName, ns.Name, testStatefulSetSize)
+		if err != nil {
+			t.Fatalf("error when checking serving cert secret: %v", err)
+		}
+
+		err = editServingSecretData(adminClient, testSecretName, ns.Name, "0.crt")
+		if err != nil {
+			t.Fatalf("error editing serving cert secret: %v", err)
+		}
+		updatedSecretData, is509, err := checkStatefulSetServingCertSecretData(adminClient, testSecretName, ns.Name, testStatefulSetSize)
+		if err != nil {
+			t.Fatalf("error when checking serving cert secret: %v", err)
+		}
+		if !is509 {
+			t.Fatalf("a certificate does not contain valid pem bytes")
+		}
+		for i := 0; i < testStatefulSetSize; i++ {
+			if bytes.Equal(originalSecretData[i], updatedSecretData[i]) {
+				t.Fatalf("expected certificate %d to be replaced with valid pem bytes", i)
+			}
+		}
+	})
+
 	// test extra data in serving-cert-secret will be removed
 	t.Run("service-serving-cert-secret-add-data", func(t *testing.T) {
 		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
@@ -1076,6 +1382,52 @@ func TestE2E(t *testing.T) {
 		}
 	})
 
+	// test extra data in serving-cert-secret will be removed
+	t.Run("StatefulSet-serving-cert-secret-add-data", func(t *testing.T) {
+		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		if err != nil {
+			t.Fatalf("could not create test namespace: %v", err)
+		}
+		testServiceName := "test-service-" + randSeq(5)
+		testStatefulSetName := "test-statefulset-" + randSeq(5)
+		testStatefulSetSize := 3
+		testSecretName := "test-secret-" + randSeq(5)
+		defer cleanupStatefulSetSignerTestObjects(adminClient, testSecretName, testStatefulSetName, testServiceName, ns.Name)
+
+		if err = createHeadlessService(adminClient, testServiceName, ns.Name); err != nil {
+			t.Fatalf("error creating headless service: %v", err)
+		}
+		err = createServingCertAnnotatedStatefulSet(adminClient, testSecretName, testStatefulSetName, testServiceName, ns.Name, testStatefulSetSize)
+		if err != nil {
+			t.Fatalf("error creating annotated StatefulSet: %v", err)
+		}
+		err = pollForServingSecret(adminClient, testSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error fetching created serving cert secret: %v", err)
+		}
+		originalSecretData, _, err := checkStatefulSetServingCertSecretData(adminClient, testSecretName, ns.Name, testStatefulSetSize)
+		if err != nil {
+			t.Fatalf("error when checking serving cert secret: %v", err)
+		}
+
+		err = editServingSecretData(adminClient, testSecretName, ns.Name, "foo")
+		if err != nil {
+			t.Fatalf("error editing serving cert secret: %v", err)
+		}
+		updatedSecretData, is509, err := checkStatefulSetServingCertSecretData(adminClient, testSecretName, ns.Name, testStatefulSetSize)
+		if err != nil {
+			t.Fatalf("error when checking serving cert secret: %v", err)
+		}
+		if !is509 {
+			t.Fatalf("a certificate does not contain valid pem bytes")
+		}
+		for i := 0; i < testStatefulSetSize; i++ {
+			if !bytes.Equal(originalSecretData[i], updatedSecretData[i]) {
+				t.Fatalf("did not expect certificate %d to be replaced with a new cert", i)
+			}
+		}
+	})
+
 	// make sure that deleting service-cert-secret regenerates a working secret again
 	t.Run("service-serving-cert-secret-delete-data", func(t *testing.T) {
 		serviceName := "metrics"
@@ -1105,6 +1457,53 @@ func TestE2E(t *testing.T) {
 
 		metricsHostPort := fmt.Sprintf("%s.%s.svc:%d", service.Name, service.Namespace, service.Spec.Ports[0].Port)
 		checkClientPodRcvdUpdatedServerCert(t, adminClient, testNamespace, metricsHostPort, string(updatedBytes))
+	})
+
+	// make sure that deleting service-cert-secret regenerates a working secret again
+	t.Run("StatefulSet-serving-cert-secret-delete-data", func(t *testing.T) {
+		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		if err != nil {
+			t.Fatalf("could not create test namespace: %v", err)
+		}
+		testServiceName := "test-service-" + randSeq(5)
+		testStatefulSetName := "test-statefulset-" + randSeq(5)
+		testStatefulSetSize := 3
+		testSecretName := "test-secret-" + randSeq(5)
+		defer cleanupStatefulSetSignerTestObjects(adminClient, testSecretName, testStatefulSetName, testServiceName, ns.Name)
+
+		if err = createHeadlessService(adminClient, testServiceName, ns.Name); err != nil {
+			t.Fatalf("error creating headless service: %v", err)
+		}
+		err = createServingCertAnnotatedStatefulSet(adminClient, testSecretName, testStatefulSetName, testServiceName, ns.Name, testStatefulSetSize)
+		if err != nil {
+			t.Fatalf("error creating annotated StatefulSet: %v", err)
+		}
+		oldSecret, err := pollForServingSecretWithReturn(adminClient, testSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error fetching created serving cert secret: %v", err)
+		}
+
+		err = adminClient.CoreV1().Secrets(ns.Name).Delete(context.TODO(), testSecretName, metav1.DeleteOptions{})
+		if err != nil {
+			t.Fatalf("deleting secret %s in namespace %s failed: %v", testSecretName, ns.Name, err)
+		}
+		newSecret, err := pollForUpdatedSecret(t, adminClient, ns.Name, testSecretName, rotationPollTimeout, oldSecret.Data)
+		if err != nil {
+			t.Fatalf("error fetching re-created serving cert secret: %v", err)
+		}
+		if err := restartStatefulSet(t, adminClient, testStatefulSetName, ns.Name, 1*time.Minute); err != nil {
+			t.Fatalf("error restarting StatefulSet: %v", err)
+		}
+
+		for i := 0; i < testStatefulSetSize; i++ {
+			certKey := fmt.Sprintf("%d.crt", i)
+			certBytes, ok := newSecret.Data[certKey]
+			if !ok {
+				t.Fatalf("certificate %q missing in secret %s.%s", certKey, ns.Name, testSecretName)
+			}
+			hostPort := fmt.Sprintf("%s-%d.%s.%s.svc:%d", testStatefulSetName, i, testServiceName, ns.Name, 44300)
+			checkClientPodRcvdUpdatedServerCert(t, adminClient, ns.Name, hostPort, string(certBytes))
+		}
 	})
 
 	// test ca bundle injection configmap
@@ -1189,14 +1588,25 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("could not create test namespace: %v", err)
 		}
 
-		// create secret
+		// create service and StatefulSet serving secret
 		testServiceName := "test-service-" + randSeq(5)
 		testServiceSecretName := "test-secret-" + randSeq(5)
 		defer cleanupServiceSignerTestObjects(adminClient, testServiceSecretName, testServiceName, ns.Name)
+		testStatefulSetName := "test-statefulset-" + randSeq(5)
+		testStatefulSetServiceName := "test-service-" + randSeq(5)
+		testStatefulSetSize := 3
+		testStatefulSetSecretName := "test-statefulset-secret-" + randSeq(5)
+		defer cleanupStatefulSetSignerTestObjects(adminClient, testStatefulSetSecretName, testStatefulSetName, testStatefulSetServiceName, ns.Name)
 
 		err = createServingCertAnnotatedService(adminClient, testServiceSecretName, testServiceName, ns.Name)
 		if err != nil {
 			t.Fatalf("error creating annotated service: %v", err)
+		}
+		if err = createHeadlessService(adminClient, testStatefulSetServiceName, ns.Name); err != nil {
+			t.Fatalf("error creating headless service: %v", err)
+		}
+		if err := createServingCertAnnotatedStatefulSet(adminClient, testStatefulSetSecretName, testStatefulSetName, testStatefulSetServiceName, ns.Name, testStatefulSetSize); err != nil {
+			t.Fatalf("error creating annotated StatefulSet: %v", err)
 		}
 
 		serviceSecret, err := pollForServingSecretWithReturn(adminClient, testServiceSecretName, ns.Name)
@@ -1204,6 +1614,11 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error fetching created serving cert secret: %v", err)
 		}
 		serviceSecretCopy := serviceSecret.DeepCopy()
+		statefulSetSecret, err := pollForServingSecretWithReturn(adminClient, testStatefulSetSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error retrieving StatefulSet cert: %v", err)
+		}
+		statefulSetSecretCopy := statefulSetSecret.DeepCopy()
 
 		// create configmap
 		testConfigMapName := "test-configmap-" + randSeq(5)
@@ -1244,6 +1659,13 @@ func TestE2E(t *testing.T) {
 		err = pollForSecretChange(adminClient, serviceSecretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey)
 		if err != nil {
 			t.Fatalf("service secret cert did not change: %v", err)
+		}
+		secretKeys := []string{}
+		for i := 0; i < testStatefulSetSize; i++ {
+			secretKeys = append(secretKeys, fmt.Sprintf("%d.crt", i), fmt.Sprintf("%d.key", i))
+		}
+		if err = pollForSecretChange(adminClient, statefulSetSecretCopy, secretKeys...); err != nil {
+			t.Fatalf("StatefulSet secret cert did not change: %v", err)
 		}
 	})
 
