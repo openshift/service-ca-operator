@@ -328,10 +328,10 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 
 	// Prompt the creation of a service cert secret
 	testServiceName := "test-service-" + randSeq(5)
-	testSecretName := "test-secret-" + randSeq(5)
-	defer cleanupServiceSignerTestObjects(client, testSecretName, testServiceName, ns.Name)
+	testServiceSecretName := "test-service-secret-" + randSeq(5)
+	defer cleanupServiceSignerTestObjects(client, testServiceSecretName, testServiceName, ns.Name)
 
-	err = createServingCertAnnotatedService(client, testSecretName, testServiceName, ns.Name)
+	err = createServingCertAnnotatedService(client, testServiceSecretName, testServiceName, ns.Name)
 	if err != nil {
 		t.Fatalf("error creating annotated service: %v", err)
 	}
@@ -346,7 +346,7 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	}
 
 	// Retrieve the pre-rotation service cert
-	oldCertPEM, oldKeyPEM, err := pollForUpdatedServiceServingCert(t, client, ns.Name, testSecretName, rotationPollTimeout, nil, nil)
+	oldCertPEM, oldKeyPEM, err := pollForUpdatedServiceServingCert(t, client, ns.Name, testServiceSecretName, rotationPollTimeout, nil, nil)
 	if err != nil {
 		t.Fatalf("error retrieving service cert: %v", err)
 	}
@@ -361,7 +361,7 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 	triggerRotation(t, client, config)
 
 	// Retrieve the post-rotation service cert
-	newCertPEM, newKeyPEM, err := pollForUpdatedServiceServingCert(t, client, ns.Name, testSecretName, rotationTimeout, oldCertPEM, oldKeyPEM)
+	newCertPEM, newKeyPEM, err := pollForUpdatedServiceServingCert(t, client, ns.Name, testServiceSecretName, rotationTimeout, oldCertPEM, oldKeyPEM)
 	if err != nil {
 		t.Fatalf("error retrieving service cert: %v", err)
 	}
@@ -975,7 +975,7 @@ func TestE2E(t *testing.T) {
 	checkComponents(t, adminClient)
 
 	// test the main feature. annotate service -> created secret
-	t.Run("serving-cert-annotation", func(t *testing.T) {
+	t.Run("service-serving-cert-annotation", func(t *testing.T) {
 		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
 		if err != nil {
 			t.Fatalf("could not create test namespace: %v", err)
@@ -1004,7 +1004,7 @@ func TestE2E(t *testing.T) {
 	})
 
 	// test modified data in serving-cert-secret will regenerated
-	t.Run("serving-cert-secret-modify-bad-tlsCert", func(t *testing.T) {
+	t.Run("service-serving-cert-secret-modify-bad-tlsCert", func(t *testing.T) {
 		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
 		if err != nil {
 			t.Fatalf("could not create test namespace: %v", err)
@@ -1042,7 +1042,7 @@ func TestE2E(t *testing.T) {
 	})
 
 	// test extra data in serving-cert-secret will be removed
-	t.Run("serving-cert-secret-add-data", func(t *testing.T) {
+	t.Run("service-serving-cert-secret-add-data", func(t *testing.T) {
 		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
 		if err != nil {
 			t.Fatalf("could not create test namespace: %v", err)
@@ -1077,7 +1077,7 @@ func TestE2E(t *testing.T) {
 	})
 
 	// make sure that deleting service-cert-secret regenerates a working secret again
-	t.Run("serving-cert-secret-delete-data", func(t *testing.T) {
+	t.Run("service-serving-cert-secret-delete-data", func(t *testing.T) {
 		serviceName := "metrics"
 		operatorNamespace := "openshift-service-ca-operator"
 		testNamespace := "test-" + randSeq(5)
@@ -1191,19 +1191,19 @@ func TestE2E(t *testing.T) {
 
 		// create secret
 		testServiceName := "test-service-" + randSeq(5)
-		testSecretName := "test-secret-" + randSeq(5)
-		defer cleanupServiceSignerTestObjects(adminClient, testSecretName, testServiceName, ns.Name)
+		testServiceSecretName := "test-secret-" + randSeq(5)
+		defer cleanupServiceSignerTestObjects(adminClient, testServiceSecretName, testServiceName, ns.Name)
 
-		err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name)
+		err = createServingCertAnnotatedService(adminClient, testServiceSecretName, testServiceName, ns.Name)
 		if err != nil {
 			t.Fatalf("error creating annotated service: %v", err)
 		}
 
-		secret, err := pollForServingSecretWithReturn(adminClient, testSecretName, ns.Name)
+		serviceSecret, err := pollForServingSecretWithReturn(adminClient, testServiceSecretName, ns.Name)
 		if err != nil {
 			t.Fatalf("error fetching created serving cert secret: %v", err)
 		}
-		secretCopy := secret.DeepCopy()
+		serviceSecretCopy := serviceSecret.DeepCopy()
 
 		// create configmap
 		testConfigMapName := "test-configmap-" + randSeq(5)
@@ -1241,9 +1241,9 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("configmap bundle did not change: %v", err)
 		}
 
-		err = pollForSecretChange(adminClient, secretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey)
+		err = pollForSecretChange(adminClient, serviceSecretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey)
 		if err != nil {
-			t.Fatalf("secret cert did not change: %v", err)
+			t.Fatalf("service secret cert did not change: %v", err)
 		}
 	})
 
