@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	listers "k8s.io/client-go/listers/core/v1"
@@ -162,7 +162,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					Annotations: map[string]string{
 						api.AlphaServiceNameAnnotation:       "foo",
 						api.AlphaServiceUIDAnnotation:        "uid-1",
-						api.AlphaServingCertExpiryAnnotation: time.Now().Add(10 * time.Minute).Format(time.RFC3339),
+						api.AlphaServingCertExpiryAnnotation: time.Now().Add(90 * time.Minute).Format(time.RFC3339),
 					},
 					OwnerReferences: []metav1.OwnerReference{ownerRef(&v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: types.UID("uid-1")}})},
 				},
@@ -187,7 +187,7 @@ func TestRequiresRegenerationOrReplace(t *testing.T) {
 					Annotations: map[string]string{
 						api.AlphaServiceNameAnnotation:       "foo",
 						api.AlphaServiceUIDAnnotation:        "uid-1",
-						api.AlphaServingCertExpiryAnnotation: time.Now().Add(10 * time.Minute).Format(time.RFC3339),
+						api.AlphaServingCertExpiryAnnotation: time.Now().Add(90 * time.Minute).Format(time.RFC3339),
 					},
 					OwnerReferences: []metav1.OwnerReference{ownerRef(&v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: types.UID("uid-2")}})},
 				},
@@ -375,7 +375,7 @@ func TestRequiresRegenerationServiceUIDMismatchBetaAnnotation(t *testing.T) {
 					Annotations: map[string]string{
 						api.ServiceNameAnnotation:       "foo",
 						api.ServiceUIDAnnotation:        "uid-1",
-						api.ServingCertExpiryAnnotation: time.Now().Add(10 * time.Minute).Format(time.RFC3339),
+						api.ServingCertExpiryAnnotation: time.Now().Add(90 * time.Minute).Format(time.RFC3339),
 					},
 					OwnerReferences: []metav1.OwnerReference{ownerRef(&v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: types.UID("uid-1")}})},
 				},
@@ -400,7 +400,7 @@ func TestRequiresRegenerationServiceUIDMismatchBetaAnnotation(t *testing.T) {
 					Annotations: map[string]string{
 						api.ServiceNameAnnotation:       "foo",
 						api.ServiceUIDAnnotation:        "uid-1",
-						api.ServingCertExpiryAnnotation: time.Now().Add(10 * time.Minute).Format(time.RFC3339),
+						api.ServingCertExpiryAnnotation: time.Now().Add(90 * time.Minute).Format(time.RFC3339),
 					},
 					OwnerReferences: []metav1.OwnerReference{ownerRef(&v1.Service{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: types.UID("uid-2")}})},
 				},
