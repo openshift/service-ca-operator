@@ -502,8 +502,12 @@ func checkGeneratedCertificate(t *testing.T, certData []byte, service *corev1.Se
 }
 
 func generateServerCertPemForCA(t *testing.T, ca *crypto.CA) []byte {
+	subjects := sets.NewString(
+		fmt.Sprintf("%s.%s.svc", testServiceName, testNamespace),
+		fmt.Sprintf("%s.%s.svc.cluster.local", testServiceName, testNamespace),
+	)
 	newServingCert, err := ca.MakeServerCert(
-		sets.NewString("foo"),
+		subjects,
 		crypto.DefaultCertificateLifetimeInDays,
 	)
 	if err != nil {
