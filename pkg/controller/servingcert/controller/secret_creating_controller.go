@@ -223,30 +223,29 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 // Returns false if pre-existing secret is appropriate for service and the current CA,
 // true if not, or if there was a parsing error (i.e. we regenerate on invalid secret)
 func (sc *serviceServingCertController) secretRequiresCertGeneration(service *corev1.Service, secret *corev1.Secret) bool {
-	return !sc.issuedByCurrentCA(secret)
+	certs, err := cert.ParseCertsPEM(secret.Data[corev1.TLSCertKey])
+	if err != nil {
+		klog.V(4).Infof("warning: error parsing certificate data in %s/%s during regeneration check: %v",
+			secret.Namespace, secret.Name, err)
+		return true
+	}
+	if len(certs) == 0 || certs[0] == nil {
+		klog.V(4).Infof("warning: no certs returned from ParseCertsPEM during regeneration check")
+		return true
+	}
+	cert := certs[0]
+
+	return !sc.issuedByCurrentCA(cert)
 }
 
-// Returns true if the secret certificate was issued by the current CA,
-// false if not or if there was a parsing error.
+// Returns true if the certificate was issued by the current CA, false if not.
 //
 // Determination of issuance will default to comparison of the certificate's
 // AuthorityKeyID and the CA's SubjectKeyId, and fall back to comparison of the
 // certificate's Issuer.CommonName and the CA's Subject.CommonName (in case the CA was
 // generated prior to the addition of key identifiers).
-func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret) bool {
-	certs, err := cert.ParseCertsPEM(secret.Data[corev1.TLSCertKey])
-	if err != nil {
-		klog.V(4).Infof("warning: error parsing certificate data in %s/%s during issuer check: %v",
-			secret.Namespace, secret.Name, err)
-		return false
-	}
-
-	if len(certs) == 0 || certs[0] == nil {
-		klog.V(4).Infof("warning: no certs returned from ParseCertsPEM during issuer check")
-		return false
-	}
-
-	certAuthorityKeyId := certs[0].AuthorityKeyId
+func (sc *serviceServingCertController) issuedByCurrentCA(cert *x509.Certificate) bool {
+	certAuthorityKeyId := cert.AuthorityKeyId
 	caSubjectKeyId := sc.ca.Config.Certs[0].SubjectKeyId
 	// Use key identifier chaining if the SubjectKeyId is populated in the CA
 	// certificate. AuthorityKeyId may not be set in the serving certificate if it was
@@ -257,7 +256,7 @@ func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret)
 
 	// Fall back to name-based chaining for a legacy service CA that was generated
 	// without SubjectKeyId or AuthorityKeyId.
-	return certs[0].Issuer.CommonName == sc.commonName()
+	return cert.Issuer.CommonName == sc.commonName()
 }
 
 func (sc *serviceServingCertController) commonName() string {
