@@ -152,7 +152,7 @@ func initializeSigningSecret(secret *corev1.Secret, duration time.Duration) erro
 	// Set a custom expiry if one was provided
 	ca, err = maybeUpdateExpiry(ca, duration)
 	if err != nil {
-		return fmt.Errorf("Error renewing ca for custom duration: %v", err)
+		return fmt.Errorf("error renewing ca for custom duration: %v", err)
 	}
 
 	certBuff := &bytes.Buffer{}

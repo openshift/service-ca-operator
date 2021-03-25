@@ -84,7 +84,7 @@ func (c *serviceCAOperator) Sync(ctx context.Context, syncCtx factory.SyncContex
 			setDegradedFalse(operatorConfigCopy, "OperatorSyncLoopComplete")
 			existingDeployments, err := c.appsv1Client.Deployments(operatorclient.TargetNamespace).List(ctx, metav1.ListOptions{})
 			if err != nil {
-				return fmt.Errorf("Error listing deployments in %s: %v", operatorclient.TargetNamespace, err)
+				return fmt.Errorf("error listing deployments in %s: %v", operatorclient.TargetNamespace, err)
 			}
 			c.syncStatus(operatorConfigCopy, existingDeployments, targetDeploymentNames)
 		}
