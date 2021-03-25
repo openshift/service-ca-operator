@@ -206,7 +206,7 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 		return false
 	}
 
-	if sc.issuedByCurrentCA(secret) {
+	if !sc.secretRequiresCertGeneration(service, secret) {
 		return false
 	}
 
@@ -218,6 +218,12 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 	// the secret exists but the service was either not updated to include the correct created
 	// by annotation or it does not match what we expect (i.e. the certificate has been rotated)
 	return true
+}
+
+// Returns false if pre-existing secret is appropriate for service and the current CA,
+// true if not, or if there was a parsing error (i.e. we regenerate on invalid secret)
+func (sc *serviceServingCertController) secretRequiresCertGeneration(service *corev1.Service, secret *corev1.Secret) bool {
+	return !sc.issuedByCurrentCA(secret)
 }
 
 // Returns true if the secret certificate was issued by the current CA,
