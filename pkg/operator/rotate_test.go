@@ -220,6 +220,9 @@ func TestRotateSigningCA(t *testing.T) {
 		Config:          newSigningCA.config,
 	}
 	newBundlePEM, err := crypto.EncodeCertificates(newSigningCA.bundle...)
+	if err != nil {
+		t.Fatalf("Error encoding new bundle to PEM: %v", err)
+	}
 
 	// Generate a service cert with the post-rotation CA
 	newServingCert, err := controller.MakeServingCert(dnsSuffix, newCA, newSigningCA.intermediateCACert, objMeta)
