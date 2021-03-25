@@ -325,12 +325,21 @@ func toBaseSecret(service *corev1.Service) *corev1.Secret {
 	}
 }
 
+func certSubjectsForService(service *corev1.Service, dnsSuffix string) sets.String {
+	res := sets.NewString()
+	serviceHostname := service.Name + "." + service.Namespace + ".svc"
+	res.Insert(
+		serviceHostname,
+		serviceHostname+"."+dnsSuffix,
+	)
+	return res
+}
+
 func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service) (*crypto.TLSCertificateConfig, error) {
-	dnsName := service.Name + "." + service.Namespace + ".svc"
-	fqDNSName := dnsName + "." + dnsSuffix
+	subjects := certSubjectsForService(service, dnsSuffix)
 	certificateLifetime := 365 * 2 // 2 years
 	servingCert, err := ca.MakeServerCert(
-		sets.NewString(dnsName, fqDNSName),
+		subjects,
 		certificateLifetime,
 		cryptoextensions.ServiceServerCertificateExtensionV1(service.UID),
 	)
