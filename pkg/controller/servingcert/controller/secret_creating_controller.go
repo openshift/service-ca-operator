@@ -325,14 +325,14 @@ func toBaseSecret(service *corev1.Service) *corev1.Secret {
 	}
 }
 
-func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, serviceObjectMeta *metav1.ObjectMeta) (*crypto.TLSCertificateConfig, error) {
-	dnsName := serviceObjectMeta.Name + "." + serviceObjectMeta.Namespace + ".svc"
+func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service) (*crypto.TLSCertificateConfig, error) {
+	dnsName := service.Name + "." + service.Namespace + ".svc"
 	fqDNSName := dnsName + "." + dnsSuffix
 	certificateLifetime := 365 * 2 // 2 years
 	servingCert, err := ca.MakeServerCert(
 		sets.NewString(dnsName, fqDNSName),
 		certificateLifetime,
-		cryptoextensions.ServiceServerCertificateExtensionV1(serviceObjectMeta.UID),
+		cryptoextensions.ServiceServerCertificateExtensionV1(service.UID),
 	)
 	if err != nil {
 		return nil, err
@@ -349,7 +349,7 @@ func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.C
 }
 
 func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, secretCopy *corev1.Secret) error {
-	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, &service.ObjectMeta)
+	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, service)
 	if err != nil {
 		return err
 	}
