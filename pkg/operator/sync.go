@@ -2,32 +2,11 @@ package operator
 
 import (
 	"context"
-	"sync"
 
 	"k8s.io/klog/v2"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 )
-
-type TryOnce struct {
-	lock      sync.Mutex
-	succeeded bool
-}
-
-func (o *TryOnce) Do(f func() error) error {
-	o.lock.Lock()
-	defer o.lock.Unlock()
-
-	if o.succeeded {
-		return nil
-	}
-
-	err := f()
-	o.succeeded = err == nil
-	return err
-}
-
-var once = TryOnce{}
 
 func (c *serviceCAOperator) syncControllers(ctx context.Context, operatorConfig *operatorv1.ServiceCA) error {
 	// Any modification of resource we want to trickle down to force deploy all of the controllers.

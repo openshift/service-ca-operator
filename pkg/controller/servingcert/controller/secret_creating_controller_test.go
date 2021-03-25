@@ -59,8 +59,6 @@ Cryo2APfUHF0zOtxK0JifCnYi47H
 `
 )
 
-type secretModifier func(*corev1.Secret) *corev1.Secret
-
 func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secret *corev1.Secret) (*fake.Clientset, *serviceServingCertController) {
 	clientObjects := []runtime.Object{} // objects to init the kubeclient with
 
