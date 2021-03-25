@@ -270,6 +270,9 @@ func (sc *serviceServingCertController) commonName() string {
 }
 
 // Returns true if the certificate contains all subjects expected for service, false if not.
+//
+// This can happen if an earlier version generated a certificate for a headless service
+// without including the wildcard subjects matching the individual pods.
 func (sc *serviceServingCertController) certContainsExpectedSubjects(service *corev1.Service, cert *x509.Certificate) bool {
 	// We only compare cert.DNSNames, and ignore other possible certificate subjects that this code
 	// never generates.
@@ -352,6 +355,13 @@ func certSubjectsForService(service *corev1.Service, dnsSuffix string) sets.Stri
 		serviceHostname,
 		serviceHostname+"."+dnsSuffix,
 	)
+	if service.Spec.ClusterIP == corev1.ClusterIPNone {
+		podWildcard := "*." + service.Name + "." + service.Namespace + ".svc"
+		res.Insert(
+			podWildcard,
+			podWildcard+"."+dnsSuffix,
+		)
+	}
 	return res
 }
 
