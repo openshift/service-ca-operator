@@ -235,7 +235,13 @@ func (sc *serviceServingCertController) secretRequiresCertGeneration(service *co
 	}
 	cert := certs[0]
 
-	return !sc.issuedByCurrentCA(cert)
+	if !sc.issuedByCurrentCA(cert) {
+		return true
+	}
+	if !sc.certContainsExpectedSubjects(service, cert) {
+		return true
+	}
+	return false
 }
 
 // Returns true if the certificate was issued by the current CA, false if not.
@@ -261,6 +267,15 @@ func (sc *serviceServingCertController) issuedByCurrentCA(cert *x509.Certificate
 
 func (sc *serviceServingCertController) commonName() string {
 	return sc.ca.Config.Certs[0].Subject.CommonName
+}
+
+// Returns true if the certificate contains all subjects expected for service, false if not.
+func (sc *serviceServingCertController) certContainsExpectedSubjects(service *corev1.Service, cert *x509.Certificate) bool {
+	// We only compare cert.DNSNames, and ignore other possible certificate subjects that this code
+	// never generates.
+	expectedSubjects := certSubjectsForService(service, sc.dnsSuffix)
+	certSubjects := sets.NewString(cert.DNSNames...)
+	return certSubjects.Equal(expectedSubjects)
 }
 
 // updateServiceFailure updates the service's error annotations with err.
