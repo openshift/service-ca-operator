@@ -246,7 +246,7 @@ func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret)
 	// certificate. AuthorityKeyId may not be set in the serving certificate if it was
 	// generated before serving cert generation was updated to include the field.
 	if len(caSubjectKeyId) > 0 {
-		return bytes.Compare(certAuthorityKeyId, caSubjectKeyId) == 0
+		return bytes.Equal(certAuthorityKeyId, caSubjectKeyId)
 	}
 
 	// Fall back to name-based chaining for a legacy service CA that was generated

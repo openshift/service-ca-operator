@@ -6,7 +6,6 @@ import (
 	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"path"
 	"reflect"
 	"testing"
@@ -60,8 +59,6 @@ Cryo2APfUHF0zOtxK0JifCnYi47H
 `
 )
 
-type secretModifier func(*corev1.Secret) *corev1.Secret
-
 func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secret *corev1.Secret) (*fake.Clientset, *serviceServingCertController) {
 	clientObjects := []runtime.Object{} // objects to init the kubeclient with
 
@@ -110,10 +107,7 @@ func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secre
 
 func TestServiceServingCertControllerSync(t *testing.T) {
 	// prepare the certs
-	certDir, err := ioutil.TempDir("", "serving-cert-unit-")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	certDir := t.TempDir()
 
 	ca, err := crypto.MakeSelfSignedCA(
 		path.Join(certDir, "service-signer.crt"),
@@ -392,7 +386,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				case action.Matches("update", "services"):
 					service := action.(clientgotesting.UpdateAction).GetObject().(*corev1.Service)
 					if !reflect.DeepEqual(service.Annotations, tt.expectedServiceAnnotations) {
-						t.Errorf("expected != updated: %v", kubediff.ObjectReflectDiff(service.Annotations, tt.expectedServiceAnnotations))
+						t.Errorf("expected != updated: %v", kubediff.ObjectReflectDiff(tt.expectedServiceAnnotations, service.Annotations))
 						continue
 					}
 					foundServiceUpdate = true

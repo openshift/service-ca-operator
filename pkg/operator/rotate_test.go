@@ -220,6 +220,9 @@ func TestRotateSigningCA(t *testing.T) {
 		Config:          newSigningCA.config,
 	}
 	newBundlePEM, err := crypto.EncodeCertificates(newSigningCA.bundle...)
+	if err != nil {
+		t.Fatalf("Error encoding new bundle to PEM: %v", err)
+	}
 
 	// Generate a service cert with the post-rotation CA
 	newServingCert, err := controller.MakeServingCert(dnsSuffix, newCA, newSigningCA.intermediateCACert, objMeta)
@@ -234,7 +237,7 @@ func TestRotateSigningCA(t *testing.T) {
 	// The AuthorityKeyId of the serving cert should match the CA cert's SubjectKeyId so
 	// that when these values differ (i.e. when the CA is next rotated), the serving
 	// cert controller will know to regenerate the serving cert.
-	if bytes.Compare(newServingCert.Certs[0].AuthorityKeyId, newSigningCA.config.Certs[0].SubjectKeyId) != 0 {
+	if !bytes.Equal(newServingCert.Certs[0].AuthorityKeyId, newSigningCA.config.Certs[0].SubjectKeyId) {
 		t.Fatalf("The AuthorityKeyId of the serving cert does not match the SubjectKeyId of the CA cert")
 	}
 
@@ -271,7 +274,7 @@ func TestCreateIntermediateCACert(t *testing.T) {
 		t.Fatalf("Failed to create intermediate CA cert: %v", err)
 	}
 
-	if bytes.Compare(intermediateCACert.AuthorityKeyId, signingCACert.SubjectKeyId) != 0 {
+	if !bytes.Equal(intermediateCACert.AuthorityKeyId, signingCACert.SubjectKeyId) {
 		t.Fatalf("Expected intermediate CA cert AuthorityKeyId to match signing CA cert SubjectKeyId")
 	}
 
