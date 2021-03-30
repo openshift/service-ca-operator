@@ -58,7 +58,7 @@ const (
 	// Rotation of all certs and bundles is expected to take a considerable amount of time
 	// due to the operator having to restart each controller and then each controller having
 	// to acquire the leader election lease and update all targeted resources.
-	rotationTimeout = 3 * time.Minute
+	rotationTimeout = 5 * time.Minute
 	// Polling for resources related to rotation may be delayed by the number of resources
 	// that are updated in the cluster in response to rotation.
 	rotationPollTimeout = 2 * time.Minute
@@ -100,7 +100,6 @@ func createTestNamespace(client *kubernetes.Clientset, namespaceName string) (*v
 	return ns, err
 }
 
-// on success returns serviceName, secretName, nil
 func createServingCertAnnotatedService(client *kubernetes.Clientset, secretName, serviceName, namespace string) error {
 	_, err := client.CoreV1().Services(namespace).Create(context.TODO(), &v1.Service{
 		TypeMeta: metav1.TypeMeta{},
@@ -160,24 +159,19 @@ func pollForCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapNa
 	})
 }
 
-func editServiceServingSecretData(client *kubernetes.Clientset, secretName, namespace, edit string) error {
+func editServingSecretData(client *kubernetes.Clientset, secretName, namespace, keyName string) error {
 	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	scopy := sss.DeepCopy()
-	switch edit {
-	case "badCert":
-		scopy.Data[v1.TLSCertKey] = []byte("blah")
-	case "extraData":
-		scopy.Data["foo"] = []byte("blah")
-	}
+	scopy.Data[keyName] = []byte("blah")
 	_, err = client.CoreV1().Secrets(namespace).Update(context.TODO(), scopy, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
-	time.Sleep(10 * time.Second)
-	return nil
+
+	return pollForSecretChange(client, scopy, keyName)
 }
 
 func editConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
@@ -194,8 +188,8 @@ func editConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapN
 	if err != nil {
 		return err
 	}
-	time.Sleep(10 * time.Second)
-	return nil
+
+	return pollForConfigMapChange(client, cmcopy, "foo")
 }
 
 func checkServiceServingCertSecretData(client *kubernetes.Clientset, secretName, namespace string) ([]byte, bool, error) {
@@ -206,21 +200,23 @@ func checkServiceServingCertSecretData(client *kubernetes.Clientset, secretName,
 	if len(sss.Data) != 2 {
 		return nil, false, fmt.Errorf("unexpected service serving secret data map length: %v", len(sss.Data))
 	}
-	ok := true
-	_, ok = sss.Data[v1.TLSCertKey]
+	certBytes, ok := sss.Data[v1.TLSCertKey]
+	if !ok {
+		return nil, false, fmt.Errorf("unexpected service serving secret data: %v", sss.Data)
+	}
 	_, ok = sss.Data[v1.TLSPrivateKeyKey]
 	if !ok {
 		return nil, false, fmt.Errorf("unexpected service serving secret data: %v", sss.Data)
 	}
-	block, _ := pem.Decode([]byte(sss.Data[v1.TLSCertKey]))
+	block, _ := pem.Decode(certBytes)
 	if block == nil {
 		return nil, false, fmt.Errorf("unable to decode TLSCertKey bytes")
 	}
 	_, err = x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return sss.Data[v1.TLSCertKey], false, nil
+		return certBytes, false, nil
 	}
-	return sss.Data[v1.TLSCertKey], true, nil
+	return certBytes, true, nil
 }
 
 func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
@@ -271,7 +267,7 @@ func pollForCABundleInjectionConfigMapWithReturn(client *kubernetes.Clientset, c
 	return configmap, err
 }
 
-func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret) error {
+func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret, keysToChange ...string) error {
 	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
 		s, err := client.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
@@ -280,15 +276,16 @@ func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret) error 
 		if err != nil {
 			return false, err
 		}
-		if !bytes.Equal(s.Data[v1.TLSCertKey], secret.Data[v1.TLSCertKey]) &&
-			!bytes.Equal(s.Data[v1.TLSPrivateKeyKey], secret.Data[v1.TLSPrivateKeyKey]) {
-			return true, nil
+		for _, key := range keysToChange {
+			if bytes.Equal(s.Data[key], secret.Data[key]) {
+				return false, nil
+			}
 		}
-		return false, nil
+		return true, nil
 	})
 }
 
-func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap) error {
+func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap, keysToChange ...string) error {
 	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
 		cm, err := client.CoreV1().ConfigMaps(compareConfigMap.Namespace).Get(context.TODO(), compareConfigMap.Name, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
@@ -297,11 +294,12 @@ func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.C
 		if err != nil {
 			return false, nil
 		}
-		if cm.Data[api.InjectionDataKey] != compareConfigMap.Data[api.InjectionDataKey] {
-			// the change happened
-			return true, nil
+		for _, key := range keysToChange {
+			if cm.Data[key] == compareConfigMap.Data[key] {
+				return false, nil
+			}
 		}
-		return false, nil
+		return true, nil
 	})
 }
 
@@ -461,7 +459,7 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 
 	// Trigger a forced rotation by updating the operator config
 	// with a reason.
-	setUnsupportedServiceCAConfig(t, config, "42", customDuration)
+	forceUnsupportedServiceCAConfigRotation(t, config, secret, customDuration)
 
 	signingSecret := pollForCARotation(t, client, caCertPEM, caKeyPEM)
 
@@ -476,7 +474,7 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 	}
 }
 
-func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, forceRotationReason string, validityDuration time.Duration) {
+func forceUnsupportedServiceCAConfigRotation(t *testing.T, config *rest.Config, currentSigningKeySecret *v1.Secret, validityDuration time.Duration) {
 	operatorClient, err := operatorv1client.NewForConfig(config)
 	if err != nil {
 		t.Fatalf("error creating operator client: %v", err)
@@ -484,6 +482,13 @@ func setUnsupportedServiceCAConfig(t *testing.T, config *rest.Config, forceRotat
 	operatorConfig, err := operatorClient.OperatorV1().ServiceCAs().Get(context.TODO(), api.OperatorConfigInstanceName, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("error retrieving operator config: %v", err)
+	}
+	var forceRotationReason string
+	for i := 0; ; i++ {
+		forceRotationReason = fmt.Sprintf("service-ca-e2e-force-rotation-reason-%d", i)
+		if currentSigningKeySecret.Annotations[api.ForcedRotationReasonAnnotationName] != forceRotationReason {
+			break
+		}
 	}
 	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(forceRotationReason, validityDuration)
 	if err != nil {
@@ -509,6 +514,21 @@ func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, ca
 		t.Fatalf("error waiting for CA rotation: %v", err)
 	}
 	return secret
+}
+
+// pollForCARecreation polls for the signing secret to be re-created in
+// response to CA secret deletion.
+func pollForCARecreation(client *kubernetes.Clientset) error {
+	return wait.PollImmediate(time.Second, rotationPollTimeout, func() (bool, error) {
+		_, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	})
 }
 
 // pollForUpdatedServingCert returns the cert and key PEM if it changes from
@@ -914,6 +934,10 @@ func checkServiceCAMetrics(t *testing.T, client *kubernetes.Clientset, promClien
 			t.Logf("failed to get sample value: %v", err)
 			return false, nil
 		}
+		if rawExpiryTime.Value == 0 { // The operator is starting
+			t.Logf("got zero value")
+			return false, nil
+		}
 
 		if float64(want.Unix()) != float64(rawExpiryTime.Value) {
 			t.Fatalf("service ca expiry time mismatch expected %v observed %v", float64(want.Unix()), float64(rawExpiryTime.Value))
@@ -1002,7 +1026,7 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error when checking serving cert secret: %v", err)
 		}
 
-		err = editServiceServingSecretData(adminClient, testSecretName, ns.Name, "badCert")
+		err = editServingSecretData(adminClient, testSecretName, ns.Name, v1.TLSCertKey)
 		if err != nil {
 			t.Fatalf("error editing serving cert secret: %v", err)
 		}
@@ -1040,7 +1064,7 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error when checking serving cert secret: %v", err)
 		}
 
-		err = editServiceServingSecretData(adminClient, testSecretName, ns.Name, "extraData")
+		err = editServingSecretData(adminClient, testSecretName, ns.Name, "foo")
 		if err != nil {
 			t.Fatalf("error editing serving cert secret: %v", err)
 		}
@@ -1207,17 +1231,17 @@ func TestE2E(t *testing.T) {
 		}
 
 		// make sure it's recreated
-		err = pollForServiceServingSecret(adminClient, signingKeySecretName, serviceCAControllerNamespace)
+		err = pollForCARecreation(adminClient)
 		if err != nil {
 			t.Fatalf("signing key was not recreated: %v", err)
 		}
 
-		err = pollForConfigMapChange(adminClient, configmapCopy)
+		err = pollForConfigMapChange(adminClient, configmapCopy, api.InjectionDataKey)
 		if err != nil {
 			t.Fatalf("configmap bundle did not change: %v", err)
 		}
 
-		err = pollForSecretChange(adminClient, secretCopy)
+		err = pollForSecretChange(adminClient, secretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey)
 		if err != nil {
 			t.Fatalf("secret cert did not change: %v", err)
 		}
