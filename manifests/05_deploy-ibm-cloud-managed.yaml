@@ -1,0 +1,71 @@
+# *** AUTOMATICALLY GENERATED FILE - DO NOT EDIT ***
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    include.release.openshift.io/ibm-cloud-managed: "true"
+  labels:
+    app: service-ca-operator
+  name: service-ca-operator
+  namespace: openshift-service-ca-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-ca-operator
+  template:
+    metadata:
+      labels:
+        app: service-ca-operator
+      name: service-ca-operator
+    spec:
+      containers:
+      - args:
+        - --config=/var/run/configmaps/config/operator-config.yaml
+        - -v=4
+        command:
+        - service-ca-operator
+        - operator
+        env:
+        - name: CONTROLLER_IMAGE
+          value: quay.io/openshift/origin-service-ca-operator:v4.0
+        - name: OPERATOR_IMAGE_VERSION
+          value: 0.0.1-snapshot
+        image: quay.io/openshift/origin-service-ca-operator:v4.0
+        imagePullPolicy: IfNotPresent
+        name: service-ca-operator
+        resources:
+          requests:
+            cpu: 10m
+            memory: 80Mi
+        volumeMounts:
+        - mountPath: /var/run/configmaps/config
+          name: config
+        - mountPath: /var/run/secrets/serving-cert
+          name: serving-cert
+      priorityClassName: system-cluster-critical
+      securityContext:
+        runAsGroup: 1001
+        runAsNonRoot: true
+        runAsUser: 1001
+      serviceAccountName: service-ca-operator
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoExecute
+        key: node.kubernetes.io/unreachable
+        operator: Exists
+        tolerationSeconds: 120
+      - effect: NoExecute
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+        tolerationSeconds: 120
+      volumes:
+      - name: serving-cert
+        secret:
+          optional: true
+          secretName: serving-cert
+      - configMap:
+          name: service-ca-operator-config
+        name: config
