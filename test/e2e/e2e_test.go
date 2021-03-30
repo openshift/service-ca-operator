@@ -91,13 +91,18 @@ func checkComponents(t *testing.T, client *kubernetes.Clientset) {
 	}
 }
 
-func createTestNamespace(client *kubernetes.Clientset, namespaceName string) (*v1.Namespace, error) {
+func createTestNamespace(t *testing.T, client *kubernetes.Clientset, namespaceName string) (*v1.Namespace, func(), error) {
 	ns, err := client.CoreV1().Namespaces().Create(context.TODO(), &v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: namespaceName,
 		},
 	}, metav1.CreateOptions{})
-	return ns, err
+	cleanup := func() {
+		if err := client.CoreV1().Namespaces().Delete(context.TODO(), ns.Name, metav1.DeleteOptions{}); err != nil {
+			t.Logf("Deleting namespace %s failed: %v", ns.Name, err)
+		}
+	}
+	return ns, cleanup, err
 }
 
 func createServingCertAnnotatedService(client *kubernetes.Clientset, secretName, serviceName, namespace string, headless bool) error {
@@ -307,36 +312,20 @@ func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.C
 	})
 }
 
-func cleanupServiceSignerTestObjects(client *kubernetes.Clientset, secretName, serviceName, namespace string) {
-	client.CoreV1().Secrets(namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
-	client.CoreV1().Services(namespace).Delete(context.TODO(), serviceName, metav1.DeleteOptions{})
-	client.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
-	// TODO this should just delete the namespace and wait for it to be gone
-	// it should probably fail the test if the namespace gets stuck
-}
-
-func cleanupConfigMapCABundleInjectionTestObjects(client *kubernetes.Clientset, cmName, namespace string) {
-	client.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{})
-	client.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
-	// TODO this should just delete the namespace and wait for it to be gone
-	// it should probably fail the test if the namespace gets stuck
-}
-
 type triggerRotationFunc func(*testing.T, *kubernetes.Clientset, *rest.Config)
 
 func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Config, triggerRotation triggerRotationFunc) {
-	ns, err := createTestNamespace(client, "test-"+randSeq(5))
+	ns, cleanup, err := createTestNamespace(t, client, "test-"+randSeq(5))
 	if err != nil {
 		t.Fatalf("could not create test namespace: %v", err)
 	}
+	defer cleanup()
 
 	// Prompt the creation of service cert secrets
 	testServiceName := "test-service-" + randSeq(5)
 	testSecretName := "test-secret-" + randSeq(5)
-	defer cleanupServiceSignerTestObjects(client, testSecretName, testServiceName, ns.Name)
 	testHeadlessServiceName := "test-headless-service-" + randSeq(5)
 	testHeadlessSecretName := "test-headless-secret-" + randSeq(5)
-	defer cleanupServiceSignerTestObjects(client, testHeadlessSecretName, testHeadlessServiceName, ns.Name)
 
 	err = createServingCertAnnotatedService(client, testSecretName, testServiceName, ns.Name, false)
 	if err != nil {
@@ -348,7 +337,6 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 
 	// Prompt the injection of the ca bundle into a configmap
 	testConfigMapName := "test-configmap-" + randSeq(5)
-	defer cleanupConfigMapCABundleInjectionTestObjects(client, testConfigMapName, ns.Name)
 
 	err = createAnnotatedCABundleInjectionConfigMap(client, testConfigMapName, ns.Name)
 	if err != nil {
@@ -854,16 +842,6 @@ func deletePod(t *testing.T, client *kubernetes.Clientset, name, namespace strin
 	}
 }
 
-func deleteNamespace(t *testing.T, client *kubernetes.Clientset, name string) {
-	err := client.CoreV1().Namespaces().Delete(context.TODO(), name, metav1.DeleteOptions{})
-	if errors.IsNotFound(err) {
-		return
-	}
-	if err != nil {
-		t.Errorf("failed to delete namespace: %v", err)
-	}
-}
-
 // newPrometheusClientForConfig returns a new prometheus client for
 // the provided kubeconfig.
 func newPrometheusClientForConfig(config *rest.Config) (prometheusv1.API, error) {
@@ -1002,13 +980,14 @@ func TestE2E(t *testing.T) {
 	t.Run("serving-cert-annotation", func(t *testing.T) {
 		for _, headless := range []bool{false, true} {
 			t.Run(fmt.Sprintf("headless=%v", headless), func(t *testing.T) {
-				ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+				ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
 				if err != nil {
 					t.Fatalf("could not create test namespace: %v", err)
 				}
+				defer cleanup()
+
 				testServiceName := "test-service-" + randSeq(5)
 				testSecretName := "test-secret-" + randSeq(5)
-				defer cleanupServiceSignerTestObjects(adminClient, testSecretName, testServiceName, ns.Name)
 
 				err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, headless)
 				if err != nil {
@@ -1035,13 +1014,14 @@ func TestE2E(t *testing.T) {
 	t.Run("serving-cert-secret-modify-bad-tlsCert", func(t *testing.T) {
 		for _, headless := range []bool{false, true} {
 			t.Run(fmt.Sprintf("headless=%v", headless), func(t *testing.T) {
-				ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+				ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
 				if err != nil {
 					t.Fatalf("could not create test namespace: %v", err)
 				}
+				defer cleanup()
+
 				testServiceName := "test-service-" + randSeq(5)
 				testSecretName := "test-secret-" + randSeq(5)
-				defer cleanupServiceSignerTestObjects(adminClient, testSecretName, testServiceName, ns.Name)
 				err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, headless)
 				if err != nil {
 					t.Fatalf("error creating annotated service: %v", err)
@@ -1077,13 +1057,14 @@ func TestE2E(t *testing.T) {
 	t.Run("serving-cert-secret-add-data", func(t *testing.T) {
 		for _, headless := range []bool{false, true} {
 			t.Run(fmt.Sprintf("headless=%v", headless), func(t *testing.T) {
-				ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+				ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
 				if err != nil {
 					t.Fatalf("could not create test namespace: %v", err)
 				}
+				defer cleanup()
+
 				testServiceName := "test-service-" + randSeq(5)
 				testSecretName := "test-secret-" + randSeq(5)
-				defer cleanupServiceSignerTestObjects(adminClient, testSecretName, testServiceName, ns.Name)
 				err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, headless)
 				if err != nil {
 					t.Fatalf("error creating annotated service: %v", err)
@@ -1116,12 +1097,12 @@ func TestE2E(t *testing.T) {
 	t.Run("serving-cert-secret-delete-data", func(t *testing.T) {
 		serviceName := "metrics"
 		operatorNamespace := "openshift-service-ca-operator"
-		testNamespace := "test-" + randSeq(5)
-		_, err := createTestNamespace(adminClient, testNamespace)
+		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
 		if err != nil {
 			t.Fatalf("could not create test namespace: %v", err)
 		}
-		defer deleteNamespace(t, adminClient, testNamespace)
+		defer cleanup()
+
 		service, err := adminClient.CoreV1().Services(operatorNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
 		if err != nil {
 			t.Fatalf("fetching service from apiserver failed: %v", err)
@@ -1139,18 +1120,19 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error fetching re-created serving cert secret: %v", err)
 		}
 
-		checkClientPodRcvdUpdatedServerCert(t, adminClient, service, testNamespace, string(updatedBytes))
+		checkClientPodRcvdUpdatedServerCert(t, adminClient, service, ns.Name, string(updatedBytes))
 	})
 
 	// make sure that deleting aservice-cert-secret regenerates a working secret again
 	t.Run("headless-stateful-serving-cert-secret-delete-data", func(t *testing.T) {
-		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
 		if err != nil {
 			t.Fatalf("could not create test namespace: %v", err)
 		}
+		defer cleanup()
+
 		testServiceName := "test-service-" + randSeq(5)
 		testSecretName := "test-secret-" + randSeq(5)
-		defer cleanupServiceSignerTestObjects(adminClient, testSecretName, testServiceName, ns.Name)
 
 		if err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, true); err != nil {
 			t.Fatalf("error creating headless service: %v", err)
@@ -1173,12 +1155,13 @@ func TestE2E(t *testing.T) {
 
 	// test ca bundle injection configmap
 	t.Run("ca-bundle-injection-configmap", func(t *testing.T) {
-		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
 		if err != nil {
 			t.Fatalf("could not create test namespace: %v", err)
 		}
+		defer cleanup()
+
 		testConfigMapName := "test-configmap-" + randSeq(5)
-		defer cleanupConfigMapCABundleInjectionTestObjects(adminClient, testConfigMapName, ns.Name)
 
 		err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
 		if err != nil {
@@ -1198,12 +1181,13 @@ func TestE2E(t *testing.T) {
 
 	// test updated data in ca bundle injection configmap will be stomped on
 	t.Run("ca-bundle-injection-configmap-update", func(t *testing.T) {
-		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
 		if err != nil {
 			t.Fatalf("could not create test namespace: %v", err)
 		}
+		defer cleanup()
+
 		testConfigMapName := "test-configmap-" + randSeq(5)
-		defer cleanupConfigMapCABundleInjectionTestObjects(adminClient, testConfigMapName, ns.Name)
 
 		err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
 		if err != nil {
@@ -1248,18 +1232,17 @@ func TestE2E(t *testing.T) {
 	})
 
 	t.Run("refresh-CA", func(t *testing.T) {
-		ns, err := createTestNamespace(adminClient, "test-"+randSeq(5))
+		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
 		if err != nil {
 			t.Fatalf("could not create test namespace: %v", err)
 		}
+		defer cleanup()
 
 		// create secrets
 		testServiceName := "test-service-" + randSeq(5)
 		testSecretName := "test-secret-" + randSeq(5)
-		defer cleanupServiceSignerTestObjects(adminClient, testSecretName, testServiceName, ns.Name)
 		testHeadlessServiceName := "test-headless-service-" + randSeq(5)
 		testHeadlessSecretName := "test-headless-secret-" + randSeq(5)
-		defer cleanupServiceSignerTestObjects(adminClient, testHeadlessSecretName, testHeadlessServiceName, ns.Name)
 
 		err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, false)
 		if err != nil {
@@ -1282,7 +1265,6 @@ func TestE2E(t *testing.T) {
 
 		// create configmap
 		testConfigMapName := "test-configmap-" + randSeq(5)
-		defer cleanupConfigMapCABundleInjectionTestObjects(adminClient, testConfigMapName, ns.Name)
 
 		err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
 		if err != nil {
