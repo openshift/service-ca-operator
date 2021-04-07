@@ -206,7 +206,7 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 		return false
 	}
 
-	if sc.issuedByCurrentCA(secret) {
+	if !sc.secretRequiresCertGeneration(service, secret) {
 		return false
 	}
 
@@ -220,27 +220,38 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 	return true
 }
 
-// Returns true if the secret certificate was issued by the current CA,
-// false if not or if there was a parsing error.
+// Returns false if pre-existing secret is appropriate for service and the current CA,
+// true if not, or if there was a parsing error (i.e. we regenerate on invalid secret)
+func (sc *serviceServingCertController) secretRequiresCertGeneration(service *corev1.Service, secret *corev1.Secret) bool {
+	certs, err := cert.ParseCertsPEM(secret.Data[corev1.TLSCertKey])
+	if err != nil {
+		klog.V(4).Infof("warning: error parsing certificate data in %s/%s during regeneration check: %v",
+			secret.Namespace, secret.Name, err)
+		return true
+	}
+	if len(certs) == 0 || certs[0] == nil {
+		klog.V(4).Infof("warning: no certs returned from ParseCertsPEM during regeneration check")
+		return true
+	}
+	cert := certs[0]
+
+	if !sc.issuedByCurrentCA(cert) {
+		return true
+	}
+	if !sc.certContainsExpectedSubjects(service, cert) {
+		return true
+	}
+	return false
+}
+
+// Returns true if the certificate was issued by the current CA, false if not.
 //
 // Determination of issuance will default to comparison of the certificate's
 // AuthorityKeyID and the CA's SubjectKeyId, and fall back to comparison of the
 // certificate's Issuer.CommonName and the CA's Subject.CommonName (in case the CA was
 // generated prior to the addition of key identifiers).
-func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret) bool {
-	certs, err := cert.ParseCertsPEM(secret.Data[corev1.TLSCertKey])
-	if err != nil {
-		klog.V(4).Infof("warning: error parsing certificate data in %s/%s during issuer check: %v",
-			secret.Namespace, secret.Name, err)
-		return false
-	}
-
-	if len(certs) == 0 || certs[0] == nil {
-		klog.V(4).Infof("warning: no certs returned from ParseCertsPEM during issuer check")
-		return false
-	}
-
-	certAuthorityKeyId := certs[0].AuthorityKeyId
+func (sc *serviceServingCertController) issuedByCurrentCA(cert *x509.Certificate) bool {
+	certAuthorityKeyId := cert.AuthorityKeyId
 	caSubjectKeyId := sc.ca.Config.Certs[0].SubjectKeyId
 	// Use key identifier chaining if the SubjectKeyId is populated in the CA
 	// certificate. AuthorityKeyId may not be set in the serving certificate if it was
@@ -251,11 +262,23 @@ func (sc *serviceServingCertController) issuedByCurrentCA(secret *corev1.Secret)
 
 	// Fall back to name-based chaining for a legacy service CA that was generated
 	// without SubjectKeyId or AuthorityKeyId.
-	return certs[0].Issuer.CommonName == sc.commonName()
+	return cert.Issuer.CommonName == sc.commonName()
 }
 
 func (sc *serviceServingCertController) commonName() string {
 	return sc.ca.Config.Certs[0].Subject.CommonName
+}
+
+// Returns true if the certificate contains all subjects expected for service, false if not.
+//
+// This can happen if an earlier version generated a certificate for a headless service
+// without including the wildcard subjects matching the individual pods.
+func (sc *serviceServingCertController) certContainsExpectedSubjects(service *corev1.Service, cert *x509.Certificate) bool {
+	// We only compare cert.DNSNames, and ignore other possible certificate subjects that this code
+	// never generates.
+	expectedSubjects := certSubjectsForService(service, sc.dnsSuffix)
+	certSubjects := sets.NewString(cert.DNSNames...)
+	return certSubjects.Equal(expectedSubjects)
 }
 
 // updateServiceFailure updates the service's error annotations with err.
@@ -325,14 +348,30 @@ func toBaseSecret(service *corev1.Service) *corev1.Secret {
 	}
 }
 
-func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, serviceObjectMeta *metav1.ObjectMeta) (*crypto.TLSCertificateConfig, error) {
-	dnsName := serviceObjectMeta.Name + "." + serviceObjectMeta.Namespace + ".svc"
-	fqDNSName := dnsName + "." + dnsSuffix
+func certSubjectsForService(service *corev1.Service, dnsSuffix string) sets.String {
+	res := sets.NewString()
+	serviceHostname := service.Name + "." + service.Namespace + ".svc"
+	res.Insert(
+		serviceHostname,
+		serviceHostname+"."+dnsSuffix,
+	)
+	if service.Spec.ClusterIP == corev1.ClusterIPNone {
+		podWildcard := "*." + service.Name + "." + service.Namespace + ".svc"
+		res.Insert(
+			podWildcard,
+			podWildcard+"."+dnsSuffix,
+		)
+	}
+	return res
+}
+
+func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service) (*crypto.TLSCertificateConfig, error) {
+	subjects := certSubjectsForService(service, dnsSuffix)
 	certificateLifetime := 365 * 2 // 2 years
 	servingCert, err := ca.MakeServerCert(
-		sets.NewString(dnsName, fqDNSName),
+		subjects,
 		certificateLifetime,
-		cryptoextensions.ServiceServerCertificateExtensionV1(serviceObjectMeta.UID),
+		cryptoextensions.ServiceServerCertificateExtensionV1(service.UID),
 	)
 	if err != nil {
 		return nil, err
@@ -349,7 +388,7 @@ func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.C
 }
 
 func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, secretCopy *corev1.Secret) error {
-	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, &service.ObjectMeta)
+	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, service)
 	if err != nil {
 		return err
 	}

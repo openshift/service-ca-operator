@@ -125,6 +125,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		name                       string
 		secretData                 []byte
 		serviceAnnocations         map[string]string
+		headlessService            bool
 		secretAnnotations          map[string]string
 		updateSecret               bool
 		updateService              bool
@@ -155,6 +156,24 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
+			expectedServiceAnnotations: map[string]string{
+				api.ServingCertSecretAnnotation:         testSecretName,
+				api.AlphaServingCertCreatedByAnnotation: signerName,
+				api.ServingCertCreatedByAnnotation:      signerName,
+			},
+			expectedSecretAnnotations: map[string]string{
+				api.ServiceUIDAnnotation:  testServiceUID,
+				api.ServiceNameAnnotation: testServiceName,
+			},
+			updateSecret:  true,
+			updateService: true,
+		},
+		{
+			name: "basic controller flow - headless, beta annotations",
+			serviceAnnocations: map[string]string{
+				api.ServingCertSecretAnnotation: testSecretName,
+			},
+			headlessService: true,
 			expectedServiceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation:         testSecretName,
 				api.AlphaServingCertCreatedByAnnotation: signerName,
@@ -291,7 +310,26 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServiceUIDAnnotation:  testServiceUID,
 				api.ServiceNameAnnotation: testServiceName,
 			},
-			secretData: generateServerCertPemForCA(t, ca),
+			secretData: generateServerCertPemForCA(t, ca, false),
+			expectedSecretAnnotations: map[string]string{
+				api.ServiceUIDAnnotation:  testServiceUID,
+				api.ServiceNameAnnotation: testServiceName,
+			},
+			expectedServiceAnnotations: map[string]string{
+				api.ServingCertSecretAnnotation: testSecretName,
+			},
+		},
+		{
+			name: "secret already contains the right cert - headless",
+			serviceAnnocations: map[string]string{
+				api.ServingCertSecretAnnotation: testSecretName,
+			},
+			headlessService: true,
+			secretAnnotations: map[string]string{
+				api.ServiceUIDAnnotation:  testServiceUID,
+				api.ServiceNameAnnotation: testServiceName,
+			},
+			secretData: generateServerCertPemForCA(t, ca, true),
 			expectedSecretAnnotations: map[string]string{
 				api.ServiceUIDAnnotation:  testServiceUID,
 				api.ServiceNameAnnotation: testServiceName,
@@ -310,6 +348,29 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServiceNameAnnotation: testServiceName,
 			},
 			secretData: []byte(testCertUnknownIssuer),
+			expectedServiceAnnotations: map[string]string{
+				api.ServingCertSecretAnnotation:         testSecretName,
+				api.AlphaServingCertCreatedByAnnotation: signerName,
+				api.ServingCertCreatedByAnnotation:      signerName,
+			},
+			expectedSecretAnnotations: map[string]string{
+				api.ServiceUIDAnnotation:  testServiceUID,
+				api.ServiceNameAnnotation: testServiceName,
+			},
+			updateService: true,
+			updateSecret:  true,
+		},
+		{
+			name: "secret already contains pre-headless cert data, update to headless",
+			serviceAnnocations: map[string]string{
+				api.ServingCertSecretAnnotation: testSecretName,
+			},
+			headlessService: true,
+			secretAnnotations: map[string]string{
+				api.ServiceUIDAnnotation:  testServiceUID,
+				api.ServiceNameAnnotation: testServiceName,
+			},
+			secretData: generateServerCertPemForCA(t, ca, false),
 			expectedServiceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation:         testSecretName,
 				api.AlphaServingCertCreatedByAnnotation: signerName,
@@ -343,7 +404,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			stopChannel := make(chan struct{})
 			defer close(stopChannel)
 
-			existingService := createTestSvc(tt.serviceAnnocations)
+			existingService := createTestSvc(tt.serviceAnnocations, tt.headlessService)
 
 			var existingSecret *corev1.Secret
 			secretExists := tt.secretAnnotations != nil
@@ -408,8 +469,8 @@ func TestRecreateSecretControllerFlow(t *testing.T) {} // covered by serving-cer
 func TestRecreateSecretControllerFlowBetaAnnotation(t *testing.T) { // covered by serving-cert-secret-delete-data }
 */
 
-func createTestSvc(annotations map[string]string) *corev1.Service {
-	return &corev1.Service{
+func createTestSvc(annotations map[string]string, headless bool) *corev1.Service {
+	res := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:         types.UID(testServiceUID),
 			Name:        testServiceName,
@@ -417,6 +478,10 @@ func createTestSvc(annotations map[string]string) *corev1.Service {
 			Annotations: annotations,
 		},
 	}
+	if headless {
+		res.Spec.ClusterIP = corev1.ClusterIPNone
+	}
+	return res
 }
 
 func createTestSecret(annotations map[string]string, pemBundle []byte) *corev1.Secret {
@@ -468,13 +533,26 @@ func checkGeneratedCertificate(t *testing.T, certData []byte, service *corev1.Se
 		return
 	}
 
-	if len(cert.DNSNames) != 2 {
-		t.Errorf("unexpected DNSNames: %v", cert.DNSNames)
+	// This intentionally doesn’t just call certSubjectsForService, in order to test that function.
+	if service.Spec.ClusterIP != corev1.ClusterIPNone {
+		if len(cert.DNSNames) != 2 {
+			t.Errorf("unexpected DNSNames: %v", cert.DNSNames)
+		}
+	} else {
+		if len(cert.DNSNames) != 4 {
+			t.Errorf("unexpected DNSNames: %v", cert.DNSNames)
+		}
 	}
 	for _, s := range cert.DNSNames {
 		switch s {
 		case fmt.Sprintf("%s.%s.svc", service.Name, service.Namespace),
 			fmt.Sprintf("%s.%s.svc.cluster.local", service.Name, service.Namespace):
+		case fmt.Sprintf("*.%s.%s.svc", service.Name, service.Namespace),
+			fmt.Sprintf("*.%s.%s.svc.cluster.local", service.Name, service.Namespace):
+			if service.Spec.ClusterIP == corev1.ClusterIPNone {
+				break // OK
+			}
+			fallthrough
 		default:
 			t.Errorf("unexpected DNSNames: %v", cert.DNSNames)
 		}
@@ -501,9 +579,19 @@ func checkGeneratedCertificate(t *testing.T, certData []byte, service *corev1.Se
 	}
 }
 
-func generateServerCertPemForCA(t *testing.T, ca *crypto.CA) []byte {
+func generateServerCertPemForCA(t *testing.T, ca *crypto.CA, headless bool) []byte {
+	subjects := sets.NewString(
+		fmt.Sprintf("%s.%s.svc", testServiceName, testNamespace),
+		fmt.Sprintf("%s.%s.svc.cluster.local", testServiceName, testNamespace),
+	)
+	if headless {
+		subjects.Insert(
+			fmt.Sprintf("*.%s.%s.svc", testServiceName, testNamespace),
+			fmt.Sprintf("*.%s.%s.svc.cluster.local", testServiceName, testNamespace),
+		)
+	}
 	newServingCert, err := ca.MakeServerCert(
-		sets.NewString("foo"),
+		subjects,
 		crypto.DefaultCertificateLifetimeInDays,
 	)
 	if err != nil {

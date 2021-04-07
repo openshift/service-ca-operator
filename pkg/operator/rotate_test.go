@@ -173,10 +173,12 @@ func TestForcedRotationRequired(t *testing.T) {
 func TestRotateSigningCA(t *testing.T) {
 	// Used in generating serving certs
 	dnsSuffix := "local"
-	objMeta := &metav1.ObjectMeta{
-		Name:      "myservice",
-		Namespace: "mynamespace",
-		UID:       types.UID(uuid.New().String()),
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "myservice",
+			Namespace: "mynamespace",
+			UID:       types.UID(uuid.New().String()),
+		},
 	}
 
 	oldCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", SigningCertificateLifetimeInDays)
@@ -193,7 +195,7 @@ func TestRotateSigningCA(t *testing.T) {
 	}
 
 	// Generate a service cert with the pre-rotation CA
-	oldServingCert, err := controller.MakeServingCert(dnsSuffix, oldCA, nil, objMeta)
+	oldServingCert, err := controller.MakeServingCert(dnsSuffix, oldCA, nil, service)
 	if err != nil {
 		t.Fatalf("error generating serving cert from old ca: %v", err)
 	}
@@ -225,7 +227,7 @@ func TestRotateSigningCA(t *testing.T) {
 	}
 
 	// Generate a service cert with the post-rotation CA
-	newServingCert, err := controller.MakeServingCert(dnsSuffix, newCA, newSigningCA.intermediateCACert, objMeta)
+	newServingCert, err := controller.MakeServingCert(dnsSuffix, newCA, newSigningCA.intermediateCACert, service)
 	if err != nil {
 		t.Fatalf("Error generating new service cert: %v", err)
 	}
