@@ -189,6 +189,8 @@ spec:
   template:
     metadata:
       name: service-ca
+      annotations:
+        workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         app: service-ca
         service-ca: "true"
@@ -257,8 +259,10 @@ metadata:
   name: openshift-service-ca
   annotations:
     openshift.io/node-selector: ""
+    workload.openshift.io/allowed: "management"
   labels:
-    openshift.io/run-level-: "" # remove the label on upgrades`)
+    openshift.io/run-level-: "" # remove the label on upgrades
+`)
 
 func v400ControllerNsYamlBytes() ([]byte, error) {
 	return _v400ControllerNsYaml, nil
