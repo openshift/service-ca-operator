@@ -7,6 +7,7 @@ include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
 	targets/openshift/bindata.mk \
 	targets/openshift/deps-gomod.mk \
 	targets/openshift/images.mk \
+	targets/openshift/operator/profile-manifests.mk \
 )
 
 IMAGE_REGISTRY?=registry.svc.ci.openshift.org
@@ -31,6 +32,12 @@ $(call build-image,ocp-service-ca-operator,$(IMAGE_REGISTRY)/ocp/4.3:service-ca-
 # and also hooked into {update,verify}-generated for broader integration.
 $(call add-bindata,v4.0.0,./bindata/v4.0.0/...,bindata,v4_00_assets,pkg/operator/v4_00_assets/bindata.go)
 
+# include targets for profile manifest patches
+# $0 - macro name
+# $1 - target name
+# $2 - profile patches directory
+# $3 - manifests directory
+$(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
 clean:
 	$(RM) ./service-ca-operator
