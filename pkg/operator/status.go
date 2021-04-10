@@ -65,6 +65,14 @@ func setAvailableFalse(operatorConfig *operatorv1.ServiceCA, reason, message str
 	})
 }
 
+func setUpgradeableTrue(operatorConfig *operatorv1.ServiceCA, reason string) {
+	v1helpers.SetOperatorCondition(&operatorConfig.Status.Conditions, operatorv1.OperatorCondition{
+		Type:   operatorv1.OperatorStatusTypeUpgradeable,
+		Status: operatorv1.ConditionTrue,
+		Reason: reason,
+	})
+}
+
 func isDeploymentStatusAvailable(deploy appsv1.Deployment) bool {
 	return deploy.Status.AvailableReplicas > 0
 }
