@@ -39,6 +39,8 @@ $(call add-bindata,v4.0.0,./bindata/v4.0.0/...,bindata,v4_00_assets,pkg/operator
 # $3 - manifests directory
 $(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
+$(call verify-golang-versions,Dockerfile.rhel7)
+
 clean:
 	$(RM) ./service-ca-operator
 .PHONY: clean
