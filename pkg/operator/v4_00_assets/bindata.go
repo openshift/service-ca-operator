@@ -190,7 +190,7 @@ spec:
     metadata:
       name: service-ca
       annotations:
-        workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         app: service-ca
         service-ca: "true"

@@ -16,7 +16,7 @@ spec:
   template:
     metadata:
       annotations:
-        workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         app: service-ca-operator
       name: service-ca-operator
