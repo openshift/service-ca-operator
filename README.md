@@ -97,7 +97,7 @@ status:
 ```
 
 The openshift-service-ca-operator is an
-[OpenShift ClusterOperator](https://github.com/openshift/enhancements/blob/master/enhancements/operator-dev-doc.md#what-is-an-openshift-clusteroperator)
+[OpenShift ClusterOperator](https://github.com/openshift/enhancements/blob/master/enhancements/dev-guide/operators.md#what-is-an-openshift-clusteroperator)
 
 The ServiceCA [Custom Resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) is defined in this repository.    
 The [Custom Resource Definition](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#customresourcedefinitions)
@@ -110,7 +110,7 @@ $ oc get crd servicecas.operator.openshift.io -o yaml
 
 Many OpenShift ClusterOperators share common build, test, deployment, and update methods.    
 For information about how to build, deploy, test, update, and develop OpenShift ClusterOperators, see    
-[OpenShift ClusterOperator and Operand Developer Document](https://github.com/openshift/enhancements/blob/master/enhancements/operator-dev-doc.md#how-do-i-buildupdateverifyrun-unit-tests)
+[OpenShift ClusterOperator and Operand Developer Document](https://github.com/openshift/enhancements/blob/master/enhancements/dev-guide/operators.md#how-do-i-buildupdateverifyrun-unit-tests)
 
 This section explains how to deploy OpenShift with your version of a service-ca-operator image:        
-[Testing a ClusterOperator/Operand image in a cluster](https://github.com/openshift/enhancements/blob/master/enhancements/operator-dev-doc.md#how-can-i-test-changes-to-an-openshift-operatoroperandrelease-component)
+[Testing a ClusterOperator/Operand image in a cluster](https://github.com/openshift/enhancements/blob/master/enhancements/dev-guide/operators.md#how-can-i-test-changes-to-an-openshift-operatoroperandrelease-component)
