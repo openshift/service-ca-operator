@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"os"
 	"strings"
 	"time"
 
@@ -25,6 +26,13 @@ type caBundleInjectorConfig struct {
 	caBundle      []byte
 	kubeClient    *kubernetes.Clientset
 	kubeInformers kubeinformers.SharedInformerFactory
+
+	// legacyVulnerableCABundle is a CA bundle which included more certificates than are needed for verifying service
+	// serving certificates.  This was addressed in new installs of 4.8, but migrated clusters continue to have the old
+	// content inside of their bound tokens for the service-ca.crt.
+	// This CA bundle should only be used for specifically named configmaps which explicitly indicate their desire.
+	// This makes it impossible for customers to use and being to rely upon.
+	legacyVulnerableCABundle []byte
 }
 
 type startInformersFunc func(stopChan <-chan struct{})
@@ -44,21 +52,36 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 	// TODO(marun) Detect and respond to changes in this path rather than
 	// depending on the operator for redeployment
 	caBundleFile := "/var/run/configmaps/signing-cabundle/ca-bundle.crt"
-
 	caBundleContent, err := ioutil.ReadFile(caBundleFile)
 	if err != nil {
 		return err
+	}
+
+	// this construction matches what the old kube controller manager did. It added the entire ca.crt to the service-ca.crt.
+	vulnerableLegacyCABundleContent, err := ioutil.ReadFile(caBundleFile)
+	if err != nil {
+		return err
+	}
+	saTokenCAFile := "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+	saTokenCABundleContent, err := ioutil.ReadFile(saTokenCAFile)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if len(saTokenCABundleContent) > 0 {
+		vulnerableLegacyCABundleContent = append(vulnerableLegacyCABundleContent, saTokenCABundleContent...)
+		vulnerableLegacyCABundleContent = append(vulnerableLegacyCABundleContent, []byte("\n")...)
 	}
 
 	client := kubernetes.NewForConfigOrDie(controllerContext.ProtoKubeConfig)
 	defaultResync := 20 * time.Minute
 	informers := kubeinformers.NewSharedInformerFactory(client, defaultResync)
 	injectorConfig := &caBundleInjectorConfig{
-		config:        controllerContext.ProtoKubeConfig,
-		defaultResync: defaultResync,
-		caBundle:      caBundleContent,
-		kubeClient:    client,
-		kubeInformers: informers,
+		config:                   controllerContext.ProtoKubeConfig,
+		defaultResync:            defaultResync,
+		caBundle:                 caBundleContent,
+		legacyVulnerableCABundle: vulnerableLegacyCABundleContent,
+		kubeClient:               client,
+		kubeInformers:            informers,
 	}
 
 	stopChan := ctx.Done()
@@ -69,7 +92,9 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 		newCRDInjectorConfig,
 		newMutatingWebhookInjectorConfig,
 		newValidatingWebhookInjectorConfig,
+		newVulnerableLegacyConfigMapInjectorConfig, // this has to be kept for cluster migrated from before 4.7
 	}
+
 	injectionControllers := []factory.Controller{}
 	for _, configConstructor := range configConstructors {
 		ctlConfig := configConstructor(injectorConfig)

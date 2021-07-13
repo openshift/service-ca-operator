@@ -20,6 +20,10 @@ const (
 	InjectCABundleAnnotationName      = "service.beta.openshift.io/inject-cabundle"
 	AlphaInjectCABundleAnnotationName = "service.alpha.openshift.io/inject-cabundle"
 	InjectionDataKey                  = "service-ca.crt"
+
+	// VulnerableLegacyInjectCABundleAnnotationName is only honored on configmaps intended for bound token injection in
+	// migrated/upgraded clusters that have not switched to a tighter verification bundle.
+	VulnerableLegacyInjectCABundleAnnotationName = "service.alpha.openshift.io/inject-vulnerable-legacy-cabundle"
 )
 
 // Annotations on service
