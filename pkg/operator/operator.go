@@ -88,6 +88,7 @@ func (c *serviceCAOperator) Sync(ctx context.Context, syncCtx factory.SyncContex
 			}
 			c.syncStatus(operatorConfigCopy, existingDeployments, targetDeploymentNames)
 		}
+		setUpgradeableTrue(operatorConfigCopy, "AsExpected")
 		c.updateStatus(operatorConfigCopy)
 		return err
 	}
