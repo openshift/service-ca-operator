@@ -1,11 +1,24 @@
 package operator
 
 import (
+	"context"
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/library-go/pkg/operator/loglevel"
+	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
+	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
+	kubediff "k8s.io/utils/diff"
 
+	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 )
 
@@ -57,4 +70,92 @@ func TestInitializeSigningSecret(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestManageDeployment(t *testing.T) {
+	baseDeployment := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset(resourcePath + "deployment.yaml"))
+	tests := []struct {
+		name               string
+		runOnWorkers       bool
+		loglevel           operatorv1.LogLevel
+		image              string
+		expectedDeployment *appsv1.Deployment
+	}{
+		{
+			name:               "base deployment",
+			runOnWorkers:       false,
+			image:              "foobar",
+			loglevel:           operatorv1.Normal,
+			expectedDeployment: deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).value(),
+		},
+		{
+			name:               "deploy on workers",
+			runOnWorkers:       true,
+			image:              "barbaz",
+			loglevel:           operatorv1.Normal,
+			expectedDeployment: deployment(baseDeployment).withImage("barbaz").withLogLevel(operatorv1.Normal).withNodeSelector(map[string]string{}).value(),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			appsClient := fake.NewSimpleClientset().AppsV1()
+			os.Setenv("CONTROLLER_IMAGE", test.image)
+			operator := &serviceCAOperator{
+				appsv1Client:  appsClient,
+				eventRecorder: events.NewInMemoryRecorder("managedeployment_test"),
+			}
+			serviceCA := &operatorv1.ServiceCA{}
+			serviceCA.Spec.LogLevel = test.loglevel
+			_, err := operator.manageDeployment(context.Background(), serviceCA, false, test.runOnWorkers)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			deployment, err := appsClient.Deployments(baseDeployment.Namespace).Get(context.Background(), baseDeployment.Name, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !equality.Semantic.DeepEqual(test.expectedDeployment, deployment) {
+				t.Errorf("Expected deployment != actual: %v", kubediff.ObjectReflectDiff(test.expectedDeployment, deployment))
+			}
+		})
+	}
+}
+
+type deploymentWrapper struct {
+	Deployment *appsv1.Deployment
+}
+
+func deployment(base *appsv1.Deployment) *deploymentWrapper {
+	return &deploymentWrapper{
+		Deployment: base.DeepCopy(),
+	}
+}
+
+func (w *deploymentWrapper) value() *appsv1.Deployment {
+	return w.Deployment
+}
+
+func (w *deploymentWrapper) withImage(image string) *deploymentWrapper {
+	if w.Deployment.Annotations == nil {
+		w.Deployment.Annotations = map[string]string{}
+	}
+	w.Deployment.Annotations["operator.openshift.io/pull-spec"] = image
+	if len(w.Deployment.Spec.Template.Spec.Containers) > 0 {
+		w.Deployment.Spec.Template.Spec.Containers[0].Image = image
+	}
+	return w
+}
+
+func (w *deploymentWrapper) withLogLevel(logLevel operatorv1.LogLevel) *deploymentWrapper {
+	if len(w.Deployment.Spec.Template.Spec.Containers) > 0 {
+		arg := fmt.Sprintf("-v=%d", loglevel.LogLevelToVerbosity(logLevel))
+		w.Deployment.Spec.Template.Spec.Containers[0].Args = append(w.Deployment.Spec.Template.Spec.Containers[0].Args, arg)
+	}
+	return w
+}
+
+func (w *deploymentWrapper) withNodeSelector(selector map[string]string) *deploymentWrapper {
+	w.Deployment.Spec.Template.Spec.NodeSelector = selector
+	return w
 }
