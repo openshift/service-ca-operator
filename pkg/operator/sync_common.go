@@ -28,43 +28,43 @@ import (
 
 const resourcePath = "v4.0.0/controller/"
 
-func (c *serviceCAOperator) manageControllerNS() (bool, error) {
-	_, modified, err := resourceapply.ApplyNamespace(c.corev1Client, c.eventRecorder, resourceread.ReadNamespaceV1OrDie(v4_00_assets.MustAsset(resourcePath+"ns.yaml")))
+func (c *serviceCAOperator) manageControllerNS(ctx context.Context) (bool, error) {
+	_, modified, err := resourceapply.ApplyNamespace(ctx, c.corev1Client, c.eventRecorder, resourceread.ReadNamespaceV1OrDie(v4_00_assets.MustAsset(resourcePath+"ns.yaml")))
 	return modified, err
 }
 
-func (c *serviceCAOperator) manageControllerResources(modified *bool) error {
+func (c *serviceCAOperator) manageControllerResources(ctx context.Context, modified *bool) error {
 	var err error
 	requiredClusterRole := resourceread.ReadClusterRoleV1OrDie(v4_00_assets.MustAsset(resourcePath + "clusterrole.yaml"))
-	_, mod, err := resourceapply.ApplyClusterRole(c.rbacv1Client, c.eventRecorder, requiredClusterRole)
+	_, mod, err := resourceapply.ApplyClusterRole(ctx, c.rbacv1Client, c.eventRecorder, requiredClusterRole)
 	if err != nil {
 		return err
 	}
 	*modified = *modified || mod
 
 	requiredClusterRoleBinding := resourceread.ReadClusterRoleBindingV1OrDie(v4_00_assets.MustAsset(resourcePath + "clusterrolebinding.yaml"))
-	_, mod, err = resourceapply.ApplyClusterRoleBinding(c.rbacv1Client, c.eventRecorder, requiredClusterRoleBinding)
+	_, mod, err = resourceapply.ApplyClusterRoleBinding(ctx, c.rbacv1Client, c.eventRecorder, requiredClusterRoleBinding)
 	if err != nil {
 		return err
 	}
 	*modified = *modified || mod
 
 	requiredRole := resourceread.ReadRoleV1OrDie(v4_00_assets.MustAsset(resourcePath + "role.yaml"))
-	_, mod, err = resourceapply.ApplyRole(c.rbacv1Client, c.eventRecorder, requiredRole)
+	_, mod, err = resourceapply.ApplyRole(ctx, c.rbacv1Client, c.eventRecorder, requiredRole)
 	if err != nil {
 		return err
 	}
 	*modified = *modified || mod
 
 	requiredRoleBinding := resourceread.ReadRoleBindingV1OrDie(v4_00_assets.MustAsset(resourcePath + "rolebinding.yaml"))
-	_, mod, err = resourceapply.ApplyRoleBinding(c.rbacv1Client, c.eventRecorder, requiredRoleBinding)
+	_, mod, err = resourceapply.ApplyRoleBinding(ctx, c.rbacv1Client, c.eventRecorder, requiredRoleBinding)
 	if err != nil {
 		return err
 	}
 	*modified = *modified || mod
 
 	requiredSA := resourceread.ReadServiceAccountV1OrDie(v4_00_assets.MustAsset(resourcePath + "sa.yaml"))
-	_, mod, err = resourceapply.ApplyServiceAccount(c.corev1Client, c.eventRecorder, requiredSA)
+	_, mod, err = resourceapply.ApplyServiceAccount(ctx, c.corev1Client, c.eventRecorder, requiredSA)
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 	}
 	metrics.SetCAExpiry(certs[0].NotAfter)
 
-	_, mod, err := resourceapply.ApplySecret(c.corev1Client, c.eventRecorder, secret)
+	_, mod, err := resourceapply.ApplySecret(ctx, c.corev1Client, c.eventRecorder, secret)
 
 	if err == nil && len(rotationMsg) > 0 {
 		c.eventRecorder.Eventf("ServiceCARotated", rotationMsg)
@@ -193,15 +193,15 @@ func (c *serviceCAOperator) manageSignerCABundle(ctx context.Context, forceUpdat
 	}
 	configMap.Data[api.BundleDataKey] = string(bundle)
 
-	_, mod, err := resourceapply.ApplyConfigMap(c.corev1Client, c.eventRecorder, configMap)
+	_, mod, err := resourceapply.ApplyConfigMap(ctx, c.corev1Client, c.eventRecorder, configMap)
 	return mod, err
 }
 
-func (c *serviceCAOperator) manageDeployment(options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
+func (c *serviceCAOperator) manageDeployment(ctx context.Context, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
 	required := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset(resourcePath + "deployment.yaml"))
 	required.Spec.Template.Spec.Containers[0].Image = os.Getenv("CONTROLLER_IMAGE")
 	required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, fmt.Sprintf("-v=%d", loglevel.LogLevelToVerbosity(options.Spec.LogLevel)))
-	deployment, mod, err := resourceapply.ApplyDeploymentWithForce(c.appsv1Client, c.eventRecorder, required, resourcemerge.ExpectedDeploymentGeneration(required, options.Status.Generations), forceDeployment)
+	deployment, mod, err := resourceapply.ApplyDeploymentWithForce(ctx, c.appsv1Client, c.eventRecorder, required, resourcemerge.ExpectedDeploymentGeneration(required, options.Status.Generations), forceDeployment)
 	if err != nil {
 		return mod, err
 	}

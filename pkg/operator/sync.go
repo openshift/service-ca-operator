@@ -11,12 +11,12 @@ import (
 func (c *serviceCAOperator) syncControllers(ctx context.Context, operatorConfig *operatorv1.ServiceCA) error {
 	// Any modification of resource we want to trickle down to force deploy all of the controllers.
 	// Sync the controller NS and the other resources. These should be mostly static.
-	needsDeploy, err := c.manageControllerNS()
+	needsDeploy, err := c.manageControllerNS(ctx)
 	if err != nil {
 		return err
 	}
 
-	err = c.manageControllerResources(&needsDeploy)
+	err = c.manageControllerResources(ctx, &needsDeploy)
 	if err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func (c *serviceCAOperator) syncControllers(ctx context.Context, operatorConfig 
 	}
 
 	// Sync the controller.
-	_, err = c.manageDeployment(operatorConfig, needsDeploy || caModified)
+	_, err = c.manageDeployment(ctx, operatorConfig, needsDeploy || caModified)
 	if err != nil {
 		return err
 	}

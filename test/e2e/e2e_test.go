@@ -528,7 +528,7 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 			v1.TLSPrivateKeyKey: renewedCAKeyPEM,
 		},
 	}
-	_, _, err = resourceapply.ApplySecret(client.CoreV1(), events.NewInMemoryRecorder("test"), secret)
+	_, _, err = resourceapply.ApplySecret(context.Background(), client.CoreV1(), events.NewInMemoryRecorder("test"), secret)
 	if err != nil {
 		t.Fatalf("error updating secret with test CA: %v", err)
 	}
