@@ -11,6 +11,8 @@ import (
 	rbacclientv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
+	configv1informers "github.com/openshift/client-go/config/informers/externalversions"
+	configv1listers "github.com/openshift/client-go/config/listers/config/v1"
 	operatorv1listers "github.com/openshift/client-go/operator/listers/operator/v1"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -23,6 +25,7 @@ import (
 type serviceCAOperator struct {
 	operatorClient       *operatorclient.OperatorClient
 	operatorConfigLister operatorv1listers.ServiceCALister
+	infrastructureLister configv1listers.InfrastructureLister
 
 	appsv1Client  appsclientv1.AppsV1Interface
 	corev1Client  coreclientv1.CoreV1Interface
@@ -35,6 +38,7 @@ func NewServiceCAOperator(
 	operatorClient *operatorclient.OperatorClient,
 
 	namespacedKubeInformers informers.SharedInformerFactory,
+	configInformers configv1informers.SharedInformerFactory,
 	appsv1Client appsclientv1.AppsV1Interface,
 	corev1Client coreclientv1.CoreV1Interface,
 	rbacv1Client rbacclientv1.RbacV1Interface,
@@ -44,6 +48,7 @@ func NewServiceCAOperator(
 	c := &serviceCAOperator{
 		operatorClient:       operatorClient,
 		operatorConfigLister: operatorClient.Informers.Operator().V1().ServiceCAs().Lister(),
+		infrastructureLister: configInformers.Config().V1().Infrastructures().Lister(),
 
 		appsv1Client:  appsv1Client,
 		corev1Client:  corev1Client,
@@ -58,6 +63,7 @@ func NewServiceCAOperator(
 		namespacedKubeInformers.Core().V1().Secrets().Informer(),
 		namespacedKubeInformers.Apps().V1().Deployments().Informer(),
 		operatorClient.Informers.Operator().V1().ServiceCAs().Informer(),
+		configInformers.Config().V1().Infrastructures().Informer(),
 	).WithNamespaceInformer(
 		namespacedKubeInformers.Core().V1().Namespaces().Informer(), operatorclient.TargetNamespace,
 	).WithSync(c.Sync).
@@ -69,6 +75,10 @@ func (c *serviceCAOperator) Sync(ctx context.Context, syncCtx factory.SyncContex
 	if err != nil {
 		return err
 	}
+	infrastructure, err := c.infrastructureLister.Get("cluster")
+	if err != nil {
+		return err
+	}
 
 	operatorConfigCopy := operatorConfig.DeepCopy()
 	switch operatorConfigCopy.Spec.ManagementState {
@@ -77,7 +87,7 @@ func (c *serviceCAOperator) Sync(ctx context.Context, syncCtx factory.SyncContex
 		return nil
 	case operatorv1.Managed:
 		// This is to push out deployments but does not handle deployment generation like it used to. It may need tweaking.
-		err := c.syncControllers(ctx, operatorConfigCopy)
+		err := c.syncControllers(ctx, operatorConfigCopy, infrastructure)
 		if err != nil {
 			setDegradedTrue(operatorConfigCopy, "OperatorSyncLoopError", err.Error())
 		} else {

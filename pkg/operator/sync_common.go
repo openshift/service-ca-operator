@@ -197,10 +197,13 @@ func (c *serviceCAOperator) manageSignerCABundle(ctx context.Context, forceUpdat
 	return mod, err
 }
 
-func (c *serviceCAOperator) manageDeployment(ctx context.Context, options *operatorv1.ServiceCA, forceDeployment bool) (bool, error) {
+func (c *serviceCAOperator) manageDeployment(ctx context.Context, options *operatorv1.ServiceCA, forceDeployment, runOnWorkers bool) (bool, error) {
 	required := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset(resourcePath + "deployment.yaml"))
 	required.Spec.Template.Spec.Containers[0].Image = os.Getenv("CONTROLLER_IMAGE")
 	required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, fmt.Sprintf("-v=%d", loglevel.LogLevelToVerbosity(options.Spec.LogLevel)))
+	if runOnWorkers {
+		required.Spec.Template.Spec.NodeSelector = map[string]string{}
+	}
 	deployment, mod, err := resourceapply.ApplyDeploymentWithForce(ctx, c.appsv1Client, c.eventRecorder, required, resourcemerge.ExpectedDeploymentGeneration(required, options.Status.Generations), forceDeployment)
 	if err != nil {
 		return mod, err

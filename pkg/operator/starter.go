@@ -99,6 +99,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	operator := NewServiceCAOperator(
 		operatorClient,
 		kubeInformersNamespaced,
+		configInformers,
 		kubeClient.AppsV1(),
 		kubeClient.CoreV1(),
 		kubeClient.RbacV1(),
