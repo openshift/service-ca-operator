@@ -38,7 +38,7 @@ func (c *OperatorClient) GetOperatorState() (*operatorv1.OperatorSpec, *operator
 	return &instance.Spec.OperatorSpec, &instance.Status.OperatorStatus, instance.ResourceVersion, nil
 }
 
-func (c *OperatorClient) UpdateOperatorSpec(resourceVersion string, spec *operatorv1.OperatorSpec) (*operatorv1.OperatorSpec, string, error) {
+func (c *OperatorClient) UpdateOperatorSpec(ctx context.Context, resourceVersion string, spec *operatorv1.OperatorSpec) (*operatorv1.OperatorSpec, string, error) {
 	original, err := c.Informers.Operator().V1().ServiceCAs().Lister().Get(api.OperatorConfigInstanceName)
 	if err != nil {
 		return nil, "", err
@@ -47,14 +47,15 @@ func (c *OperatorClient) UpdateOperatorSpec(resourceVersion string, spec *operat
 	copy.ResourceVersion = resourceVersion
 	copy.Spec.OperatorSpec = *spec
 
-	ret, err := c.Client.ServiceCAs().Update(context.TODO(), copy, metav1.UpdateOptions{})
+	ret, err := c.Client.ServiceCAs().Update(ctx, copy, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, "", err
 	}
 
 	return &ret.Spec.OperatorSpec, ret.ResourceVersion, nil
 }
-func (c *OperatorClient) UpdateOperatorStatus(resourceVersion string, status *operatorv1.OperatorStatus) (*operatorv1.OperatorStatus, error) {
+
+func (c *OperatorClient) UpdateOperatorStatus(ctx context.Context, resourceVersion string, status *operatorv1.OperatorStatus) (*operatorv1.OperatorStatus, error) {
 	original, err := c.Informers.Operator().V1().ServiceCAs().Lister().Get(api.OperatorConfigInstanceName)
 	if err != nil {
 		return nil, err
@@ -63,7 +64,7 @@ func (c *OperatorClient) UpdateOperatorStatus(resourceVersion string, status *op
 	copy.ResourceVersion = resourceVersion
 	copy.Status.OperatorStatus = *status
 
-	ret, err := c.Client.ServiceCAs().UpdateStatus(context.TODO(), copy, metav1.UpdateOptions{})
+	ret, err := c.Client.ServiceCAs().UpdateStatus(ctx, copy, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}
