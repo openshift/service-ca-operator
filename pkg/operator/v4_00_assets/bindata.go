@@ -126,6 +126,14 @@ rules:
   - list
   - watch
   - update
+- apiGroups:
+  - config.openshift.io
+  resources:
+  - infrastructures
+  verbs:
+  - get
+  - list
+  - watch
 `)
 
 func v400ControllerClusterroleYamlBytes() ([]byte, error) {
