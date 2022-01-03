@@ -99,14 +99,14 @@ func (c *serviceCAOperator) Sync(ctx context.Context, syncCtx factory.SyncContex
 			c.syncStatus(operatorConfigCopy, existingDeployments, targetDeploymentNames)
 		}
 		setUpgradeableTrue(operatorConfigCopy, "AsExpected")
-		c.updateStatus(operatorConfigCopy)
+		c.updateStatus(ctx, operatorConfigCopy)
 		return err
 	}
 	return nil
 }
 
-func (c serviceCAOperator) updateStatus(operatorConfig *operatorv1.ServiceCA) {
-	v1helpers.UpdateStatus(c.operatorClient, func(status *operatorv1.OperatorStatus) error {
+func (c serviceCAOperator) updateStatus(ctx context.Context, operatorConfig *operatorv1.ServiceCA) {
+	v1helpers.UpdateStatus(ctx, c.operatorClient, func(status *operatorv1.OperatorStatus) error {
 		operatorConfig.Status.OperatorStatus.DeepCopyInto(status)
 		return nil
 	})
