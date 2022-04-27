@@ -21,6 +21,10 @@ spec:
       labels:
         app: service-ca-operator
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: service-ca-operator
       securityContext:
         runAsNonRoot: true
@@ -28,6 +32,10 @@ spec:
         runAsUser: 1001
       containers:
       - name: service-ca-operator
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         image: quay.io/openshift/origin-service-ca-operator:v4.0
         imagePullPolicy: IfNotPresent
         command: ["service-ca-operator", "operator"]
