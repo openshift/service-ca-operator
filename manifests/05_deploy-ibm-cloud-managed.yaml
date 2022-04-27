@@ -40,6 +40,11 @@ spec:
           requests:
             cpu: 10m
             memory: 80Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         volumeMounts:
         - mountPath: /var/run/configmaps/config
           name: config
@@ -50,6 +55,8 @@ spec:
         runAsGroup: 1001
         runAsNonRoot: true
         runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: service-ca-operator
       tolerations:
       - effect: NoSchedule
