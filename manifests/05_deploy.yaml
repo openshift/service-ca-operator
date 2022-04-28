@@ -26,8 +26,15 @@ spec:
         runAsNonRoot: true
         runAsGroup: 1001
         runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: service-ca-operator
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         image: quay.io/openshift/origin-service-ca-operator:v4.0
         imagePullPolicy: IfNotPresent
         command: ["service-ca-operator", "operator"]
