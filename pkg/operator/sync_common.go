@@ -204,6 +204,11 @@ func (c *serviceCAOperator) manageDeployment(ctx context.Context, options *opera
 	if runOnWorkers {
 		required.Spec.Template.Spec.NodeSelector = map[string]string{}
 	}
+
+	if err := resourceapply.SetSpecHashAnnotation(&required.ObjectMeta, required.Spec); err != nil {
+		return false, fmt.Errorf("failed to count hash for deployment spec: %w", err)
+	}
+
 	deployment, mod, err := resourceapply.ApplyDeploymentWithForce(ctx, c.appsv1Client, c.eventRecorder, required, resourcemerge.ExpectedDeploymentGeneration(required, options.Status.Generations), forceDeployment)
 	if err != nil {
 		return mod, err
