@@ -3,6 +3,7 @@ kind: Namespace
 metadata:
   labels:
     openshift.io/cluster-monitoring: "true"
+    openshift.io/run-level: "" # specify no run-level turns it off on install and upgrades
   name: openshift-service-ca-operator
   annotations:
     include.release.openshift.io/ibm-cloud-managed: "true"
