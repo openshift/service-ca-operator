@@ -89,12 +89,14 @@ func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certifi
 		return "", nil
 	}
 
+	var rotationMsg string
 	if forcedRotation {
-		klog.V(2).Infof("Forcing service CA rotation due to reason %q.", reason)
+		rotationMsg = fmt.Sprintf("Forcing service CA rotation due to reason %q.", reason)
 		recordForcedRotationReason(secret, reason)
 	} else {
-		klog.V(2).Infof("Rotating service CA due to the CA being past the mid-point of its validity.")
+		rotationMsg = "Rotating service CA due to the CA being past the mid-point of its validity."
 	}
+	klog.V(2).Info(rotationMsg)
 
 	keyData := secret.Data[corev1.TLSPrivateKeyKey]
 	if len(keyData) == 0 {
@@ -127,7 +129,7 @@ func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certifi
 	}
 
 	oldCAExpiry := signingCA.oldCAExpiry.Format(time.RFC3339)
-	rotationMsg := fmt.Sprintf("CA rotation complete. The previous CA will be trusted until %s", oldCAExpiry)
+	rotationMsg += fmt.Sprintf("\nThe previous CA will be trusted until %s", oldCAExpiry)
 	return rotationMsg, nil
 }
 
