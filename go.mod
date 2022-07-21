@@ -6,7 +6,7 @@ require (
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/google/uuid v1.1.2
 	github.com/openshift/api v0.0.0-20220525145417-ee5b62754c68
-	github.com/openshift/build-machinery-go v0.0.0-20211213093930-7e33a7eb4ce3
+	github.com/openshift/build-machinery-go v0.0.0-20220705175737-d0a947e624f9
 	github.com/openshift/client-go v0.0.0-20220525160904-9e1acff93e4a
 	github.com/openshift/library-go v0.0.0-20220704082857-f407c3b4ac5f
 	github.com/prometheus/client_golang v1.12.1
