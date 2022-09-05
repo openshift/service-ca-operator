@@ -33,6 +33,7 @@ import (
 	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
+	"k8s.io/utils/pointer"
 
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	routeclient "github.com/openshift/client-go/route/clientset/versioned"
@@ -854,6 +855,10 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 				Namespace: testNS,
 			},
 			Spec: v1.PodSpec{
+				SecurityContext: &v1.PodSecurityContext{
+					RunAsNonRoot:   pointer.BoolPtr(true),
+					SeccompProfile: &v1.SeccompProfile{Type: v1.SeccompProfileTypeRuntimeDefault},
+				},
 				Containers: []v1.Container{
 					{
 						Name:    "cert-checker",
@@ -861,6 +866,10 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 						Command: []string{"/bin/bash"},
 						Args: []string{"-c", fmt.Sprintf("openssl s_client -no-CApath -no-CAfile -CAfile /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt "+
 							"-verify_return_error -verify_hostname %s -showcerts -connect %s:%d < /dev/null 2>/dev/null | openssl x509", host, host, port)},
+						SecurityContext: &v1.SecurityContext{
+							AllowPrivilegeEscalation: pointer.BoolPtr(false),
+							Capabilities:             &v1.Capabilities{Drop: []v1.Capability{"ALL"}},
+						},
 					},
 				},
 				RestartPolicy: v1.RestartPolicyOnFailure,
