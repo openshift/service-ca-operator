@@ -35,7 +35,7 @@ define run-crd-gen
 	'$(CONTROLLER_GEN)' \
 		schemapatch:manifests="$(2)" \
 		paths="$(subst $(empty) ,;,$(1))" \
-		output:dir="$(3)"
+		'output:dir="$(3)"'
 	$$(foreach p,$$(wildcard $(2)/*.crd.yaml-merge-patch),$$(call patch-crd-yq,$$(subst $(2),$(3),$$(basename $$(p))).yaml,$$(p)))
 	$$(foreach p,$$(wildcard $(2)/*.crd.yaml-patch),$$(call patch-crd-yaml-patch,$$(subst $(2),$(3),$$(basename $$(p))).yaml,$$(p)))
 endef

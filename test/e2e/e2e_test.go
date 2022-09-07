@@ -33,6 +33,7 @@ import (
 	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
+	"k8s.io/utils/pointer"
 
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	routeclient "github.com/openshift/client-go/route/clientset/versioned"
@@ -57,8 +58,8 @@ const (
 	// createServingCertAnnotatedService
 	owningHeadlessServiceLabelName = "owning-headless-service"
 
-	pollInterval = time.Second
-	pollTimeout  = 30 * time.Second
+	pollInterval = 5 * time.Second
+	pollTimeout  = 60 * time.Second
 
 	// Rotation of all certs and bundles is expected to take a considerable amount of time
 	// due to the operator having to restart each controller and then each controller having
@@ -66,7 +67,7 @@ const (
 	rotationTimeout = 5 * time.Minute
 	// Polling for resources related to rotation may be delayed by the number of resources
 	// that are updated in the cluster in response to rotation.
-	rotationPollTimeout = 2 * time.Minute
+	rotationPollTimeout = 4 * time.Minute
 )
 
 // checkComponents verifies that the components of the operator are running.
@@ -104,7 +105,7 @@ func createTestNamespace(t *testing.T, client *kubernetes.Clientset, namespaceNa
 	}, metav1.CreateOptions{})
 	cleanup := func() {
 		if err := client.CoreV1().Namespaces().Delete(context.TODO(), ns.Name, metav1.DeleteOptions{}); err != nil {
-			t.Logf("Deleting namespace %s failed: %v", ns.Name, err)
+			tlogf(t, "Deleting namespace %s failed: %v", ns.Name, err)
 		}
 	}
 	return ns, cleanup, err
@@ -232,7 +233,7 @@ func pollForCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapNa
 	})
 }
 
-func editServingSecretData(client *kubernetes.Clientset, secretName, namespace, keyName string) error {
+func editServingSecretData(t *testing.T, client *kubernetes.Clientset, secretName, namespace, keyName string) error {
 	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -244,10 +245,10 @@ func editServingSecretData(client *kubernetes.Clientset, secretName, namespace, 
 		return err
 	}
 
-	return pollForSecretChange(client, scopy, keyName)
+	return pollForSecretChange(t, client, scopy, keyName)
 }
 
-func editConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
+func editConfigMapCABundleInjectionData(t *testing.T, client *kubernetes.Clientset, configMapName, namespace string) error {
 	cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -262,7 +263,7 @@ func editConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapN
 		return err
 	}
 
-	return pollForConfigMapChange(client, cmcopy, "foo")
+	return pollForConfigMapChange(t, client, cmcopy, "foo")
 }
 
 func checkServiceServingCertSecretData(client *kubernetes.Clientset, secretName, namespace string) ([]byte, bool, error) {
@@ -361,14 +362,12 @@ func pollForCABundleInjectionConfigMapWithReturn(client *kubernetes.Clientset, c
 	return configmap, err
 }
 
-func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret, keysToChange ...string) error {
-	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
+func pollForSecretChange(t *testing.T, client *kubernetes.Clientset, secret *v1.Secret, keysToChange ...string) error {
+	return wait.PollImmediate(pollInterval, rotationPollTimeout, func() (bool, error) {
 		s, err := client.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
-			return false, nil
-		}
 		if err != nil {
-			return false, err
+			tlogf(t, "failed to get secret: %v", err)
+			return false, nil
 		}
 		for _, key := range keysToChange {
 			if bytes.Equal(s.Data[key], secret.Data[key]) {
@@ -379,13 +378,11 @@ func pollForSecretChange(client *kubernetes.Clientset, secret *v1.Secret, keysTo
 	})
 }
 
-func pollForConfigMapChange(client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap, keysToChange ...string) error {
-	return wait.PollImmediate(time.Second, 2*time.Minute, func() (bool, error) {
+func pollForConfigMapChange(t *testing.T, client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap, keysToChange ...string) error {
+	return wait.PollImmediate(pollInterval, rotationPollTimeout, func() (bool, error) {
 		cm, err := client.CoreV1().ConfigMaps(compareConfigMap.Namespace).Get(context.TODO(), compareConfigMap.Name, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
-			return false, nil
-		}
 		if err != nil {
+			tlogf(t, "failed to get configmap: %v", err)
 			return false, nil
 		}
 		for _, key := range keysToChange {
@@ -834,13 +831,17 @@ func pollForResource(t *testing.T, resourceID string, timeout time.Duration, acc
 			return false, nil
 		}
 		if err != nil {
-			t.Logf("an error occurred while polling for %s: %v", resourceID, err)
+			tlogf(t, "an error occurred while polling for %s: %v", resourceID, err)
 			return false, nil
 		}
 		obj = o
 		return true, nil
 	})
 	return obj, err
+}
+
+func tlogf(t *testing.T, fmt string, args ...interface{}) {
+	t.Logf("%s: "+fmt, time.Now().Format(time.RFC1123Z), args)
 }
 
 func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Clientset, testNS, host string, port int32, updatedServerCert string) {
@@ -854,6 +855,10 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 				Namespace: testNS,
 			},
 			Spec: v1.PodSpec{
+				SecurityContext: &v1.PodSecurityContext{
+					RunAsNonRoot:   pointer.BoolPtr(true),
+					SeccompProfile: &v1.SeccompProfile{Type: v1.SeccompProfileTypeRuntimeDefault},
+				},
 				Containers: []v1.Container{
 					{
 						Name:    "cert-checker",
@@ -861,26 +866,30 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 						Command: []string{"/bin/bash"},
 						Args: []string{"-c", fmt.Sprintf("openssl s_client -no-CApath -no-CAfile -CAfile /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt "+
 							"-verify_return_error -verify_hostname %s -showcerts -connect %s:%d < /dev/null 2>/dev/null | openssl x509", host, host, port)},
+						SecurityContext: &v1.SecurityContext{
+							AllowPrivilegeEscalation: pointer.BoolPtr(false),
+							Capabilities:             &v1.Capabilities{Drop: []v1.Capability{"ALL"}},
+						},
 					},
 				},
 				RestartPolicy: v1.RestartPolicyOnFailure,
 			},
 		}, metav1.CreateOptions{})
 		if err != nil {
-			t.Logf("creating client pod failed: %v", err)
+			tlogf(t, "creating client pod failed: %v", err)
 			return false, nil
 		}
 		defer deletePod(t, client, podName, testNS)
 
 		err = waitForPodPhase(t, client, podName, testNS, v1.PodSucceeded)
 		if err != nil {
-			t.Logf("wait on pod to complete failed: %v", err)
+			tlogf(t, "wait on pod to complete failed: %v", err)
 			return false, nil
 		}
 
 		serverCertClientReceived, err := getPodLogs(t, client, podName, testNS)
 		if err != nil {
-			t.Logf("fetching pod logs failed: %v", err)
+			tlogf(t, "fetching pod logs failed: %v", err)
 			return false, nil
 		}
 		return strings.Contains(updatedServerCert, serverCertClientReceived), nil
@@ -895,7 +904,7 @@ func waitForPodPhase(t *testing.T, client *kubernetes.Clientset, name, namespace
 	return wait.PollImmediate(10*time.Second, time.Minute, func() (bool, error) {
 		pod, err := client.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
-			t.Logf("fetching test pod from apiserver failed: %v", err)
+			tlogf(t, "fetching test pod from apiserver failed: %v", err)
 			return false, nil
 		}
 		return pod.Status.Phase == phase, nil
@@ -931,7 +940,7 @@ func pollForRunningStatefulSet(t *testing.T, client *kubernetes.Clientset, state
 	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
 		set, err := client.AppsV1().StatefulSets(namespace).Get(context.TODO(), statefulSetName, metav1.GetOptions{})
 		if err != nil {
-			t.Logf("fetching StatefulSet failed: %v", err)
+			tlogf(t, "fetching StatefulSet failed: %v", err)
 			return false, err
 		}
 		res := set.Status.ObservedGeneration == set.Generation &&
@@ -939,7 +948,7 @@ func pollForRunningStatefulSet(t *testing.T, client *kubernetes.Clientset, state
 		return res, nil
 	})
 	if err != nil {
-		t.Logf("error waiting for StatefulSet restart: %v", err)
+		tlogf(t, "error waiting for StatefulSet restart: %v", err)
 	}
 	return err
 }
@@ -993,7 +1002,7 @@ func runPromQueryForVector(t *testing.T, promClient prometheusv1.API, query stri
 		return nil, err
 	}
 	if len(warnings) > 0 {
-		t.Logf("prometheus query emitted warnings: %v", warnings)
+		tlogf(t, "prometheus query emitted warnings: %v", warnings)
 	}
 
 	result, ok := results.(model.Vector)
@@ -1016,7 +1025,7 @@ func getSampleForPromQuery(t *testing.T, promClient prometheusv1.API, query stri
 }
 
 func checkServiceCAMetrics(t *testing.T, client *kubernetes.Clientset, promClient prometheusv1.API) {
-	timeout := 60 * time.Second
+	timeout := 120 * time.Second
 
 	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
 	if err != nil {
@@ -1034,11 +1043,11 @@ func checkServiceCAMetrics(t *testing.T, client *kubernetes.Clientset, promClien
 	err = wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
 		rawExpiryTime, err := getSampleForPromQuery(t, promClient, `service_ca_expiry_time_seconds`, time.Now())
 		if err != nil {
-			t.Logf("failed to get sample value: %v", err)
+			tlogf(t, "failed to get sample value: %v", err)
 			return false, nil
 		}
 		if rawExpiryTime.Value == 0 { // The operator is starting
-			t.Logf("got zero value")
+			tlogf(t, "got zero value")
 			return false, nil
 		}
 
@@ -1137,7 +1146,7 @@ func TestE2E(t *testing.T) {
 					t.Fatalf("error when checking serving cert secret: %v", err)
 				}
 
-				err = editServingSecretData(adminClient, testSecretName, ns.Name, v1.TLSCertKey)
+				err = editServingSecretData(t, adminClient, testSecretName, ns.Name, v1.TLSCertKey)
 				if err != nil {
 					t.Fatalf("error editing serving cert secret: %v", err)
 				}
@@ -1180,7 +1189,7 @@ func TestE2E(t *testing.T) {
 					t.Fatalf("error when checking serving cert secret: %v", err)
 				}
 
-				err = editServingSecretData(adminClient, testSecretName, ns.Name, "foo")
+				err = editServingSecretData(t, adminClient, testSecretName, ns.Name, "foo")
 				if err != nil {
 					t.Fatalf("error editing serving cert secret: %v", err)
 				}
@@ -1327,7 +1336,7 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("error when checking ca bundle injection configmap: %v", err)
 		}
 
-		err = editConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
+		err = editConfigMapCABundleInjectionData(t, adminClient, testConfigMapName, ns.Name)
 		if err != nil {
 			t.Fatalf("error editing ca bundle injection configmap: %v", err)
 		}
@@ -1500,16 +1509,16 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("signing key was not recreated: %v", err)
 		}
 
-		err = pollForConfigMapChange(adminClient, configmapCopy, api.InjectionDataKey)
+		err = pollForConfigMapChange(t, adminClient, configmapCopy, api.InjectionDataKey)
 		if err != nil {
 			t.Fatalf("configmap bundle did not change: %v", err)
 		}
 
-		err = pollForSecretChange(adminClient, secretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey)
+		err = pollForSecretChange(t, adminClient, secretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey)
 		if err != nil {
 			t.Fatalf("secret cert did not change: %v", err)
 		}
-		if err := pollForSecretChange(adminClient, headlessSecretCopy); err != nil {
+		if err := pollForSecretChange(t, adminClient, headlessSecretCopy); err != nil {
 			t.Fatalf("headless secret cert did not change: %v", err)
 		}
 	})

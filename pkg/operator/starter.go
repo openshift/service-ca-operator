@@ -16,6 +16,7 @@ import (
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	operatorv1informers "github.com/openshift/client-go/operator/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
+	"github.com/openshift/library-go/pkg/operator/loglevel"
 	"github.com/openshift/library-go/pkg/operator/resourcesynccontroller"
 	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
@@ -96,6 +97,11 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		return err
 	}
 
+	operatorLogLevelController := loglevel.NewClusterOperatorLoggingController(
+		operatorClient,
+		controllerContext.EventRecorder,
+	)
+
 	operator := NewServiceCAOperator(
 		operatorClient,
 		kubeInformersNamespaced,
@@ -109,14 +115,23 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 
 	stopChan := ctx.Done()
 
-	operatorConfigInformers.Start(stopChan)
-	configInformers.Start(stopChan)
-	kubeInformersNamespaced.Start(stopChan)
-	kubeInformersForNamespaces.Start(stopChan)
+	for _, informerStarter := range []func(<-chan struct{}){
+		operatorConfigInformers.Start,
+		configInformers.Start,
+		kubeInformersNamespaced.Start,
+		kubeInformersForNamespaces.Start,
+	} {
+		informerStarter(stopChan)
+	}
 
-	go operator.Run(ctx, 1)
-	go clusterOperatorStatus.Run(ctx, 1)
-	go resourceSyncController.Run(ctx, 1)
+	for _, controllerRunner := range []func(ctx context.Context, workers int){
+		operator.Run,
+		operatorLogLevelController.Run,
+		clusterOperatorStatus.Run,
+		resourceSyncController.Run,
+	} {
+		go controllerRunner(ctx, 1)
+	}
 
 	<-stopChan
 	return fmt.Errorf("stopped")
