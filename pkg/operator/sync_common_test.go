@@ -7,10 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift/library-go/pkg/operator/events"
-	"github.com/openshift/library-go/pkg/operator/loglevel"
-	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
-	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -20,6 +16,13 @@ import (
 
 	operatorv1 "github.com/openshift/api/operator/v1"
 	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/library-go/pkg/operator/loglevel"
+	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
+	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
+	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
+
+	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
 
 func TestInitializeSigningSecret(t *testing.T) {
@@ -74,6 +77,7 @@ func TestInitializeSigningSecret(t *testing.T) {
 
 func TestManageDeployment(t *testing.T) {
 	baseDeployment := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset(resourcePath + "deployment.yaml"))
+	baseDeploymentPopulated := deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).valueOrDie()
 	tests := []struct {
 		name               string
 		runOnWorkers       bool
@@ -86,27 +90,41 @@ func TestManageDeployment(t *testing.T) {
 			runOnWorkers:       false,
 			image:              "foobar",
 			loglevel:           operatorv1.Normal,
-			expectedDeployment: deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).value(),
+			expectedDeployment: deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).valueOrDie(),
+		},
+		{
+			name:               "base deployment with higher debug level",
+			runOnWorkers:       false,
+			image:              "foobar",
+			loglevel:           operatorv1.Debug,
+			expectedDeployment: deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Debug).valueOrDie(),
 		},
 		{
 			name:               "deploy on workers",
 			runOnWorkers:       true,
 			image:              "barbaz",
 			loglevel:           operatorv1.Normal,
-			expectedDeployment: deployment(baseDeployment).withImage("barbaz").withLogLevel(operatorv1.Normal).withNodeSelector(map[string]string{}).value(),
+			expectedDeployment: deployment(baseDeployment).withImage("barbaz").withLogLevel(operatorv1.Normal).withNodeSelector(map[string]string{}).valueOrDie(),
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			appsClient := fake.NewSimpleClientset().AppsV1()
+			appsClient := fake.NewSimpleClientset(baseDeploymentPopulated).AppsV1()
 			os.Setenv("CONTROLLER_IMAGE", test.image)
 			operator := &serviceCAOperator{
 				appsv1Client:  appsClient,
 				eventRecorder: events.NewInMemoryRecorder("managedeployment_test"),
 			}
-			serviceCA := &operatorv1.ServiceCA{}
-			serviceCA.Spec.LogLevel = test.loglevel
+			serviceCA := &operatorv1.ServiceCA{
+				Spec: operatorv1.ServiceCASpec{
+					OperatorSpec: operatorv1.OperatorSpec{
+						LogLevel: test.loglevel,
+					},
+				},
+			}
+			resourcemerge.SetDeploymentGeneration(&serviceCA.Status.Generations, baseDeploymentPopulated)
+
 			_, err := operator.manageDeployment(context.Background(), serviceCA, false, test.runOnWorkers)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -132,7 +150,11 @@ func deployment(base *appsv1.Deployment) *deploymentWrapper {
 	}
 }
 
-func (w *deploymentWrapper) value() *appsv1.Deployment {
+func (w *deploymentWrapper) valueOrDie() *appsv1.Deployment {
+	if err := resourceapply.SetSpecHashAnnotation(&w.Deployment.ObjectMeta, w.Deployment.Spec); err != nil {
+		panic(err)
+	}
+
 	return w.Deployment
 }
 
@@ -140,7 +162,6 @@ func (w *deploymentWrapper) withImage(image string) *deploymentWrapper {
 	if w.Deployment.Annotations == nil {
 		w.Deployment.Annotations = map[string]string{}
 	}
-	w.Deployment.Annotations["operator.openshift.io/pull-spec"] = image
 	if len(w.Deployment.Spec.Template.Spec.Containers) > 0 {
 		w.Deployment.Spec.Template.Spec.Containers[0].Image = image
 	}
