@@ -2,7 +2,6 @@ package operator
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -134,5 +133,5 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	}
 
 	<-stopChan
-	return fmt.Errorf("stopped")
+	return nil
 }
