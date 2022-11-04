@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/service-ca-operator/pkg/controller/cabundleinjector"
@@ -21,5 +20,5 @@ func StartServiceCAControllers(ctx context.Context, controllerContext *controlle
 
 	<-ctx.Done()
 
-	return fmt.Errorf("stopped")
+	return nil
 }
