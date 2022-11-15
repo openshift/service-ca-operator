@@ -91,6 +91,7 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 		newConfigMapInjectorConfig,
 		newCRDInjectorConfig,
 		newMutatingWebhookInjectorConfig,
+		newSecretInjectorConfig,
 		newValidatingWebhookInjectorConfig,
 		newVulnerableLegacyConfigMapInjectorConfig, // this has to be kept for cluster migrated from before 4.7
 	}

@@ -207,6 +207,18 @@ func createAnnotatedCABundleInjectionConfigMap(client *kubernetes.Clientset, con
 	return err
 }
 
+func createAnnotatedCABundleInjectionSecret(client *kubernetes.Clientset, secretName, namespace string) error {
+	obj := &v1.Secret{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: secretName,
+		},
+	}
+	setInjectionAnnotation(&obj.ObjectMeta)
+	_, err := client.CoreV1().Secrets(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+	return err
+}
+
 func pollForServiceServingSecret(client *kubernetes.Clientset, secretName, namespace string) error {
 	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
 		_, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
@@ -223,6 +235,19 @@ func pollForServiceServingSecret(client *kubernetes.Clientset, secretName, names
 func pollForCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapName, namespace string) error {
 	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
 		_, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+}
+
+func pollForCABundleInjectionSecret(client *kubernetes.Clientset, secretName, namespace string) error {
+	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+		_, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return false, nil
 		}
@@ -305,6 +330,22 @@ func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMap
 	_, ok = cm.Data[api.InjectionDataKey]
 	if !ok {
 		return fmt.Errorf("unexpected ca bundle injection configmap data: %v", cm.Data)
+	}
+	return nil
+}
+
+func checkSecretCABundleInjectionData(client *kubernetes.Clientset, secretName, namespace string) error {
+	secret, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if len(secret.Data) != 1 {
+		return fmt.Errorf("unexpected ca bundle injection secret data map length: %v", len(secret.Data))
+	}
+	ok := true
+	_, ok = secret.Data[api.InjectionDataKey]
+	if !ok {
+		return fmt.Errorf("unexpected ca bundle injection secret data: %v", secret.Data)
 	}
 	return nil
 }
@@ -1428,6 +1469,32 @@ func TestE2E(t *testing.T) {
 			if publishedConfigMap.Data[api.InjectionDataKey] == originalContent {
 				t.Fatal("Content did not update like it was supposed to.  The better ca bundle should win.")
 			}
+		}
+	})
+
+	// test ca bundle injection secret
+	t.Run("ca-bundle-injection-secret", func(t *testing.T) {
+		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
+		if err != nil {
+			t.Fatalf("could not create test namespace: %v", err)
+		}
+		defer cleanup()
+
+		testSecretName := "test-secret-" + randSeq(5)
+
+		err = createAnnotatedCABundleInjectionSecret(adminClient, testSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error creating annotated secret: %v", err)
+		}
+
+		err = pollForCABundleInjectionSecret(adminClient, testSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error fetching ca bundle injection secret: %v", err)
+		}
+
+		err = checkSecretCABundleInjectionData(adminClient, testSecretName, ns.Name)
+		if err != nil {
+			t.Fatalf("error when checking ca bundle injection secret: %v", err)
 		}
 	})
 
