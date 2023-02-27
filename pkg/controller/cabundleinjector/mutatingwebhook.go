@@ -57,7 +57,7 @@ func (bi *mutatingWebhookCABundleInjector) Sync(ctx context.Context, syncCtx fac
 
 	// make a copy to avoid mutating cache state
 	webhookConfigCopy := webhookConfig.DeepCopy()
-	for i := range webhooksNeedingUpdate {
+	for _, i := range webhooksNeedingUpdate {
 		webhookConfigCopy.Webhooks[i].ClientConfig.CABundle = bi.caBundle
 	}
 	_, err = bi.client.Update(ctx, webhookConfigCopy, metav1.UpdateOptions{})
