@@ -1720,6 +1720,16 @@ func TestE2E(t *testing.T) {
 				},
 			},
 		}
+		// webhooks to add after initial creation to ensure
+		// updates can be made for more than the original number of webhooks.
+		webhooksToAdd := []admissionreg.MutatingWebhook{
+			{
+				Name:                    "e2e-3.example.com",
+				ClientConfig:            webhookClientConfig,
+				SideEffects:             &sideEffectNone,
+				AdmissionReviewVersions: []string{"v1beta1"},
+			},
+		}
 		setInjectionAnnotation(&obj.ObjectMeta)
 		createdObj, err := client.Create(context.TODO(), obj, metav1.CreateOptions{})
 		if err != nil {
@@ -1753,6 +1763,19 @@ func TestE2E(t *testing.T) {
 		}
 
 		// Check that the ca bundle is restored
+		injectedObj, err = pollForMutatingWebhookConfiguration(t, client, createdObj.Name, expectedCABundle)
+		if err != nil {
+			t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
+		}
+
+		// Add an additional webhook and make sure CA bundle exists for all
+		injectedObj.Webhooks = append(injectedObj.Webhooks, webhooksToAdd...)
+		_, err = client.Update(context.TODO(), injectedObj, metav1.UpdateOptions{})
+		if err != nil {
+			t.Fatalf("error updating mutating webhook configuration: %v", err)
+		}
+
+		// Check that the ca bundle for all webhooks (old and new)
 		_, err = pollForMutatingWebhookConfiguration(t, client, createdObj.Name, expectedCABundle)
 		if err != nil {
 			t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
@@ -1779,6 +1802,16 @@ func TestE2E(t *testing.T) {
 					SideEffects:             &sideEffectNone,
 					AdmissionReviewVersions: []string{"v1beta1"},
 				},
+			},
+		}
+		// webhooks to add after initial creation to ensure
+		// updates can be made for more than the original number of webhooks.
+		webhooksToAdd := []admissionreg.ValidatingWebhook{
+			{
+				Name:                    "e2e-3.example.com",
+				ClientConfig:            webhookClientConfig,
+				SideEffects:             &sideEffectNone,
+				AdmissionReviewVersions: []string{"v1beta1"},
 			},
 		}
 		setInjectionAnnotation(&obj.ObjectMeta)
@@ -1814,6 +1847,19 @@ func TestE2E(t *testing.T) {
 		}
 
 		// Check that the ca bundle is restored
+		injectedObj, err = pollForValidatingWebhookConfiguration(t, client, createdObj.Name, expectedCABundle)
+		if err != nil {
+			t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
+		}
+
+		// Add an additional webhook and make sure CA bundle exists for all
+		injectedObj.Webhooks = append(injectedObj.Webhooks, webhooksToAdd...)
+		_, err = client.Update(context.TODO(), injectedObj, metav1.UpdateOptions{})
+		if err != nil {
+			t.Fatalf("error updating validating webhook configuration: %v", err)
+		}
+
+		// Check that the ca bundle for all webhooks (old and new)
 		_, err = pollForValidatingWebhookConfiguration(t, client, createdObj.Name, expectedCABundle)
 		if err != nil {
 			t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
