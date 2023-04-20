@@ -1727,7 +1727,7 @@ func TestE2E(t *testing.T) {
 				Name:                    "e2e-3.example.com",
 				ClientConfig:            webhookClientConfig,
 				SideEffects:             &sideEffectNone,
-				AdmissionReviewVersions: []string{"v1beta1"},
+				AdmissionReviewVersions: []string{"v1"},
 			},
 		}
 		setInjectionAnnotation(&obj.ObjectMeta)
@@ -1811,7 +1811,7 @@ func TestE2E(t *testing.T) {
 				Name:                    "e2e-3.example.com",
 				ClientConfig:            webhookClientConfig,
 				SideEffects:             &sideEffectNone,
-				AdmissionReviewVersions: []string{"v1beta1"},
+				AdmissionReviewVersions: []string{"v1"},
 			},
 		}
 		setInjectionAnnotation(&obj.ObjectMeta)
