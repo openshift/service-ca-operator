@@ -26,7 +26,6 @@ import (
 //
 // https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md
 //
-//
 // Compatibility level 4: No compatibility is provided, the API can change at any point for any reason. These capabilities should not be used by applications needing long term support.
 // +openshift:compatibility-gen:level=4
 // +genclient
@@ -34,7 +33,10 @@ import (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
 type AlertingRule struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is the standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec describes the desired state of this AlertingRule object.
@@ -55,6 +57,9 @@ type AlertingRule struct {
 // +k8s:openapi-gen=true
 type AlertingRuleList struct {
 	metav1.TypeMeta `json:",inline"`
+
+	// metadata is the standard list's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	metav1.ListMeta `json:"metadata,omitempty"`
 
 	// items is a list of AlertingRule objects.
@@ -226,7 +231,10 @@ type PrometheusRuleRef struct {
 // +openshift:compatibility-gen:level=4
 // +k8s:openapi-gen=true
 type AlertRelabelConfig struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is the standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec describes the desired state of this AlertRelabelConfig object.
@@ -270,6 +278,9 @@ const (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type AlertRelabelConfigList struct {
 	metav1.TypeMeta `json:",inline"`
+
+	// metadata is the standard list's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	metav1.ListMeta `json:"metadata,omitempty"`
 
 	// items is a list of AlertRelabelConfigs.
@@ -291,7 +302,7 @@ type LabelName string
 type RelabelConfig struct {
 	// sourceLabels select values from existing labels. Their content is
 	// concatenated using the configured separator and matched against the
-	// configured regular expression for the replace, keep, and drop actions.
+	// configured regular expression for the Replace, Keep, and Drop actions.
 	//
 	// +optional
 	SourceLabels []LabelName `json:"sourceLabels,omitempty"`
@@ -302,8 +313,8 @@ type RelabelConfig struct {
 	// +optional
 	Separator string `json:"separator,omitempty"`
 
-	// targetLabel to which the resulting value is written in a replace action.
-	// It is mandatory for 'replace' and 'hashmod' actions. Regex capture groups
+	// targetLabel to which the resulting value is written in a 'Replace' action.
+	// It is mandatory for 'Replace' and 'HashMod' actions. Regex capture groups
 	// are available.
 	//
 	// +optional
@@ -315,21 +326,21 @@ type RelabelConfig struct {
 	Regex string `json:"regex,omitempty"`
 
 	// modulus to take of the hash of the source label values.  This can be
-	// combined with the 'hashmod' action to set 'target_label' to the 'modulus'
+	// combined with the 'HashMod' action to set 'target_label' to the 'modulus'
 	// of a hash of the concatenated 'source_labels'.
 	//
 	// +optional
 	Modulus uint64 `json:"modulus,omitempty"`
 
 	// replacement value against which a regex replace is performed if the regular
-	// expression matches. This is required if the action is 'replace' or
-	// 'labelmap'. Regex capture groups are available. Default is: '$1'
+	// expression matches. This is required if the action is 'Replace' or
+	// 'LabelMap'. Regex capture groups are available. Default is: '$1'
 	//
 	// +optional
 	Replacement string `json:"replacement,omitempty"`
 
-	// action to perform based on regex matching. Must be one of: replace, keep,
-	// drop, hashmod, labelmap, labeldrop, or labelkeep.  Default is: 'replace'
+	// action to perform based on regex matching. Must be one of: Replace, Keep,
+	// Drop, HashMod, LabelMap, LabelDrop, or LabelKeep.  Default is: 'Replace'
 	//
 	// +kubebuilder:validation:Enum=Replace;Keep;Drop;HashMod;LabelMap;LabelDrop;LabelKeep
 	// +kubebuilder:default=Replace
