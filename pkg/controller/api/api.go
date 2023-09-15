@@ -13,6 +13,9 @@ const (
 	// IntermediateDataKey is the key used to identify the post-rotation
 	// trust-bridging certificate in the signing secret.
 	IntermediateDataKey = "intermediate-ca.crt"
+
+	// OwningJiraComponent is the name of the jira component owns the operator, operand, and the resource its creating
+	OwningJiraComponent = "service-ca"
 )
 
 // Constants for CA bundle injection

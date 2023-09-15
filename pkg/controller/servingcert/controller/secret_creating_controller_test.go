@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	kubediff "k8s.io/utils/diff"
 
+	apiannotations "github.com/openshift/api/annotations"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -145,8 +146,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertCreatedByAnnotation:      signerName,
 			},
 			expectedSecretAnnotations: map[string]string{
-				api.AlphaServiceUIDAnnotation:  testServiceUID,
-				api.AlphaServiceNameAnnotation: testServiceName,
+				api.AlphaServiceUIDAnnotation:     testServiceUID,
+				api.AlphaServiceNameAnnotation:    testServiceName,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 			updateSecret:  true,
 			updateService: true,
@@ -162,8 +164,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertCreatedByAnnotation:      signerName,
 			},
 			expectedSecretAnnotations: map[string]string{
-				api.ServiceUIDAnnotation:  testServiceUID,
-				api.ServiceNameAnnotation: testServiceName,
+				api.ServiceUIDAnnotation:          testServiceUID,
+				api.ServiceNameAnnotation:         testServiceName,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 			updateSecret:  true,
 			updateService: true,
@@ -180,8 +183,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertCreatedByAnnotation:      signerName,
 			},
 			expectedSecretAnnotations: map[string]string{
-				api.ServiceUIDAnnotation:  testServiceUID,
-				api.ServiceNameAnnotation: testServiceName,
+				api.ServiceUIDAnnotation:          testServiceUID,
+				api.ServiceNameAnnotation:         testServiceName,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 			updateSecret:  true,
 			updateService: true,
@@ -201,8 +205,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertCreatedByAnnotation:      signerName,
 			},
 			expectedSecretAnnotations: map[string]string{
-				api.AlphaServiceUIDAnnotation:  testServiceUID,
-				api.AlphaServiceNameAnnotation: testServiceName,
+				api.AlphaServiceUIDAnnotation:     testServiceUID,
+				api.AlphaServiceNameAnnotation:    testServiceName,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 			updateSecret:  true,
 			updateService: true,
@@ -222,8 +227,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertCreatedByAnnotation:      signerName,
 			},
 			expectedSecretAnnotations: map[string]string{
-				api.ServiceUIDAnnotation:  testServiceUID,
-				api.ServiceNameAnnotation: testServiceName,
+				api.ServiceUIDAnnotation:          testServiceUID,
+				api.ServiceNameAnnotation:         testServiceName,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 			updateSecret:  true,
 			updateService: true,
@@ -312,8 +318,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			},
 			secretData: generateServerCertPemForCA(t, ca, false),
 			expectedSecretAnnotations: map[string]string{
-				api.ServiceUIDAnnotation:  testServiceUID,
-				api.ServiceNameAnnotation: testServiceName,
+				api.ServiceUIDAnnotation:          testServiceUID,
+				api.ServiceNameAnnotation:         testServiceName,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 			expectedServiceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
@@ -331,8 +338,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			},
 			secretData: generateServerCertPemForCA(t, ca, true),
 			expectedSecretAnnotations: map[string]string{
-				api.ServiceUIDAnnotation:  testServiceUID,
-				api.ServiceNameAnnotation: testServiceName,
+				api.ServiceUIDAnnotation:          testServiceUID,
+				api.ServiceNameAnnotation:         testServiceName,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 			expectedServiceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
@@ -354,8 +362,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertCreatedByAnnotation:      signerName,
 			},
 			expectedSecretAnnotations: map[string]string{
-				api.ServiceUIDAnnotation:  testServiceUID,
-				api.ServiceNameAnnotation: testServiceName,
+				api.ServiceUIDAnnotation:          testServiceUID,
+				api.ServiceNameAnnotation:         testServiceName,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 			updateService: true,
 			updateSecret:  true,
@@ -377,8 +386,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertCreatedByAnnotation:      signerName,
 			},
 			expectedSecretAnnotations: map[string]string{
-				api.ServiceUIDAnnotation:  testServiceUID,
-				api.ServiceNameAnnotation: testServiceName,
+				api.ServiceUIDAnnotation:          testServiceUID,
+				api.ServiceNameAnnotation:         testServiceName,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 			updateService: true,
 			updateSecret:  true,
