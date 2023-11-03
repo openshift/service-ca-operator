@@ -415,6 +415,8 @@ kind: ConfigMap
 metadata:
   namespace: openshift-service-ca
   name: signing-cabundle
+  annotations:
+    openshift.io/owning-component: service-ca
 data:
   ca-bundle.crt:
 `)
@@ -439,6 +441,8 @@ kind: Secret
 metadata:
   namespace: openshift-service-ca
   name: signing-key
+  annotations:
+    openshift.io/owning-component: service-ca
 type: kubernetes.io/tls
 data:
   tls.crt:

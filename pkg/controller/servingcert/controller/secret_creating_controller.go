@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
 
+	apiannotations "github.com/openshift/api/annotations"
 	"github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/crypto"
@@ -327,8 +328,9 @@ func toBaseSecret(service *corev1.Service) *corev1.Secret {
 				Name:      service.Annotations[api.ServingCertSecretAnnotation],
 				Namespace: service.Namespace,
 				Annotations: map[string]string{
-					api.ServiceUIDAnnotation:  string(service.UID),
-					api.ServiceNameAnnotation: service.Name,
+					api.ServiceUIDAnnotation:          string(service.UID),
+					api.ServiceNameAnnotation:         service.Name,
+					apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 				},
 			},
 			Type: corev1.SecretTypeTLS,
@@ -340,8 +342,9 @@ func toBaseSecret(service *corev1.Service) *corev1.Secret {
 			Name:      service.Annotations[api.AlphaServingCertSecretAnnotation],
 			Namespace: service.Namespace,
 			Annotations: map[string]string{
-				api.AlphaServiceUIDAnnotation:  string(service.UID),
-				api.AlphaServiceNameAnnotation: service.Name,
+				api.AlphaServiceUIDAnnotation:     string(service.UID),
+				api.AlphaServiceNameAnnotation:    service.Name,
+				apiannotations.OpenShiftComponent: api.OwningJiraComponent,
 			},
 		},
 		Type: corev1.SecretTypeTLS,
@@ -407,6 +410,7 @@ func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.
 
 	secretCopy.Annotations[api.AlphaServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
 	secretCopy.Annotations[api.ServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
+	secretCopy.Annotations[apiannotations.OpenShiftComponent] = api.OwningJiraComponent
 
 	controller.EnsureOwnerRef(secretCopy, ownerRef(service))
 

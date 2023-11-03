@@ -10,6 +10,7 @@ import (
 	listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 
+	apiannotations "github.com/openshift/api/annotations"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
@@ -109,6 +110,11 @@ func (bi *configMapCABundleInjector) Sync(ctx context.Context, syncCtx factory.S
 	// make a copy to avoid mutating cache state
 	configMapCopy := configMap.DeepCopy()
 	configMapCopy.Data = map[string]string{api.InjectionDataKey: bi.caBundle}
+	// set the owning-component unless someone else has claimed it.
+	if len(configMapCopy.Annotations[apiannotations.OpenShiftComponent]) == 0 {
+		configMapCopy.Annotations[apiannotations.OpenShiftComponent] = api.OwningJiraComponent
+	}
+
 	_, err = bi.client.ConfigMaps(configMapCopy.Namespace).Update(ctx, configMapCopy, metav1.UpdateOptions{})
 	return err
 }
