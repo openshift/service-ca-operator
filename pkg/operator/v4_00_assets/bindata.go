@@ -417,6 +417,7 @@ metadata:
   name: signing-cabundle
   annotations:
     openshift.io/owning-component: service-ca
+    openshift.io/description: "Service CA configmap contains the data for the PEM-encoded CA signing bundle which will be injected to resources annotated with 'service.beta.openshift.io/inject-cabundle=true'"
 data:
   ca-bundle.crt:
 `)
@@ -443,6 +444,7 @@ metadata:
   name: signing-key
   annotations:
     openshift.io/owning-component: service-ca
+    openshift.io/description: "Service CA secret contains a signing key that will be used to issue a signed serving certificate/key pair to services annotated with 'service.beta.openshift.io/serving-cert-secret-name'"
 type: kubernetes.io/tls
 data:
   tls.crt:

@@ -2,6 +2,7 @@ package cabundleinjector
 
 import (
 	"context"
+	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -113,6 +114,7 @@ func (bi *configMapCABundleInjector) Sync(ctx context.Context, syncCtx factory.S
 	// set the owning-component unless someone else has claimed it.
 	if len(configMapCopy.Annotations[apiannotations.OpenShiftComponent]) == 0 {
 		configMapCopy.Annotations[apiannotations.OpenShiftComponent] = api.OwningJiraComponent
+		configMapCopy.Annotations[apiannotations.OpenShiftDescription] = fmt.Sprintf("Configmap is added/updated with a data item containing the CA signing bundle that can be used to verify service-serving certificates")
 	}
 
 	_, err = bi.client.ConfigMaps(configMapCopy.Namespace).Update(ctx, configMapCopy, metav1.UpdateOptions{})

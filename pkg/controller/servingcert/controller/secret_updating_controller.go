@@ -16,7 +16,6 @@ import (
 	listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 
-	apiannotations "github.com/openshift/api/annotations"
 	ocontroller "github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/crypto"
@@ -210,8 +209,8 @@ func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Servi
 	}
 
 	// set the owning-component unless someone else has claimed it.
-	if !update && len(secretCopy.Annotations[apiannotations.OpenShiftComponent]) == 0 {
-		secretCopy.Annotations[apiannotations.OpenShiftComponent] = api.OwningJiraComponent
+	needsOwnerUpdate := setSecretOwnerDescription(secretCopy, service)
+	if !update && needsOwnerUpdate {
 		update = true
 	}
 
