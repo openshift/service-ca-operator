@@ -24,7 +24,6 @@ spec:
       containers:
       - args:
         - --config=/var/run/configmaps/config/operator-config.yaml
-        - -v=2
         command:
         - service-ca-operator
         - operator

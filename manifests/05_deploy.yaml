@@ -40,7 +40,6 @@ spec:
         command: ["service-ca-operator", "operator"]
         args:
         - "--config=/var/run/configmaps/config/operator-config.yaml"
-        - "-v=2"
         resources:
           requests:
             memory: 80Mi
