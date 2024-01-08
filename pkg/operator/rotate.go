@@ -31,14 +31,17 @@ const (
 	// - T+24m - Cluster is upgraded and all pods are restarted
 	// - T+26m - CA-1 expires. No impact because of the restart at time of upgrade
 	//
-	SigningCertificateLifetimeInDays = 790 // 26 months
+	//SigningCertificateLifetimeInDays = 790 // 26 months
+	// Custom expiry hardcoded to 2 hours
+	SigningCertificateLifetimeInDays = 1
 
 	// The minimum duration that a CA should be trusted is approximately half
 	// the default signing certificate lifetime. If a signing CA is valid for
 	// less than this duration, it is due for rotation. An intermediate
 	// certificate created by rotation (to ensure that the previous CA remains
 	// trusted) should be valid for at least this long.
-	minimumTrustDuration = 395 * 24 * time.Hour // 13 months
+	//minimumTrustDuration = 395 * 24 * time.Hour // 13 months
+	minimumTrustDuration = time.Hour
 )
 
 type signingCA struct {
@@ -118,7 +121,7 @@ func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certifi
 	}
 
 	// Set a custom expiry for testing if one was provided
-	signingCA.config, err = maybeUpdateExpiry(signingCA.config, serviceCAConfig.CAConfig.ValidityDurationForTesting)
+	signingCA.config, err = maybeUpdateExpiry(signingCA.config, 2*time.Hour)
 	if err != nil {
 		return "", fmt.Errorf("failed to renew ca for custom duration: %v", err)
 	}
