@@ -41,7 +41,7 @@ const (
 	// certificate created by rotation (to ensure that the previous CA remains
 	// trusted) should be valid for at least this long.
 	//minimumTrustDuration = 395 * 24 * time.Hour // 13 months
-	minimumTrustDuration = time.Hour
+	minimumTrustDuration = 2 * time.Hour
 )
 
 type signingCA struct {
@@ -121,7 +121,7 @@ func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certifi
 	}
 
 	// Set a custom expiry for testing if one was provided
-	signingCA.config, err = maybeUpdateExpiry(signingCA.config, 2*time.Hour)
+	signingCA.config, err = maybeUpdateExpiry(signingCA.config, 4*time.Hour)
 	if err != nil {
 		return "", fmt.Errorf("failed to renew ca for custom duration: %v", err)
 	}
