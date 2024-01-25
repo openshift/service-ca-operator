@@ -217,6 +217,7 @@ spec:
           requests:
             memory: 120Mi
             cpu: 10m
+        terminationMessagePolicy: FallbackToLogsOnError
         volumeMounts:
         - mountPath: /var/run/secrets/signing-key
           name: signing-key
