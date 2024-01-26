@@ -45,6 +45,7 @@ spec:
           capabilities:
             drop:
             - ALL
+        terminationMessagePolicy: FallbackToLogsOnError
         volumeMounts:
         - mountPath: /var/run/configmaps/config
           name: config

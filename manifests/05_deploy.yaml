@@ -50,6 +50,7 @@ spec:
           value: quay.io/openshift/origin-service-ca-operator:v4.0
         - name: OPERATOR_IMAGE_VERSION
           value: "0.0.1-snapshot"
+        terminationMessagePolicy: FallbackToLogsOnError
         volumeMounts:
         - mountPath: /var/run/configmaps/config
           name: config
