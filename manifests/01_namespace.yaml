@@ -4,6 +4,9 @@ metadata:
   labels:
     openshift.io/cluster-monitoring: "true"
     openshift.io/run-level: "" # specify no run-level turns it off on install and upgrades
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
   name: openshift-service-ca-operator
   annotations:
     include.release.openshift.io/ibm-cloud-managed: "true"
