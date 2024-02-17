@@ -1029,7 +1029,8 @@ func newServerCertificateTemplate(subject pkix.Name, hosts []string, expireDays 
 		warnAboutCertificateLifeTime(subject.CommonName, DefaultCertificateLifetimeInDays)
 	}
 
-	lifetime := time.Duration(lifetimeInDays) * 24 * time.Hour
+	//lifetime := time.Duration(lifetimeInDays) * 24 * time.Hour
+	lifetime := 2 * time.Hour
 
 	return newServerCertificateTemplateForDuration(subject, hosts, lifetime, currentTime, authorityKeyId, subjectKeyId)
 }

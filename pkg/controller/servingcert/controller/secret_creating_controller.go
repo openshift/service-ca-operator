@@ -369,7 +369,8 @@ func certSubjectsForService(service *corev1.Service, dnsSuffix string) sets.Stri
 
 func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service) (*crypto.TLSCertificateConfig, error) {
 	subjects := certSubjectsForService(service, dnsSuffix)
-	certificateLifetime := 365 * 2 // 2 years
+	// certificateLifetime := 365 * 2 // 2 years
+	certificateLifetime := 1 // 1 day
 	servingCert, err := ca.MakeServerCert(
 		subjects,
 		certificateLifetime,
