@@ -32,6 +32,10 @@ spec:
         - containerPort: 8443
         securityContext:
           runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          seccompProfile:
+            type: RuntimeDefault
         resources:
           requests:
             memory: 120Mi

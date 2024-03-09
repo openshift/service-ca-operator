@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"k8s.io/utils/ptr"
 	"math/rand"
 	"os"
 	"reflect"
@@ -16,6 +17,16 @@ import (
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 
+	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
+	routeclient "github.com/openshift/client-go/route/clientset/versioned"
+	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
+	"github.com/openshift/library-go/test/library/metrics"
+	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/operator"
+	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
+	"github.com/openshift/service-ca-operator/test/util"
 	admissionreg "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -33,18 +44,6 @@ import (
 	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
-	"k8s.io/utils/pointer"
-
-	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
-	routeclient "github.com/openshift/client-go/route/clientset/versioned"
-	"github.com/openshift/library-go/pkg/crypto"
-	"github.com/openshift/library-go/pkg/operator/events"
-	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
-	"github.com/openshift/library-go/test/library/metrics"
-	"github.com/openshift/service-ca-operator/pkg/controller/api"
-	"github.com/openshift/service-ca-operator/pkg/operator"
-	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
-	"github.com/openshift/service-ca-operator/test/util"
 )
 
 const (
@@ -856,7 +855,7 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 			},
 			Spec: v1.PodSpec{
 				SecurityContext: &v1.PodSecurityContext{
-					RunAsNonRoot:   pointer.BoolPtr(true),
+					RunAsNonRoot:   ptr.To(true),
 					SeccompProfile: &v1.SeccompProfile{Type: v1.SeccompProfileTypeRuntimeDefault},
 				},
 				Containers: []v1.Container{
@@ -867,7 +866,7 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 						Args: []string{"-c", fmt.Sprintf("openssl s_client -no-CApath -no-CAfile -CAfile /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt "+
 							"-verify_return_error -verify_hostname %s -showcerts -connect %s:%d < /dev/null 2>/dev/null | openssl x509", host, host, port)},
 						SecurityContext: &v1.SecurityContext{
-							AllowPrivilegeEscalation: pointer.BoolPtr(false),
+							AllowPrivilegeEscalation: ptr.To(false),
 							Capabilities:             &v1.Capabilities{Drop: []v1.Capability{"ALL"}},
 						},
 					},
