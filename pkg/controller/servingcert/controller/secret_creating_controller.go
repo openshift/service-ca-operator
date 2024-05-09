@@ -383,7 +383,7 @@ func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.C
 	// stale ca bundle (containing the previous CA but not the current
 	// one) will be able to trust the serving cert.
 	if intermediateCACert != nil {
-		servingCert.Certs = append(servingCert.Certs, intermediateCACert)
+		servingCert.Certs = append([]*x509.Certificate{servingCert.Certs[0], intermediateCACert}, servingCert.Certs[1:]...)
 	}
 
 	return servingCert, nil
