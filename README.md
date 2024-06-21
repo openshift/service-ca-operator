@@ -2,7 +2,7 @@
 
 This operator runs the following OpenShift controllers:
 * **serving cert signer:**
-  * Issues a signed serving certificate/key pair to services annotated with 'service.beta.openshift.io/serving-cert-secret-name' via a secret. [See the current OKD documentation for usage.](https://docs.okd.io/latest/dev_guide/secrets.html#service-serving-certificate-secrets)
+  * Issues a signed serving certificate/key pair to services annotated with 'service.beta.openshift.io/serving-cert-secret-name' via a secret. [See the current OKD documentation for usage.](https://docs.okd.io/latest/security/certificates/service-serving-certificate.html)
 
 * **configmap cabundle injector:**
   * Watches for configmaps annotated with 'service.beta.openshift.io/inject-cabundle=true' and adds or updates a data item (key "service-ca.crt") containing the PEM-encoded CA signing bundle. Consumers of the configmap can then trust service-ca.crt in their TLS client configuration, allowing connections to services that utilize service-serving certificates.
@@ -110,7 +110,7 @@ $ oc get crd servicecas.operator.openshift.io -o yaml
 
 Many OpenShift ClusterOperators share common build, test, deployment, and update methods.    
 For information about how to build, deploy, test, update, and develop OpenShift ClusterOperators, see    
-[OpenShift ClusterOperator and Operand Developer Document](https://github.com/openshift/enhancements/blob/master/enhancements/dev-guide/operators.md#how-do-i-buildupdateverifyrun-unit-tests)
+[OpenShift ClusterOperator and Operand Developer Document](https://github.com/openshift/enhancements/blob/master/dev-guide/operators.md#how-do-i-buildupdateverifyrun-unit-tests)
 
 This section explains how to deploy OpenShift with your version of a service-ca-operator image:        
-[Testing a ClusterOperator/Operand image in a cluster](https://github.com/openshift/enhancements/blob/master/enhancements/dev-guide/operators.md#how-can-i-test-changes-to-an-openshift-operatoroperandrelease-component)
+[Testing a ClusterOperator/Operand image in a cluster](https://github.com/openshift/enhancements/blob/master/dev-guide/operators.md#how-can-i-test-changes-to-an-openshift-operatoroperandrelease-component)
