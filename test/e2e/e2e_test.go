@@ -68,6 +68,9 @@ const (
 	// Polling for resources related to rotation may be delayed by the number of resources
 	// that are updated in the cluster in response to rotation.
 	rotationPollTimeout = 4 * time.Minute
+
+	minimumTrustDuration       = time.Hour + 15*time.Minute
+	signingCertificateLifetime = time.Hour*2 + 30*time.Minute
 )
 
 // checkComponents verifies that the components of the operator are running.
@@ -547,7 +550,7 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 
 	// Set a custom validity duration longer than the default to
 	// validate that a custom expiry on rotation is possible.
-	defaultDuration := operator.SigningCertificateLifetimeInDays * time.Hour * 24
+	defaultDuration := signingCertificateLifetime
 	customDuration := defaultDuration + 1*time.Hour
 
 	// Trigger a forced rotation by updating the operator config

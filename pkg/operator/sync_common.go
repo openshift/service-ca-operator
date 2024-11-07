@@ -26,7 +26,11 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
 
-const resourcePath = "v4.0.0/controller/"
+const (
+	resourcePath               = "v4.0.0/controller/"
+	minimumTrustDuration       = time.Hour + 15*time.Minute
+	signingCertificateLifetime = time.Hour*2 + 30*time.Minute
+)
 
 func (c *serviceCAOperator) manageControllerNS(ctx context.Context) (bool, error) {
 	_, modified, err := resourceapply.ApplyNamespace(ctx, c.corev1Client, c.eventRecorder, resourceread.ReadNamespaceV1OrDie(v4_00_assets.MustAsset(resourcePath+"ns.yaml")))
@@ -109,7 +113,7 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 			return false, err
 		}
 	} else {
-		rotationMsg, err = maybeRotateSigningSecret(existing, existingCert, serviceCAConfig)
+		rotationMsg, err = maybeRotateSigningSecret(existing, existingCert, serviceCAConfig, c.minimumTrustDuration, c.signingCertificateLifetime)
 		if err != nil {
 			return false, fmt.Errorf("failed to rotate signing CA: %v", err)
 		}
@@ -144,7 +148,7 @@ func initializeSigningSecret(secret *corev1.Secret, duration time.Duration) erro
 	name := serviceServingCertSignerName()
 	klog.V(4).Infof("generating signing CA: %s", name)
 
-	ca, err := crypto.MakeSelfSignedCAConfig(name, SigningCertificateLifetimeInDays)
+	ca, err := crypto.MakeSelfSignedCAConfig(name, signingCertificateLifetime)
 	if err != nil {
 		return err
 	}

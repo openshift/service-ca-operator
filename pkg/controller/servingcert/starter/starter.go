@@ -13,8 +13,13 @@ import (
 	"k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
 
+	features "github.com/openshift/api/features"
+	configeversionedclient "github.com/openshift/client-go/config/clientset/versioned"
+	configexternalinformers "github.com/openshift/client-go/config/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/controller"
 )
 
@@ -41,6 +46,40 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	}
 	kubeInformers := informers.NewSharedInformerFactory(kubeClient, 20*time.Minute)
 
+	configClient, err := configeversionedclient.NewForConfig(controllerContext.KubeConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create config client: %w", err)
+	}
+
+	configInformers := configexternalinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
+
+	stopChan := ctx.Done()
+	klog.Infof("ShortCertRotation: fetching FeatureGates")
+	featureGateAccessor := featuregates.NewFeatureGateAccess(
+		status.VersionForOperandFromEnv(), "0.0.1-snapshot",
+		configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
+		controllerContext.EventRecorder,
+	)
+	go featureGateAccessor.Run(ctx)
+	configInformers.Start(stopChan)
+
+	var featureGates featuregates.FeatureGate
+	select {
+	case <-featureGateAccessor.InitialFeatureGatesObserved():
+		featureGates, _ = featureGateAccessor.CurrentFeatureGates()
+	case <-time.After(1 * time.Minute):
+		klog.Errorf("timed out waiting for FeatureGate detection")
+		return fmt.Errorf("timed out waiting for FeatureGate detection")
+	}
+
+	minTimeLeftForCert := time.Hour
+	certificateLifetime := 2 * 365 * 24 * time.Hour
+	if featureGates.Enabled(features.FeatureShortCertRotation) {
+		minTimeLeftForCert = time.Hour
+		certificateLifetime = time.Hour * 2
+	}
+	klog.Infof("ShortCertRotation: certificateLifetime=%v, minTimeLeftForCert=%v", certificateLifetime, minTimeLeftForCert)
+
 	servingCertController := controller.NewServiceServingCertController(
 		kubeInformers.Core().V1().Services(),
 		kubeInformers.Core().V1().Secrets(),
@@ -51,6 +90,7 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		// TODO this needs to be configurable
 		"cluster.local",
 		controllerContext.EventRecorder,
+		certificateLifetime,
 	)
 	servingCertUpdateController := controller.NewServiceServingCertUpdateController(
 		kubeInformers.Core().V1().Services(),
@@ -61,10 +101,12 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		// TODO this needs to be configurable
 		"cluster.local",
 		controllerContext.EventRecorder,
+		minTimeLeftForCert,
+		certificateLifetime,
 	)
 
-	stopChan := ctx.Done()
 	kubeInformers.Start(stopChan)
+	configInformers.Start(stopChan)
 
 	go servingCertController.Run(ctx, 5)
 	go servingCertUpdateController.Run(ctx, 5)

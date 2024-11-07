@@ -2,19 +2,23 @@ package operator
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 
 	configv1 "github.com/openshift/api/config/v1"
+	features "github.com/openshift/api/features"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned"
 	configv1informers "github.com/openshift/client-go/config/informers/externalversions"
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	operatorv1informers "github.com/openshift/client-go/operator/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/loglevel"
 	"github.com/openshift/library-go/pkg/operator/resourcesynccontroller"
 	"github.com/openshift/library-go/pkg/operator/status"
@@ -101,6 +105,33 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		controllerContext.EventRecorder,
 	)
 
+	klog.Infof("ShortCertRotation: fetching FeatureGates")
+	stopChan := ctx.Done()
+	featureGateAccessor := featuregates.NewFeatureGateAccess(
+		status.VersionForOperatorFromEnv(), "0.0.1-snapshot",
+		configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
+		controllerContext.EventRecorder,
+	)
+	go featureGateAccessor.Run(ctx)
+	configInformers.Start(stopChan)
+
+	var featureGates featuregates.FeatureGate
+	select {
+	case <-featureGateAccessor.InitialFeatureGatesObserved():
+		featureGates, _ = featureGateAccessor.CurrentFeatureGates()
+	case <-time.After(1 * time.Minute):
+		klog.Errorf("timed out waiting for FeatureGate detection")
+		return fmt.Errorf("timed out waiting for FeatureGate detection")
+	}
+
+	minimumTrustDuration := 395 * 24 * time.Hour
+	signingCertificateLifetime := 26 * 30 * 24 * time.Hour
+	if featureGates.Enabled(features.FeatureShortCertRotation) {
+		minimumTrustDuration = time.Hour + 15*time.Minute
+		signingCertificateLifetime = time.Hour*2 + 30*time.Minute
+	}
+	klog.Infof("ShortCertRotation: minimumTrustDuration=%v, signingCertificateLifetime=%v", minimumTrustDuration, signingCertificateLifetime)
+
 	operator := NewServiceCAOperator(
 		operatorClient,
 		kubeInformersNamespaced,
@@ -110,15 +141,15 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		kubeClient.RbacV1(),
 		versionGetter,
 		controllerContext.EventRecorder,
+		minimumTrustDuration,
+		signingCertificateLifetime,
 	)
-
-	stopChan := ctx.Done()
 
 	for _, informerStarter := range []func(<-chan struct{}){
 		operatorConfigInformers.Start,
-		configInformers.Start,
 		kubeInformersNamespaced.Start,
 		kubeInformersForNamespaces.Start,
+		configInformers.Start,
 	} {
 		informerStarter(stopChan)
 	}

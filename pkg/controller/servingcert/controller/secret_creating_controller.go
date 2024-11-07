@@ -42,6 +42,8 @@ type serviceServingCertController struct {
 	intermediateCACert *x509.Certificate
 	dnsSuffix          string
 	maxRetries         int
+
+	certificateLifetime time.Duration
 }
 
 func NewServiceServingCertController(
@@ -53,7 +55,9 @@ func NewServiceServingCertController(
 	intermediateCACert *x509.Certificate,
 	dnsSuffix string,
 	recorder events.Recorder,
+	certificateLifetime time.Duration,
 ) factory.Controller {
+
 	sc := &serviceServingCertController{
 		serviceClient: serviceClient,
 		secretClient:  secretClient,
@@ -61,10 +65,11 @@ func NewServiceServingCertController(
 		serviceLister: services.Lister(),
 		secretLister:  secrets.Lister(),
 
-		ca:                 ca,
-		intermediateCACert: intermediateCACert,
-		dnsSuffix:          dnsSuffix,
-		maxRetries:         10,
+		ca:                  ca,
+		intermediateCACert:  intermediateCACert,
+		dnsSuffix:           dnsSuffix,
+		maxRetries:          10,
+		certificateLifetime: certificateLifetime,
 	}
 
 	return factory.New().
@@ -138,7 +143,7 @@ func (sc *serviceServingCertController) generateCert(ctx context.Context, servic
 	}
 
 	secret := toBaseSecret(serviceCopy)
-	if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, serviceCopy, secret); err != nil {
+	if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, serviceCopy, secret, sc.certificateLifetime); err != nil {
 		return err
 	}
 	setSecretOwnerDescription(secret, serviceCopy)
@@ -367,12 +372,11 @@ func certSubjectsForService(service *corev1.Service, dnsSuffix string) sets.Stri
 	return res
 }
 
-func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service) (*crypto.TLSCertificateConfig, error) {
+func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, lifetime time.Duration) (*crypto.TLSCertificateConfig, error) {
 	subjects := certSubjectsForService(service, dnsSuffix)
-	certificateLifetime := 365 * 2 // 2 years
 	servingCert, err := ca.MakeServerCert(
 		subjects,
-		certificateLifetime,
+		lifetime,
 		cryptoextensions.ServiceServerCertificateExtensionV1(service.UID),
 	)
 	if err != nil {
@@ -389,8 +393,8 @@ func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.C
 	return servingCert, nil
 }
 
-func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, secretCopy *corev1.Secret) error {
-	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, service)
+func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, secretCopy *corev1.Secret, lifetime time.Duration) error {
+	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, service, lifetime)
 	if err != nil {
 		return err
 	}

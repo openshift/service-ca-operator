@@ -58,7 +58,7 @@ func TestInitializeSigningSecret(t *testing.T) {
 			expiry := ca.Config.Certs[0].NotAfter
 			var minimumExpiry time.Time
 			if tc.duration == 0*time.Nanosecond {
-				minimumExpiry = now.Add(SigningCertificateLifetimeInDays)
+				minimumExpiry = now.Add(signingCertificateLifetime)
 			} else {
 				minimumExpiry = now.Add(tc.duration)
 			}

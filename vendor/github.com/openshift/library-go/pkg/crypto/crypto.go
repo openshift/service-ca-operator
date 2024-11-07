@@ -553,11 +553,11 @@ func randomSerialNumber() int64 {
 
 // EnsureCA returns a CA, whether it was created (as opposed to pre-existing), and any error
 // if serialFile is empty, a RandomSerialGenerator will be used
-func EnsureCA(certFile, keyFile, serialFile, name string, expireDays int) (*CA, bool, error) {
+func EnsureCA(certFile, keyFile, serialFile, name string, lifetime time.Duration) (*CA, bool, error) {
 	if ca, err := GetCA(certFile, keyFile, serialFile); err == nil {
 		return ca, false, err
 	}
-	ca, err := MakeSelfSignedCA(certFile, keyFile, serialFile, name, expireDays)
+	ca, err := MakeSelfSignedCA(certFile, keyFile, serialFile, name, lifetime)
 	return ca, true, err
 }
 
@@ -597,10 +597,10 @@ func GetCAFromBytes(certBytes, keyBytes []byte) (*CA, error) {
 }
 
 // if serialFile is empty, a RandomSerialGenerator will be used
-func MakeSelfSignedCA(certFile, keyFile, serialFile, name string, expireDays int) (*CA, error) {
+func MakeSelfSignedCA(certFile, keyFile, serialFile, name string, lifetime time.Duration) (*CA, error) {
 	klog.V(2).Infof("Generating new CA for %s cert, and key in %s, %s", name, certFile, keyFile)
 
-	caConfig, err := MakeSelfSignedCAConfig(name, expireDays)
+	caConfig, err := MakeSelfSignedCAConfig(name, lifetime)
 	if err != nil {
 		return nil, err
 	}
@@ -628,23 +628,13 @@ func MakeSelfSignedCA(certFile, keyFile, serialFile, name string, expireDays int
 	}, nil
 }
 
-func MakeSelfSignedCAConfig(name string, expireDays int) (*TLSCertificateConfig, error) {
+func MakeSelfSignedCAConfig(name string, lifetime time.Duration) (*TLSCertificateConfig, error) {
 	subject := pkix.Name{CommonName: name}
-	return MakeSelfSignedCAConfigForSubject(subject, expireDays)
+	return MakeSelfSignedCAConfigForSubject(subject, lifetime)
 }
 
-func MakeSelfSignedCAConfigForSubject(subject pkix.Name, expireDays int) (*TLSCertificateConfig, error) {
-	var caLifetimeInDays = DefaultCACertificateLifetimeInDays
-	if expireDays > 0 {
-		caLifetimeInDays = expireDays
-	}
-
-	if caLifetimeInDays > DefaultCACertificateLifetimeInDays {
-		warnAboutCertificateLifeTime(subject.CommonName, DefaultCACertificateLifetimeInDays)
-	}
-
-	caLifetime := time.Duration(caLifetimeInDays) * 24 * time.Hour
-	return makeSelfSignedCAConfigForSubjectAndDuration(subject, caLifetime)
+func MakeSelfSignedCAConfigForSubject(subject pkix.Name, lifetime time.Duration) (*TLSCertificateConfig, error) {
+	return makeSelfSignedCAConfigForSubjectAndDuration(subject, lifetime)
 }
 
 func MakeSelfSignedCAConfigForDuration(name string, caLifetime time.Duration) (*TLSCertificateConfig, error) {
@@ -697,21 +687,21 @@ func MakeCAConfigForDuration(name string, caLifetime time.Duration, issuer *CA) 
 // (as opposed to pre-existing), and any error that might occur during the subCA
 // creation.
 // If serialFile is an empty string, a RandomSerialGenerator will be used.
-func (ca *CA) EnsureSubCA(certFile, keyFile, serialFile, name string, expireDays int) (*CA, bool, error) {
+func (ca *CA) EnsureSubCA(certFile, keyFile, serialFile, name string, lifetime time.Duration) (*CA, bool, error) {
 	if subCA, err := GetCA(certFile, keyFile, serialFile); err == nil {
 		return subCA, false, err
 	}
-	subCA, err := ca.MakeAndWriteSubCA(certFile, keyFile, serialFile, name, expireDays)
+	subCA, err := ca.MakeAndWriteSubCA(certFile, keyFile, serialFile, name, lifetime)
 	return subCA, true, err
 }
 
 // MakeAndWriteSubCA returns a new sub-CA configuration. New cert/key pair is generated
 // while using this function.
 // If serialFile is an empty string, a RandomSerialGenerator will be used.
-func (ca *CA) MakeAndWriteSubCA(certFile, keyFile, serialFile, name string, expireDays int) (*CA, error) {
+func (ca *CA) MakeAndWriteSubCA(certFile, keyFile, serialFile, name string, lifetime time.Duration) (*CA, error) {
 	klog.V(4).Infof("Generating sub-CA certificate in %s, key in %s, serial in %s", certFile, keyFile, serialFile)
 
-	subCAConfig, err := MakeCAConfigForDuration(name, time.Duration(expireDays)*time.Hour*24, ca)
+	subCAConfig, err := MakeCAConfigForDuration(name, lifetime, ca)
 	if err != nil {
 		return nil, err
 	}
@@ -741,10 +731,10 @@ func (ca *CA) MakeAndWriteSubCA(certFile, keyFile, serialFile, name string, expi
 	}, nil
 }
 
-func (ca *CA) EnsureServerCert(certFile, keyFile string, hostnames sets.String, expireDays int) (*TLSCertificateConfig, bool, error) {
+func (ca *CA) EnsureServerCert(certFile, keyFile string, hostnames sets.String, lifetime time.Duration) (*TLSCertificateConfig, bool, error) {
 	certConfig, err := GetServerCert(certFile, keyFile, hostnames)
 	if err != nil {
-		certConfig, err = ca.MakeAndWriteServerCert(certFile, keyFile, hostnames, expireDays)
+		certConfig, err = ca.MakeAndWriteServerCert(certFile, keyFile, hostnames, lifetime)
 		return certConfig, true, err
 	}
 
@@ -771,10 +761,10 @@ func GetServerCert(certFile, keyFile string, hostnames sets.String) (*TLSCertifi
 	return nil, fmt.Errorf("Existing server certificate in %s does not match required hostnames.", certFile)
 }
 
-func (ca *CA) MakeAndWriteServerCert(certFile, keyFile string, hostnames sets.String, expireDays int) (*TLSCertificateConfig, error) {
+func (ca *CA) MakeAndWriteServerCert(certFile, keyFile string, hostnames sets.String, lifetime time.Duration) (*TLSCertificateConfig, error) {
 	klog.V(4).Infof("Generating server certificate in %s, key in %s", certFile, keyFile)
 
-	server, err := ca.MakeServerCert(hostnames, expireDays)
+	server, err := ca.MakeServerCert(hostnames, lifetime)
 	if err != nil {
 		return nil, err
 	}
@@ -788,11 +778,11 @@ func (ca *CA) MakeAndWriteServerCert(certFile, keyFile string, hostnames sets.St
 // if the extension attempt failed.
 type CertificateExtensionFunc func(*x509.Certificate) error
 
-func (ca *CA) MakeServerCert(hostnames sets.String, expireDays int, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
+func (ca *CA) MakeServerCert(hostnames sets.String, lifetime time.Duration, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
 	serverPublicKey, serverPrivateKey, publicKeyHash, _ := newKeyPairWithHash()
 	authorityKeyId := ca.Config.Certs[0].SubjectKeyId
 	subjectKeyId := publicKeyHash
-	serverTemplate := newServerCertificateTemplate(pkix.Name{CommonName: hostnames.List()[0]}, hostnames.List(), expireDays, time.Now, authorityKeyId, subjectKeyId)
+	serverTemplate := newServerCertificateTemplate(pkix.Name{CommonName: hostnames.List()[0]}, hostnames.List(), lifetime, time.Now, authorityKeyId, subjectKeyId)
 	for _, fn := range fns {
 		if err := fn(serverTemplate); err != nil {
 			return nil, err
@@ -830,10 +820,10 @@ func (ca *CA) MakeServerCertForDuration(hostnames sets.String, lifetime time.Dur
 	return server, nil
 }
 
-func (ca *CA) EnsureClientCertificate(certFile, keyFile string, u user.Info, expireDays int) (*TLSCertificateConfig, bool, error) {
+func (ca *CA) EnsureClientCertificate(certFile, keyFile string, u user.Info, lifetime time.Duration) (*TLSCertificateConfig, bool, error) {
 	certConfig, err := GetClientCertificate(certFile, keyFile, u)
 	if err != nil {
-		certConfig, err = ca.MakeClientCertificate(certFile, keyFile, u, expireDays)
+		certConfig, err = ca.MakeClientCertificate(certFile, keyFile, u, lifetime)
 		return certConfig, true, err // true indicates we wrote the files.
 	}
 	return certConfig, false, nil
@@ -862,7 +852,7 @@ func subjectChanged(existing, expected pkix.Name) bool {
 		!reflect.DeepEqual(existing.Organization, expected.Organization)
 }
 
-func (ca *CA) MakeClientCertificate(certFile, keyFile string, u user.Info, expireDays int) (*TLSCertificateConfig, error) {
+func (ca *CA) MakeClientCertificate(certFile, keyFile string, u user.Info, lifetime time.Duration) (*TLSCertificateConfig, error) {
 	klog.V(4).Infof("Generating client cert in %s and key in %s", certFile, keyFile)
 	// ensure parent dirs
 	if err := os.MkdirAll(filepath.Dir(certFile), os.FileMode(0755)); err != nil {
@@ -873,7 +863,7 @@ func (ca *CA) MakeClientCertificate(certFile, keyFile string, u user.Info, expir
 	}
 
 	clientPublicKey, clientPrivateKey, _ := NewKeyPair()
-	clientTemplate := newClientCertificateTemplate(userToSubject(u), expireDays, time.Now)
+	clientTemplate := newClientCertificateTemplate(userToSubject(u), lifetime, time.Now)
 	clientCrt, err := ca.signCertificate(clientTemplate, clientPublicKey)
 	if err != nil {
 		return nil, err
@@ -1019,18 +1009,7 @@ func newSigningCertificateTemplateForDuration(subject pkix.Name, caLifetime time
 }
 
 // Can be used for ListenAndServeTLS
-func newServerCertificateTemplate(subject pkix.Name, hosts []string, expireDays int, currentTime func() time.Time, authorityKeyId, subjectKeyId []byte) *x509.Certificate {
-	var lifetimeInDays = DefaultCertificateLifetimeInDays
-	if expireDays > 0 {
-		lifetimeInDays = expireDays
-	}
-
-	if lifetimeInDays > DefaultCertificateLifetimeInDays {
-		warnAboutCertificateLifeTime(subject.CommonName, DefaultCertificateLifetimeInDays)
-	}
-
-	lifetime := time.Duration(lifetimeInDays) * 24 * time.Hour
-
+func newServerCertificateTemplate(subject pkix.Name, hosts []string, lifetime time.Duration, currentTime func() time.Time, authorityKeyId, subjectKeyId []byte) *x509.Certificate {
 	return newServerCertificateTemplateForDuration(subject, hosts, lifetime, currentTime, authorityKeyId, subjectKeyId)
 }
 
@@ -1108,17 +1087,7 @@ func CertsFromPEM(pemCerts []byte) ([]*x509.Certificate, error) {
 }
 
 // Can be used as a certificate in http.Transport TLSClientConfig
-func newClientCertificateTemplate(subject pkix.Name, expireDays int, currentTime func() time.Time) *x509.Certificate {
-	var lifetimeInDays = DefaultCertificateLifetimeInDays
-	if expireDays > 0 {
-		lifetimeInDays = expireDays
-	}
-
-	if lifetimeInDays > DefaultCertificateLifetimeInDays {
-		warnAboutCertificateLifeTime(subject.CommonName, DefaultCertificateLifetimeInDays)
-	}
-
-	lifetime := time.Duration(lifetimeInDays) * 24 * time.Hour
+func newClientCertificateTemplate(subject pkix.Name, lifetime time.Duration, currentTime func() time.Time) *x509.Certificate {
 
 	return newClientCertificateTemplateForDuration(subject, lifetime, currentTime)
 }
