@@ -1,6 +1,6 @@
 module github.com/openshift/service-ca-operator
 
-go 1.21
+go 1.22.0
 
 require (
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
