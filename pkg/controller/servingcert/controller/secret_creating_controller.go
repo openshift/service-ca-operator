@@ -279,7 +279,7 @@ func (sc *serviceServingCertController) certContainsExpectedSubjects(service *co
 	// We only compare cert.DNSNames, and ignore other possible certificate subjects that this code
 	// never generates.
 	expectedSubjects := certSubjectsForService(service, sc.dnsSuffix)
-	certSubjects := sets.NewString(cert.DNSNames...)
+	certSubjects := sets.New(cert.DNSNames...)
 	return certSubjects.Equal(expectedSubjects)
 }
 
@@ -350,8 +350,8 @@ func toBaseSecret(service *corev1.Service) *corev1.Secret {
 	}
 }
 
-func certSubjectsForService(service *corev1.Service, dnsSuffix string) sets.String {
-	res := sets.NewString()
+func certSubjectsForService(service *corev1.Service, dnsSuffix string) sets.Set[string] {
+	res := sets.New[string]()
 	serviceHostname := service.Name + "." + service.Namespace + ".svc"
 	res.Insert(
 		serviceHostname,
