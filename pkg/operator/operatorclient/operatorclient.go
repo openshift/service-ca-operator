@@ -150,7 +150,7 @@ func (c *OperatorClient) ApplyOperatorStatus(ctx context.Context, fieldManager s
 		}
 	}
 
-	_, err = c.Client.ServiceCAs().Apply(ctx, desired, metav1.ApplyOptions{
+	_, err = c.Client.ServiceCAs().ApplyStatus(ctx, desired, metav1.ApplyOptions{
 		Force:        true,
 		FieldManager: fieldManager,
 	})
