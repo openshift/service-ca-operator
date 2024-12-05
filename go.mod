@@ -7,7 +7,7 @@ toolchain go1.23.3
 require (
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/google/uuid v1.6.0
-	github.com/openshift/api v0.0.0-20241101202457-04eb3fd119d2
+	github.com/openshift/api v0.0.0-20241204141306-c1fdeb0788c1
 	github.com/openshift/build-machinery-go v0.0.0-20240613134303-8359781da660
 	github.com/openshift/client-go v0.0.0-20241001162912-da6d55e4611f
 	github.com/openshift/library-go v0.0.0-20241127135410-64d8d9e80808
