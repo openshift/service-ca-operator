@@ -81,6 +81,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		operatorClient,
 		versionGetter,
 		controllerContext.EventRecorder,
+		controllerContext.Clock,
 	)
 
 	resourceSyncController := resourcesynccontroller.NewResourceSyncController(
