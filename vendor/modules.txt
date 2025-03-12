@@ -293,7 +293,7 @@ github.com/openshift/client-go/route/applyconfigurations/route/v1
 github.com/openshift/client-go/route/clientset/versioned
 github.com/openshift/client-go/route/clientset/versioned/scheme
 github.com/openshift/client-go/route/clientset/versioned/typed/route/v1
-# github.com/openshift/library-go v0.0.0-20250228164547-bad2d1bf3a37
+# github.com/openshift/library-go v0.0.0-20250228164547-bad2d1bf3a37 => github.com/vrutkovs/library-go v0.0.0-20250312090754-62a57a719ded
 ## explicit; go 1.23.0
 github.com/openshift/library-go/pkg/apiserver/jsonpatch
 github.com/openshift/library-go/pkg/authorization/hardcodedauthorizer
@@ -1439,4 +1439,5 @@ sigs.k8s.io/structured-merge-diff/v4/value
 sigs.k8s.io/yaml
 sigs.k8s.io/yaml/goyaml.v2
 # github.com/google/cel-go => github.com/google/cel-go v0.22.1
+# github.com/openshift/library-go => github.com/vrutkovs/library-go v0.0.0-20250312090754-62a57a719ded
 # vbom.ml/util => github.com/fvbommel/util v0.0.0-20180919145318-efcd4e0f9787

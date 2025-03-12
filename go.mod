@@ -122,5 +122,6 @@ require (
 
 replace (
 	github.com/google/cel-go => github.com/google/cel-go v0.22.1
+	github.com/openshift/library-go => github.com/vrutkovs/library-go v0.0.0-20250312090754-62a57a719ded
 	vbom.ml/util => github.com/fvbommel/util v0.0.0-20180919145318-efcd4e0f9787
 )
