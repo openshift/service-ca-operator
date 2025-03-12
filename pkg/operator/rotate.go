@@ -16,31 +16,6 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/operator/util"
 )
 
-const (
-	// The minimum remaining duration of the service CA needs to exceeds the maximum
-	// supported upgrade interval (currently 12 months). A duration of 26 months
-	// (rotated at 13 months) ensures that an upgrade will occur after automated
-	// rotation and before the expiry of the pre-rotation CA. Since an upgrade restarts
-	// all services, those services will always be using valid material.
-	//
-	// Example timeline using a 26 month service CA duration:
-	//
-	// - T+0m  - Cluster installed with new CA or existing CA is rotated (CA-1)
-	// - T+12m - Cluster is upgraded and all pods are restarted
-	// - T+13m - Automated rotation replaces CA-1 with CA-2 when CA-1 duration < 13m
-	// - T+24m - Cluster is upgraded and all pods are restarted
-	// - T+26m - CA-1 expires. No impact because of the restart at time of upgrade
-	//
-	SigningCertificateLifetimeInDays = 790 // 26 months
-
-	// The minimum duration that a CA should be trusted is approximately half
-	// the default signing certificate lifetime. If a signing CA is valid for
-	// less than this duration, it is due for rotation. An intermediate
-	// certificate created by rotation (to ensure that the previous CA remains
-	// trusted) should be valid for at least this long.
-	minimumTrustDuration = 395 * 24 * time.Hour // 13 months
-)
-
 type signingCA struct {
 	config             *crypto.TLSCertificateConfig
 	bundle             []*x509.Certificate
@@ -78,7 +53,7 @@ func (ca *signingCA) updateSigningSecret(secret *corev1.Secret) error {
 // non-empty rotation message will be returned.  Rotation will not be performed if the
 // current CA is not more than half-way expired or if a forced rotation was not
 // requested, and in this case an empty rotation message will be returned.
-func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certificate, serviceCAConfig unsupportedServiceCAConfig) (string, error) {
+func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certificate, serviceCAConfig unsupportedServiceCAConfig, minimumTrustDuration time.Duration, signingCertificateLifetime time.Duration) (string, error) {
 	reason := serviceCAConfig.ForceRotation.Reason
 	forcedRotation := forcedRotationRequired(secret, reason)
 
@@ -112,7 +87,7 @@ func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certifi
 		return "", fmt.Errorf("expected RSA private key, got %T", key)
 	}
 
-	signingCA, err := rotateSigningCA(currentCACert, rsaKey)
+	signingCA, err := rotateSigningCA(currentCACert, rsaKey, minimumTrustDuration, signingCertificateLifetime)
 	if err != nil {
 		return "", err
 	}
@@ -136,9 +111,9 @@ func maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certifi
 // rotateSigningCA creates a new signing CA, bundle and intermediate CA that together can
 // be used to ensure that serving certs generated both before and after rotation can be
 // trusted by both refreshed and unrefreshed consumers.
-func rotateSigningCA(currentCACert *x509.Certificate, currentKey *rsa.PrivateKey) (*signingCA, error) {
+func rotateSigningCA(currentCACert *x509.Certificate, currentKey *rsa.PrivateKey, minimumTrustDuration time.Duration, signingCertificateLifetime time.Duration) (*signingCA, error) {
 	// Generate a new signing cert
-	newCAConfig, err := crypto.MakeSelfSignedCAConfigForSubject(currentCACert.Subject, SigningCertificateLifetimeInDays)
+	newCAConfig, err := crypto.MakeSelfSignedCAConfigForSubject(currentCACert.Subject, signingCertificateLifetime)
 	if err != nil {
 		return nil, err
 	}

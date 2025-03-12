@@ -3,6 +3,7 @@ package operator
 import (
 	"context"
 	"fmt"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -11,6 +12,7 @@ import (
 	rbacclientv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
+	_ "github.com/openshift/api/operator/v1/zz_generated.crd-manifests"
 	configv1informers "github.com/openshift/client-go/config/informers/externalversions"
 	configv1listers "github.com/openshift/client-go/config/listers/config/v1"
 	operatorv1listers "github.com/openshift/client-go/operator/listers/operator/v1"
@@ -32,6 +34,9 @@ type serviceCAOperator struct {
 	rbacv1Client  rbacclientv1.RbacV1Interface
 	versionGetter status.VersionGetter
 	eventRecorder events.Recorder
+
+	minimumTrustDuration       time.Duration
+	signingCertificateLifetime time.Duration
 }
 
 func NewServiceCAOperator(
@@ -44,6 +49,8 @@ func NewServiceCAOperator(
 	rbacv1Client rbacclientv1.RbacV1Interface,
 	versionGetter status.VersionGetter,
 	eventRecorder events.Recorder,
+	minimumTrustDuration time.Duration,
+	signingCertificateLifetime time.Duration,
 ) factory.Controller {
 	c := &serviceCAOperator{
 		operatorClient:       operatorClient,
@@ -55,6 +62,9 @@ func NewServiceCAOperator(
 		rbacv1Client:  rbacv1Client,
 		versionGetter: versionGetter,
 		eventRecorder: eventRecorder,
+
+		minimumTrustDuration:       minimumTrustDuration,
+		signingCertificateLifetime: signingCertificateLifetime,
 	}
 
 	return factory.New().WithInformers(

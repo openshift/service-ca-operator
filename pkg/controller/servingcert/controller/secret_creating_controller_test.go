@@ -613,7 +613,7 @@ func generateServerCertPemForCA(t *testing.T, ca *crypto.CA, headless bool) []by
 	}
 	newServingCert, err := ca.MakeServerCert(
 		subjects,
-		crypto.DefaultCertificateLifetimeInDays,
+		crypto.DefaultCertificateLifetimeDuration,
 	)
 	if err != nil {
 		t.Fatalf("failed to generate serving cert: %v", err)
