@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/clock"
 	kubediff "k8s.io/utils/diff"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
@@ -114,7 +115,7 @@ func TestManageDeployment(t *testing.T) {
 			os.Setenv("CONTROLLER_IMAGE", test.image)
 			operator := &serviceCAOperator{
 				appsv1Client:  appsClient,
-				eventRecorder: events.NewInMemoryRecorder("managedeployment_test"),
+				eventRecorder: events.NewInMemoryRecorder("managedeployment_test", clock.RealClock{}),
 			}
 			serviceCA := &operatorv1.ServiceCA{
 				Spec: operatorv1.ServiceCASpec{

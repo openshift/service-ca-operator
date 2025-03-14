@@ -27,15 +27,20 @@ option go_package = "github.com/openshift/api/networkoperator/v1";
 //
 // EgressRouter is a single egressrouter pod configuration object.
 // +k8s:openapi-gen=true
+// +openshift:compatibility-gen:level=1
+// +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=egressrouters,scope=Namespaced
+// +openshift:api-approved.openshift.io=https://github.com/openshift/api/pull/851
+// +openshift:file-pattern=operatorOrdering=001
+// +kubebuilder:metadata:annotations=include.release.openshift.io/self-managed-high-availability=true
+// +kubebuilder:metadata:annotations=include.release.openshift.io/ibm-cloud-managed=true
 // +kubebuilder:printcolumn:name="Condition",type=string,JSONPath=".status.conditions[*].type"
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=".status.conditions[*].status"
-// +openshift:compatibility-gen:level=1
 message EgressRouter {
   // metadata is the standard object's metadata.
   // More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
-  optional k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
 
   // Specification of the desired egress router.
   // +kubebuilder:validation:Required
@@ -70,7 +75,7 @@ message EgressRouterInterface {
 message EgressRouterList {
   // metadata is the standard list's metadata.
   // More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
-  optional k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
 
   repeated EgressRouter items = 2;
 }
@@ -128,7 +133,7 @@ message EgressRouterStatusCondition {
   // +kubebuilder:validation:Required
   // +required
   // +nullable
-  optional k8s.io.apimachinery.pkg.apis.meta.v1.Time lastTransitionTime = 3;
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.Time lastTransitionTime = 3;
 
   // Reason is the CamelCase reason for the condition's current status.
   optional string reason = 4;

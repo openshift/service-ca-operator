@@ -21,6 +21,7 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/utils/clock"
 	kubediff "k8s.io/utils/diff"
 
 	apiannotations "github.com/openshift/api/annotations"
@@ -600,7 +601,7 @@ func checkGeneratedCertificate(t *testing.T, certData []byte, service *corev1.Se
 }
 
 func generateServerCertPemForCA(t *testing.T, ca *crypto.CA, headless bool) []byte {
-	subjects := sets.NewString(
+	subjects := sets.New(
 		fmt.Sprintf("%s.%s.svc", testServiceName, testNamespace),
 		fmt.Sprintf("%s.%s.svc.cluster.local", testServiceName, testNamespace),
 	)
@@ -645,6 +646,6 @@ func (c testSyncContext) Recorder() events.Recorder {
 func newTestSyncContext(queueKey string) factory.SyncContext {
 	return testSyncContext{
 		queueKey:      queueKey,
-		eventRecorder: events.NewInMemoryRecorder("test"),
+		eventRecorder: events.NewInMemoryRecorder("test", clock.RealClock{}),
 	}
 }
