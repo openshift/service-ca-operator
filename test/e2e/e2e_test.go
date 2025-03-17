@@ -33,6 +33,7 @@ import (
 	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
+	"k8s.io/utils/clock"
 	"k8s.io/utils/pointer"
 
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
@@ -525,7 +526,7 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 			v1.TLSPrivateKeyKey: renewedCAKeyPEM,
 		},
 	}
-	_, _, err = resourceapply.ApplySecret(context.Background(), client.CoreV1(), events.NewInMemoryRecorder("test"), secret)
+	_, _, err = resourceapply.ApplySecret(context.Background(), client.CoreV1(), events.NewInMemoryRecorder("test", clock.RealClock{}), secret)
 	if err != nil {
 		t.Fatalf("error updating secret with test CA: %v", err)
 	}

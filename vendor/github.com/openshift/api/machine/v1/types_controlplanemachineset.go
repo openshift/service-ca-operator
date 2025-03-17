@@ -8,10 +8,9 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// ControlPlaneMachineSet ensures that a specified number of control plane machine replicas are running at any given time.
 // +k8s:openapi-gen=true
-// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:path=controlplanemachinesets,scope=Namespaced
 // +kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas
 // +kubebuilder:printcolumn:name="Desired",type="integer",JSONPath=".spec.replicas",description="Desired Replicas"
@@ -21,6 +20,13 @@ import (
 // +kubebuilder:printcolumn:name="Unavailable",type="integer",JSONPath=".status.unavailableReplicas",description="Observed number of unavailable replicas"
 // +kubebuilder:printcolumn:name="State",type="string",JSONPath=".spec.state",description="ControlPlaneMachineSet state"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="ControlPlaneMachineSet age"
+// +openshift:api-approved.openshift.io=https://github.com/openshift/api/pull/1112
+// +openshift:file-pattern=cvoRunLevel=0000_10,operatorName=control-plane-machine-set,operatorOrdering=01
+// +openshift:capability=MachineAPI
+// +kubebuilder:metadata:annotations="exclude.release.openshift.io/internal-openshift-hosted=true"
+// +kubebuilder:metadata:annotations=include.release.openshift.io/self-managed-high-availability=true
+
+// ControlPlaneMachineSet ensures that a specified number of control plane machine replicas are running at any given time.
 // Compatibility level 1: Stable within a major release for a minimum of 12 months or 3 minor releases (whichever is longer).
 // +openshift:compatibility-gen:level=1
 type ControlPlaneMachineSet struct {
@@ -36,6 +42,22 @@ type ControlPlaneMachineSet struct {
 
 // ControlPlaneMachineSet represents the configuration of the ControlPlaneMachineSet.
 type ControlPlaneMachineSetSpec struct {
+	// machineNamePrefix is the prefix used when creating machine names.
+	// Each machine name will consist of this prefix, followed by
+	// a randomly generated string of 5 characters, and the index of the machine.
+	// It must be a lowercase RFC 1123 subdomain, consisting of lowercase
+	// alphanumeric characters, '-', or '.', and must start and end
+	// with an alphanumeric character.
+	// The prefix must be between 1 and 245 characters in length.
+	// For example, if machineNamePrefix is set to 'control-plane',
+	// and three machines are created, their names might be:
+	// control-plane-abcde-0, control-plane-fghij-1, control-plane-klmno-2
+	// +openshift:validation:FeatureGateAwareXValidation:featureGate=CPMSMachineNamePrefix,rule="!format.dns1123Subdomain().validate(self).hasValue()",message="a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character."
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=245
+	// +openshift:enable:FeatureGate=CPMSMachineNamePrefix
+	// +optional
+	MachineNamePrefix string `json:"machineNamePrefix,omitempty"`
 	// State defines whether the ControlPlaneMachineSet is Active or Inactive.
 	// When Inactive, the ControlPlaneMachineSet will not take any action on the
 	// state of the Machines within the cluster.
@@ -138,7 +160,7 @@ type OpenShiftMachineV1Beta1MachineTemplate struct {
 	// This will be merged into the ProviderSpec given in the template.
 	// This field is optional on platforms that do not require placement information.
 	// +optional
-	FailureDomains FailureDomains `json:"failureDomains,omitempty"`
+	FailureDomains *FailureDomains `json:"failureDomains,omitempty"`
 
 	// ObjectMeta is the standard object metadata
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
@@ -231,24 +253,35 @@ const (
 // +kubebuilder:validation:XValidation:rule="has(self.platform) && self.platform == 'Azure' ?  has(self.azure) : !has(self.azure)",message="azure configuration is required when platform is Azure, and forbidden otherwise"
 // +kubebuilder:validation:XValidation:rule="has(self.platform) && self.platform == 'GCP' ?  has(self.gcp) : !has(self.gcp)",message="gcp configuration is required when platform is GCP, and forbidden otherwise"
 // +kubebuilder:validation:XValidation:rule="has(self.platform) && self.platform == 'OpenStack' ?  has(self.openstack) : !has(self.openstack)",message="openstack configuration is required when platform is OpenStack, and forbidden otherwise"
+// +kubebuilder:validation:XValidation:rule="has(self.platform) && self.platform == 'VSphere' ?  has(self.vsphere) : !has(self.vsphere)",message="vsphere configuration is required when platform is VSphere, and forbidden otherwise"
+// +kubebuilder:validation:XValidation:rule="has(self.platform) && self.platform == 'Nutanix' ?  has(self.nutanix) : !has(self.nutanix)",message="nutanix configuration is required when platform is Nutanix, and forbidden otherwise"
 type FailureDomains struct {
 	// Platform identifies the platform for which the FailureDomain represents.
-	// Currently supported values are AWS, Azure, and GCP.
+	// Currently supported values are AWS, Azure, GCP, OpenStack, VSphere and Nutanix.
 	// +unionDiscriminator
 	// +kubebuilder:validation:Required
 	Platform configv1.PlatformType `json:"platform"`
 
 	// AWS configures failure domain information for the AWS platform.
+	// +listType=atomic
 	// +optional
 	AWS *[]AWSFailureDomain `json:"aws,omitempty"`
 
 	// Azure configures failure domain information for the Azure platform.
+	// +listType=atomic
 	// +optional
 	Azure *[]AzureFailureDomain `json:"azure,omitempty"`
 
 	// GCP configures failure domain information for the GCP platform.
+	// +listType=atomic
 	// +optional
 	GCP *[]GCPFailureDomain `json:"gcp,omitempty"`
+
+	// vsphere configures failure domain information for the VSphere platform.
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	VSphere []VSphereFailureDomain `json:"vsphere,omitempty"`
 
 	// OpenStack configures failure domain information for the OpenStack platform.
 	// +optional
@@ -258,8 +291,15 @@ type FailureDomains struct {
 	// + Some OpenStack deployments may not have availability zones or root volumes.
 	// + Therefore we'll check the length of the list to determine if it's empty instead
 	// + of nil if it would be a pointer.
+	// +listType=atomic
 	// +optional
 	OpenStack []OpenStackFailureDomain `json:"openstack,omitempty"`
+
+	// nutanix configures failure domain information for the Nutanix platform.
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	Nutanix []NutanixFailureDomainReference `json:"nutanix,omitempty"`
 }
 
 // AWSFailureDomain configures failure domain information for the AWS platform.
@@ -303,6 +343,16 @@ type GCPFailureDomain struct {
 	Zone string `json:"zone"`
 }
 
+// VSphereFailureDomain configures failure domain information for the vSphere platform
+type VSphereFailureDomain struct {
+	// name of the failure domain in which the vSphere machine provider will create the VM.
+	// Failure domains are defined in a cluster's config.openshift.io/Infrastructure resource.
+	// When balancing machines across failure domains, the control plane machine set will inject configuration from the
+	// Infrastructure resource into the machine providerSpec to allocate the machine to a failure domain.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+}
+
 // OpenStackFailureDomain configures failure domain information for the OpenStack platform.
 // +kubebuilder:validation:MinProperties:=1
 // +kubebuilder:validation:XValidation:rule="!has(self.availabilityZone) || !has(self.rootVolume) || has(self.rootVolume.availabilityZone)",message="rootVolume.availabilityZone is required when availabilityZone is set"
@@ -327,6 +377,17 @@ type OpenStackFailureDomain struct {
 	// + If it were a reference then omitempty doesn't work and the minProperties validations are no longer valid.
 	// +optional
 	RootVolume *RootVolume `json:"rootVolume,omitempty"`
+}
+
+// NutanixFailureDomainReference refers to the failure domain of the Nutanix platform.
+type NutanixFailureDomainReference struct {
+	// name of the failure domain in which the nutanix machine provider will create the VM.
+	// Failure domains are defined in a cluster's config.openshift.io/Infrastructure resource.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`[a-z0-9]([-a-z0-9]*[a-z0-9])?`
+	Name string `json:"name"`
 }
 
 // RootVolume represents the volume metadata to boot from.

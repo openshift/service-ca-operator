@@ -187,12 +187,13 @@ func (ControlPlaneMachineSetList) SwaggerDoc() map[string]string {
 }
 
 var map_ControlPlaneMachineSetSpec = map[string]string{
-	"":         "ControlPlaneMachineSet represents the configuration of the ControlPlaneMachineSet.",
-	"state":    "State defines whether the ControlPlaneMachineSet is Active or Inactive. When Inactive, the ControlPlaneMachineSet will not take any action on the state of the Machines within the cluster. When Active, the ControlPlaneMachineSet will reconcile the Machines and will update the Machines as necessary. Once Active, a ControlPlaneMachineSet cannot be made Inactive. To prevent further action please remove the ControlPlaneMachineSet.",
-	"replicas": "Replicas defines how many Control Plane Machines should be created by this ControlPlaneMachineSet. This field is immutable and cannot be changed after cluster installation. The ControlPlaneMachineSet only operates with 3 or 5 node control planes, 3 and 5 are the only valid values for this field.",
-	"strategy": "Strategy defines how the ControlPlaneMachineSet will update Machines when it detects a change to the ProviderSpec.",
-	"selector": "Label selector for Machines. Existing Machines selected by this selector will be the ones affected by this ControlPlaneMachineSet. It must match the template's labels. This field is considered immutable after creation of the resource.",
-	"template": "Template describes the Control Plane Machines that will be created by this ControlPlaneMachineSet.",
+	"":                  "ControlPlaneMachineSet represents the configuration of the ControlPlaneMachineSet.",
+	"machineNamePrefix": "machineNamePrefix is the prefix used when creating machine names. Each machine name will consist of this prefix, followed by a randomly generated string of 5 characters, and the index of the machine. It must be a lowercase RFC 1123 subdomain, consisting of lowercase alphanumeric characters, '-', or '.', and must start and end with an alphanumeric character. The prefix must be between 1 and 245 characters in length. For example, if machineNamePrefix is set to 'control-plane', and three machines are created, their names might be: control-plane-abcde-0, control-plane-fghij-1, control-plane-klmno-2",
+	"state":             "State defines whether the ControlPlaneMachineSet is Active or Inactive. When Inactive, the ControlPlaneMachineSet will not take any action on the state of the Machines within the cluster. When Active, the ControlPlaneMachineSet will reconcile the Machines and will update the Machines as necessary. Once Active, a ControlPlaneMachineSet cannot be made Inactive. To prevent further action please remove the ControlPlaneMachineSet.",
+	"replicas":          "Replicas defines how many Control Plane Machines should be created by this ControlPlaneMachineSet. This field is immutable and cannot be changed after cluster installation. The ControlPlaneMachineSet only operates with 3 or 5 node control planes, 3 and 5 are the only valid values for this field.",
+	"strategy":          "Strategy defines how the ControlPlaneMachineSet will update Machines when it detects a change to the ProviderSpec.",
+	"selector":          "Label selector for Machines. Existing Machines selected by this selector will be the ones affected by this ControlPlaneMachineSet. It must match the template's labels. This field is considered immutable after creation of the resource.",
+	"template":          "Template describes the Control Plane Machines that will be created by this ControlPlaneMachineSet.",
 }
 
 func (ControlPlaneMachineSetSpec) SwaggerDoc() map[string]string {
@@ -244,11 +245,13 @@ func (ControlPlaneMachineSetTemplateObjectMeta) SwaggerDoc() map[string]string {
 
 var map_FailureDomains = map[string]string{
 	"":          "FailureDomain represents the different configurations required to spread Machines across failure domains on different platforms.",
-	"platform":  "Platform identifies the platform for which the FailureDomain represents. Currently supported values are AWS, Azure, and GCP.",
+	"platform":  "Platform identifies the platform for which the FailureDomain represents. Currently supported values are AWS, Azure, GCP, OpenStack, VSphere and Nutanix.",
 	"aws":       "AWS configures failure domain information for the AWS platform.",
 	"azure":     "Azure configures failure domain information for the Azure platform.",
 	"gcp":       "GCP configures failure domain information for the GCP platform.",
+	"vsphere":   "vsphere configures failure domain information for the VSphere platform.",
 	"openstack": "OpenStack configures failure domain information for the OpenStack platform.",
+	"nutanix":   "nutanix configures failure domain information for the Nutanix platform.",
 }
 
 func (FailureDomains) SwaggerDoc() map[string]string {
@@ -262,6 +265,15 @@ var map_GCPFailureDomain = map[string]string{
 
 func (GCPFailureDomain) SwaggerDoc() map[string]string {
 	return map_GCPFailureDomain
+}
+
+var map_NutanixFailureDomainReference = map[string]string{
+	"":     "NutanixFailureDomainReference refers to the failure domain of the Nutanix platform.",
+	"name": "name of the failure domain in which the nutanix machine provider will create the VM. Failure domains are defined in a cluster's config.openshift.io/Infrastructure resource.",
+}
+
+func (NutanixFailureDomainReference) SwaggerDoc() map[string]string {
+	return map_NutanixFailureDomainReference
 }
 
 var map_OpenShiftMachineV1Beta1MachineTemplate = map[string]string{
@@ -295,6 +307,15 @@ func (RootVolume) SwaggerDoc() map[string]string {
 	return map_RootVolume
 }
 
+var map_VSphereFailureDomain = map[string]string{
+	"":     "VSphereFailureDomain configures failure domain information for the vSphere platform",
+	"name": "name of the failure domain in which the vSphere machine provider will create the VM. Failure domains are defined in a cluster's config.openshift.io/Infrastructure resource. When balancing machines across failure domains, the control plane machine set will inject configuration from the Infrastructure resource into the machine providerSpec to allocate the machine to a failure domain.",
+}
+
+func (VSphereFailureDomain) SwaggerDoc() map[string]string {
+	return map_VSphereFailureDomain
+}
+
 var map_NutanixCategory = map[string]string{
 	"":      "NutanixCategory identifies a pair of prism category key and value",
 	"key":   "key is the prism category key name",
@@ -303,6 +324,17 @@ var map_NutanixCategory = map[string]string{
 
 func (NutanixCategory) SwaggerDoc() map[string]string {
 	return map_NutanixCategory
+}
+
+var map_NutanixGPU = map[string]string{
+	"":         "NutanixGPU holds the identity of a Nutanix GPU resource in the Prism Central",
+	"type":     "type is the identifier type of the GPU device. Valid values are Name and DeviceID.",
+	"deviceID": "deviceID is the GPU device ID with the integer value.",
+	"name":     "name is the GPU device name",
+}
+
+func (NutanixGPU) SwaggerDoc() map[string]string {
+	return map_NutanixGPU
 }
 
 var map_NutanixMachineProviderConfig = map[string]string{
@@ -318,8 +350,11 @@ var map_NutanixMachineProviderConfig = map[string]string{
 	"bootType":          "bootType indicates the boot type (Legacy, UEFI or SecureBoot) the Machine's VM uses to boot. If this field is empty or omitted, the VM will use the default boot type \"Legacy\" to boot. \"SecureBoot\" depends on \"UEFI\" boot, i.e., enabling \"SecureBoot\" means that \"UEFI\" boot is also enabled.",
 	"project":           "project optionally identifies a Prism project for the Machine's VM to associate with.",
 	"categories":        "categories optionally adds one or more prism categories (each with key and value) for the Machine's VM to associate with. All the category key and value pairs specified must already exist in the prism central.",
+	"gpus":              "gpus is a list of GPU devices to attach to the machine's VM. The GPU devices should already exist in Prism Central and associated with one of the Prism Element's hosts and available for the VM to attach (in \"UNUSED\" status).",
+	"dataDisks":         "dataDisks holds information of the data disks to attach to the Machine's VM",
 	"userDataSecret":    "userDataSecret is a local reference to a secret that contains the UserData to apply to the VM",
 	"credentialsSecret": "credentialsSecret is a local reference to a secret that contains the credentials data to access Nutanix PC client",
+	"failureDomain":     "failureDomain refers to the name of the FailureDomain with which this Machine is associated. If this is configured, the Nutanix machine controller will use the prism_central endpoint and credentials defined in the referenced FailureDomain to communicate to the prism_central. It will also verify that the 'cluster' and subnets' configuration in the NutanixMachineProviderConfig is consistent with that in the referenced failureDomain.",
 }
 
 func (NutanixMachineProviderConfig) SwaggerDoc() map[string]string {
@@ -345,6 +380,49 @@ var map_NutanixResourceIdentifier = map[string]string{
 
 func (NutanixResourceIdentifier) SwaggerDoc() map[string]string {
 	return map_NutanixResourceIdentifier
+}
+
+var map_NutanixStorageResourceIdentifier = map[string]string{
+	"":     "NutanixStorageResourceIdentifier holds the identity of a Nutanix storage resource (storage_container, etc.)",
+	"type": "type is the identifier type to use for this resource. The valid value is \"uuid\".",
+	"uuid": "uuid is the UUID of the storage resource in the PC.",
+}
+
+func (NutanixStorageResourceIdentifier) SwaggerDoc() map[string]string {
+	return map_NutanixStorageResourceIdentifier
+}
+
+var map_NutanixVMDisk = map[string]string{
+	"":                 "NutanixDataDisk specifies the VM data disk configuration parameters.",
+	"diskSize":         "diskSize is size (in Quantity format) of the disk attached to the VM. See https://pkg.go.dev/k8s.io/apimachinery/pkg/api/resource#Format for the Quantity format and example documentation. The minimum diskSize is 1GB.",
+	"deviceProperties": "deviceProperties are the properties of the disk device.",
+	"storageConfig":    "storageConfig are the storage configuration parameters of the VM disks.",
+	"dataSource":       "dataSource refers to a data source image for the VM disk.",
+}
+
+func (NutanixVMDisk) SwaggerDoc() map[string]string {
+	return map_NutanixVMDisk
+}
+
+var map_NutanixVMDiskDeviceProperties = map[string]string{
+	"":            "NutanixVMDiskDeviceProperties specifies the disk device properties.",
+	"deviceType":  "deviceType specifies the disk device type. The valid values are \"Disk\" and \"CDRom\", and the default is \"Disk\".",
+	"adapterType": "adapterType is the adapter type of the disk address. If the deviceType is \"Disk\", the valid adapterType can be \"SCSI\", \"IDE\", \"PCI\", \"SATA\" or \"SPAPR\". If the deviceType is \"CDRom\", the valid adapterType can be \"IDE\" or \"SATA\".",
+	"deviceIndex": "deviceIndex is the index of the disk address. The valid values are non-negative integers, with the default value 0. For a Machine VM, the deviceIndex for the disks with the same deviceType.adapterType combination should start from 0 and increase consecutively afterwards. Note that for each Machine VM, the Disk.SCSI.0 and CDRom.IDE.0 are reserved to be used by the VM's system. So for dataDisks of Disk.SCSI and CDRom.IDE, the deviceIndex should start from 1.",
+}
+
+func (NutanixVMDiskDeviceProperties) SwaggerDoc() map[string]string {
+	return map_NutanixVMDiskDeviceProperties
+}
+
+var map_NutanixVMStorageConfig = map[string]string{
+	"":                 "NutanixVMStorageConfig specifies the storage configuration parameters for VM disks.",
+	"diskMode":         "diskMode specifies the disk mode. The valid values are Standard and Flash, and the default is Standard.",
+	"storageContainer": "storageContainer refers to the storage_container used by the VM disk.",
+}
+
+func (NutanixVMStorageConfig) SwaggerDoc() map[string]string {
+	return map_NutanixVMStorageConfig
 }
 
 var map_LoadBalancerReference = map[string]string{

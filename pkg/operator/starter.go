@@ -60,6 +60,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	)
 
 	operatorClient := &operatorclient.OperatorClient{
+		Clock:     controllerContext.Clock,
 		Informers: operatorConfigInformers,
 		Client:    operatorConfigClient.OperatorV1(),
 	}
@@ -83,6 +84,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	)
 
 	resourceSyncController := resourcesynccontroller.NewResourceSyncController(
+		"resource-sync",
 		operatorClient,
 		kubeInformersForNamespaces,
 		v1helpers.CachedSecretGetter(kubeClient.CoreV1(), kubeInformersForNamespaces),
