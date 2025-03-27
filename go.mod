@@ -114,8 +114,4 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace (
-	github.com/openshift/api => github.com/openshift/api v0.0.0-20240306072808-610cbc77dbab
-	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20230926161409-848405da69e1
-	vbom.ml/util => github.com/fvbommel/util v0.0.0-20180919145318-efcd4e0f9787
-)
+replace vbom.ml/util => github.com/fvbommel/util v0.0.0-20180919145318-efcd4e0f9787
