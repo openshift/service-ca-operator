@@ -600,7 +600,7 @@ func checkGeneratedCertificate(t *testing.T, certData []byte, service *corev1.Se
 }
 
 func generateServerCertPemForCA(t *testing.T, ca *crypto.CA, headless bool) []byte {
-	subjects := sets.NewString(
+	subjects := sets.New(
 		fmt.Sprintf("%s.%s.svc", testServiceName, testNamespace),
 		fmt.Sprintf("%s.%s.svc.cluster.local", testServiceName, testNamespace),
 	)
