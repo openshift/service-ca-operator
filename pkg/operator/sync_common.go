@@ -26,7 +26,9 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
 )
 
-const resourcePath = "v4.0.0/controller/"
+const (
+	resourcePath = "v4.0.0/controller/"
+)
 
 func (c *serviceCAOperator) manageControllerNS(ctx context.Context) (bool, error) {
 	_, modified, err := resourceapply.ApplyNamespace(ctx, c.corev1Client, c.eventRecorder, resourceread.ReadNamespaceV1OrDie(v4_00_assets.MustAsset(resourcePath+"ns.yaml")))
@@ -105,11 +107,11 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 	if existingCert == nil {
 		// Secret does not exist or lacks the expected cert.
 		validityDuration := serviceCAConfig.CAConfig.ValidityDurationForTesting
-		if err := initializeSigningSecret(secret, validityDuration); err != nil {
+		if err := initializeSigningSecret(secret, validityDuration, c.signingCertificateLifetime); err != nil {
 			return false, err
 		}
 	} else {
-		rotationMsg, err = maybeRotateSigningSecret(existing, existingCert, serviceCAConfig)
+		rotationMsg, err = maybeRotateSigningSecret(existing, existingCert, serviceCAConfig, c.minimumTrustDuration, c.signingCertificateLifetime)
 		if err != nil {
 			return false, fmt.Errorf("failed to rotate signing CA: %v", err)
 		}
@@ -140,11 +142,11 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 // PEM-encoded certificate and private key of a new self-signed
 // CA. The duration, if non-zero, will be used to set the
 // expiry of the CA.
-func initializeSigningSecret(secret *corev1.Secret, duration time.Duration) error {
+func initializeSigningSecret(secret *corev1.Secret, duration time.Duration, lifetime time.Duration) error {
 	name := serviceServingCertSignerName()
 	klog.V(4).Infof("generating signing CA: %s", name)
 
-	ca, err := crypto.MakeSelfSignedCAConfig(name, SigningCertificateLifetimeInDays)
+	ca, err := crypto.MakeSelfSignedCAConfig(name, lifetime)
 	if err != nil {
 		return err
 	}

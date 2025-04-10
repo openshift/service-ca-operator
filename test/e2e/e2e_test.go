@@ -69,6 +69,8 @@ const (
 	// Polling for resources related to rotation may be delayed by the number of resources
 	// that are updated in the cluster in response to rotation.
 	rotationPollTimeout = 4 * time.Minute
+
+	signingCertificateLifetime = 790 * 24 * time.Hour
 )
 
 // checkComponents verifies that the components of the operator are running.
@@ -548,7 +550,7 @@ func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *r
 
 	// Set a custom validity duration longer than the default to
 	// validate that a custom expiry on rotation is possible.
-	defaultDuration := operator.SigningCertificateLifetimeInDays * time.Hour * 24
+	defaultDuration := signingCertificateLifetime
 	customDuration := defaultDuration + 1*time.Hour
 
 	// Trigger a forced rotation by updating the operator config
@@ -842,7 +844,9 @@ func pollForResource(t *testing.T, resourceID string, timeout time.Duration, acc
 }
 
 func tlogf(t *testing.T, fmt string, args ...interface{}) {
-	t.Logf("%s: "+fmt, time.Now().Format(time.RFC1123Z), args)
+	argsWithTimestamp := []interface{}{time.Now().Format(time.RFC1123Z)}
+	argsWithTimestamp = append(argsWithTimestamp, args...)
+	t.Logf("%s: "+fmt, argsWithTimestamp...)
 }
 
 func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Clientset, testNS, host string, port int32, updatedServerCert string) {

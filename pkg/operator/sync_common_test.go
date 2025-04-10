@@ -44,7 +44,7 @@ func TestInitializeSigningSecret(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			now := time.Now()
 			secret := &corev1.Secret{}
-			initializeSigningSecret(secret, 0)
+			initializeSigningSecret(secret, 0, tc.duration)
 
 			// Check that the initialized key pair is valid
 			rawCert := secret.Data[corev1.TLSCertKey]
@@ -59,7 +59,7 @@ func TestInitializeSigningSecret(t *testing.T) {
 			expiry := ca.Config.Certs[0].NotAfter
 			var minimumExpiry time.Time
 			if tc.duration == 0*time.Nanosecond {
-				minimumExpiry = now.Add(SigningCertificateLifetimeInDays)
+				minimumExpiry = now.Add(signingCertificateLifetime)
 			} else {
 				minimumExpiry = now.Add(tc.duration)
 			}

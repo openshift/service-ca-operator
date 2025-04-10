@@ -20,6 +20,11 @@ import (
 	"github.com/openshift/service-ca-operator/test/util"
 )
 
+const (
+	minimumTrustDuration       = time.Hour + 15*time.Minute
+	signingCertificateLifetime = time.Hour*2 + 30*time.Minute
+)
+
 func caToSigningSecret(t *testing.T, caConfig *crypto.TLSCertificateConfig) (*corev1.Secret, *x509.Certificate) {
 	certPEM, keyPEM, err := caConfig.GetPEMBytes()
 	if err != nil {
@@ -35,8 +40,9 @@ func caToSigningSecret(t *testing.T, caConfig *crypto.TLSCertificateConfig) (*co
 
 // TestMaybeRotateSigningSecret validates the rotation of a signing secret when required.
 func TestMaybeRotateSigningSecret(t *testing.T) {
+
 	// Create a brand new signing secret
-	newCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", SigningCertificateLifetimeInDays)
+	newCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", time.Hour*2)
 	if err != nil {
 		t.Fatalf("error generating a new ca: %v", err)
 	}
@@ -99,7 +105,7 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 				},
 			}
 			secret := tc.secret.DeepCopy()
-			rotationMessage, err := maybeRotateSigningSecret(secret, tc.caCert, serviceCAConfig)
+			rotationMessage, err := maybeRotateSigningSecret(secret, tc.caCert, serviceCAConfig, minimumTrustDuration, signingCertificateLifetime)
 			if err != nil {
 				t.Fatalf("error rotating signing secret: %v", err)
 			}
@@ -181,7 +187,7 @@ func TestRotateSigningCA(t *testing.T) {
 		},
 	}
 
-	oldCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", SigningCertificateLifetimeInDays)
+	oldCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", signingCertificateLifetime)
 	if err != nil {
 		t.Fatalf("error generating a new ca: %v", err)
 	}
@@ -195,7 +201,7 @@ func TestRotateSigningCA(t *testing.T) {
 	}
 
 	// Generate a service cert with the pre-rotation CA
-	oldServingCert, err := controller.MakeServingCert(dnsSuffix, oldCA, nil, service)
+	oldServingCert, err := controller.MakeServingCert(dnsSuffix, oldCA, nil, service, time.Hour)
 	if err != nil {
 		t.Fatalf("error generating serving cert from old ca: %v", err)
 	}
@@ -213,7 +219,7 @@ func TestRotateSigningCA(t *testing.T) {
 	}
 
 	// Rotate the CA
-	newSigningCA, err := rotateSigningCA(renewedCAConfig.Certs[0], renewedCAConfig.Key.(*rsa.PrivateKey))
+	newSigningCA, err := rotateSigningCA(renewedCAConfig.Certs[0], renewedCAConfig.Key.(*rsa.PrivateKey), minimumTrustDuration, signingCertificateLifetime)
 	if err != nil {
 		t.Fatalf("Error rotating signing ca: %v", err)
 	}
@@ -227,7 +233,7 @@ func TestRotateSigningCA(t *testing.T) {
 	}
 
 	// Generate a service cert with the post-rotation CA
-	newServingCert, err := controller.MakeServingCert(dnsSuffix, newCA, newSigningCA.intermediateCACert, service)
+	newServingCert, err := controller.MakeServingCert(dnsSuffix, newCA, newSigningCA.intermediateCACert, service, time.Hour)
 	if err != nil {
 		t.Fatalf("Error generating new service cert: %v", err)
 	}
@@ -258,14 +264,14 @@ func TestRotateSigningCA(t *testing.T) {
 // and uses a serial number distinct from that of the target CA cert.
 func TestCreateIntermediateCACert(t *testing.T) {
 	// Create the signing CA
-	signingCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", SigningCertificateLifetimeInDays)
+	signingCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", signingCertificateLifetime)
 	if err != nil {
 		t.Fatalf("error generating a new ca: %v", err)
 	}
 	signingCACert := signingCAConfig.Certs[0]
 
 	// Create the CA targeted for signing
-	targetCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", SigningCertificateLifetimeInDays)
+	targetCAConfig, err := crypto.MakeSelfSignedCAConfig("foo", signingCertificateLifetime)
 	if err != nil {
 		t.Fatalf("error generating a new ca: %v", err)
 	}
