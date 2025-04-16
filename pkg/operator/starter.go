@@ -25,6 +25,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/starter"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 )
 
@@ -108,24 +109,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		controllerContext.EventRecorder,
 	)
 
-	klog.Infof("Fetching FeatureGates")
 	stopChan := ctx.Done()
-	featureGateAccessor := featuregates.NewFeatureGateAccess(
-		status.VersionForOperatorFromEnv(), "0.0.1-snapshot",
-		configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
-		controllerContext.EventRecorder,
-	)
-	go featureGateAccessor.Run(ctx)
-	go configInformers.Start(stopChan)
-
-	var featureGates featuregates.FeatureGate
-	select {
-	case <-featureGateAccessor.InitialFeatureGatesObserved():
-		featureGates, _ = featureGateAccessor.CurrentFeatureGates()
-	case <-time.After(1 * time.Minute):
-		klog.Errorf("timed out waiting for FeatureGate detection")
-		return fmt.Errorf("timed out waiting for FeatureGate detection")
-	}
 
 	// The minimum remaining duration of the service CA needs to exceeds the maximum
 	// supported upgrade interval (currently 12 months). A duration of 26 months
@@ -150,9 +134,30 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	// trusted) should be valid for at least this long.
 	minimumTrustDuration := 395 * 24 * time.Hour
 
-	if featureGates.Enabled(features.FeatureShortCertRotation) {
-		minimumTrustDuration = time.Hour + 15*time.Minute
-		signingCertificateLifetime = time.Hour*2 + 30*time.Minute
+	if ok, err := starter.IsMicroshift(ctx, kubeClient); err == nil && !ok {
+		klog.Infof("Fetching FeatureGates")
+		featureGateAccessor := featuregates.NewFeatureGateAccess(
+			status.VersionForOperatorFromEnv(), "0.0.1-snapshot",
+			configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
+			controllerContext.EventRecorder,
+		)
+		go featureGateAccessor.Run(ctx)
+		go configInformers.Start(stopChan)
+
+		var featureGates featuregates.FeatureGate
+		select {
+		case <-featureGateAccessor.InitialFeatureGatesObserved():
+			featureGates, _ = featureGateAccessor.CurrentFeatureGates()
+		case <-time.After(1 * time.Minute):
+			klog.Errorf("timed out waiting for FeatureGate detection")
+			return fmt.Errorf("timed out waiting for FeatureGate detection")
+		}
+		if featureGates.Enabled(features.FeatureShortCertRotation) {
+			minimumTrustDuration = time.Hour + 15*time.Minute
+			signingCertificateLifetime = time.Hour*2 + 30*time.Minute
+		}
+	} else if err != nil {
+		return err
 	}
 	klog.Infof("Setting signing certificate lifetime to %v, minimum trust duration to %v", signingCertificateLifetime, minimumTrustDuration)
 

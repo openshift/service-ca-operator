@@ -13,6 +13,9 @@ import (
 	"k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	features "github.com/openshift/api/features"
 	configeversionedclient "github.com/openshift/client-go/config/clientset/versioned"
 	configexternalinformers "github.com/openshift/client-go/config/informers/externalversions"
@@ -50,33 +53,36 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	if err != nil {
 		return fmt.Errorf("failed to create config client: %w", err)
 	}
-
 	configInformers := configexternalinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
-
 	stopChan := ctx.Done()
-	klog.Infof("ShortCertRotation: fetching FeatureGates")
-	featureGateAccessor := featuregates.NewFeatureGateAccess(
-		status.VersionForOperandFromEnv(), "0.0.1-snapshot",
-		configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
-		controllerContext.EventRecorder,
-	)
-	go featureGateAccessor.Run(ctx)
-	configInformers.Start(stopChan)
-
-	var featureGates featuregates.FeatureGate
-	select {
-	case <-featureGateAccessor.InitialFeatureGatesObserved():
-		featureGates, _ = featureGateAccessor.CurrentFeatureGates()
-	case <-time.After(1 * time.Minute):
-		klog.Errorf("timed out waiting for FeatureGate detection")
-		return fmt.Errorf("timed out waiting for FeatureGate detection")
-	}
 
 	minTimeLeftForCert := time.Hour
 	certificateLifetime := 2 * 365 * 24 * time.Hour
-	if featureGates.Enabled(features.FeatureShortCertRotation) {
-		minTimeLeftForCert = time.Hour
-		certificateLifetime = time.Hour * 2
+	if ok, err := IsMicroshift(ctx, kubeClient); err == nil && !ok {
+		klog.Infof("ShortCertRotation: fetching FeatureGates")
+		featureGateAccessor := featuregates.NewFeatureGateAccess(
+			status.VersionForOperandFromEnv(), "0.0.1-snapshot",
+			configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
+			controllerContext.EventRecorder,
+		)
+		go featureGateAccessor.Run(ctx)
+		configInformers.Start(stopChan)
+
+		var featureGates featuregates.FeatureGate
+		select {
+		case <-featureGateAccessor.InitialFeatureGatesObserved():
+			featureGates, _ = featureGateAccessor.CurrentFeatureGates()
+		case <-time.After(1 * time.Minute):
+			klog.Errorf("timed out waiting for FeatureGate detection")
+			return fmt.Errorf("timed out waiting for FeatureGate detection")
+		}
+
+		if featureGates.Enabled(features.FeatureShortCertRotation) {
+			minTimeLeftForCert = time.Hour
+			certificateLifetime = time.Hour * 2
+		}
+	} else if err != nil {
+		return err
 	}
 	klog.Infof("Setting certificate lifetime to %v, refresh certificate at %v", certificateLifetime, minTimeLeftForCert)
 
@@ -138,4 +144,15 @@ func readIntermediateCACert(filename string) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("expected 1 intermediate cert, got %d", len(certs))
 	}
 	return certs[0], nil
+}
+
+// IsMicroshift checks if the operator is running on Microshift.
+func IsMicroshift(ctx context.Context, kubeClient *kubernetes.Clientset) (bool, error) {
+	if _, err := kubeClient.CoreV1().ConfigMaps("kube-public").Get(ctx, "microshift-version", metav1.GetOptions{}); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("Failed to check if running on microshift: %v", err)
+	}
+	return true, nil
 }
