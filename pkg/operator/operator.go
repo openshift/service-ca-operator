@@ -37,6 +37,7 @@ type serviceCAOperator struct {
 
 	minimumTrustDuration       time.Duration
 	signingCertificateLifetime time.Duration
+	shortCertRotationEnabled   bool
 }
 
 func NewServiceCAOperator(
@@ -51,6 +52,7 @@ func NewServiceCAOperator(
 	eventRecorder events.Recorder,
 	minimumTrustDuration time.Duration,
 	signingCertificateLifetime time.Duration,
+	shortCertRotationEnabled bool,
 ) factory.Controller {
 	c := &serviceCAOperator{
 		operatorClient:       operatorClient,
@@ -65,6 +67,7 @@ func NewServiceCAOperator(
 
 		minimumTrustDuration:       minimumTrustDuration,
 		signingCertificateLifetime: signingCertificateLifetime,
+		shortCertRotationEnabled:   shortCertRotationEnabled,
 	}
 
 	return factory.New().WithInformers(

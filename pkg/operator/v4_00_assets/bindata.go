@@ -142,14 +142,6 @@ rules:
   - get
   - list
   - watch
-- apiGroups:
-  - config.openshift.io
-  resources:
-  - featuregates
-  verbs:
-  - get
-  - list
-  - watch
 `)
 
 func v400ControllerClusterroleYamlBytes() ([]byte, error) {
@@ -225,9 +217,6 @@ spec:
       - name: service-ca-controller
         image: ${IMAGE}
         imagePullPolicy: IfNotPresent
-        env:
-        - name: OPERAND_IMAGE_VERSION
-          value: "0.0.1-snapshot"
         terminationMessagePolicy: FallbackTo
         command: ["service-ca-operator", "controller"]
         ports:
