@@ -13,17 +13,14 @@ import (
 	"k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
 
-	features "github.com/openshift/api/features"
 	configeversionedclient "github.com/openshift/client-go/config/clientset/versioned"
 	configexternalinformers "github.com/openshift/client-go/config/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/crypto"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
-	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/controller"
 )
 
-func StartServiceServingCertSigner(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
+func StartServiceServingCertSigner(ctx context.Context, controllerContext *controllercmd.ControllerContext, shortCertRotationEnabled bool) error {
 	// TODO(marun) Allow the following values to be supplied via argument
 	certFile := "/var/run/secrets/signing-key/tls.crt"
 	keyFile := "/var/run/secrets/signing-key/tls.key"
@@ -54,27 +51,11 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	configInformers := configexternalinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
 
 	stopChan := ctx.Done()
-	klog.Infof("ShortCertRotation: fetching FeatureGates")
-	featureGateAccessor := featuregates.NewFeatureGateAccess(
-		status.VersionForOperandFromEnv(), "0.0.1-snapshot",
-		configInformers.Config().V1().ClusterVersions(), configInformers.Config().V1().FeatureGates(),
-		controllerContext.EventRecorder,
-	)
-	go featureGateAccessor.Run(ctx)
 	configInformers.Start(stopChan)
-
-	var featureGates featuregates.FeatureGate
-	select {
-	case <-featureGateAccessor.InitialFeatureGatesObserved():
-		featureGates, _ = featureGateAccessor.CurrentFeatureGates()
-	case <-time.After(1 * time.Minute):
-		klog.Errorf("timed out waiting for FeatureGate detection")
-		return fmt.Errorf("timed out waiting for FeatureGate detection")
-	}
 
 	minTimeLeftForCert := time.Hour
 	certificateLifetime := 2 * 365 * 24 * time.Hour
-	if featureGates.Enabled(features.FeatureShortCertRotation) {
+	if shortCertRotationEnabled {
 		minTimeLeftForCert = time.Hour
 		certificateLifetime = time.Hour * 2
 	}
