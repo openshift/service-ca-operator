@@ -203,6 +203,11 @@ func (c *serviceCAOperator) manageDeployment(ctx context.Context, options *opera
 	required := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset(resourcePath + "deployment.yaml"))
 	required.Spec.Template.Spec.Containers[0].Image = os.Getenv("CONTROLLER_IMAGE")
 	required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, fmt.Sprintf("-v=%d", loglevel.LogLevelToVerbosity(options.Spec.LogLevel)))
+
+	if c.shortCertRotationEnabled {
+		required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, "--feature-gates=ShortCertRotation=true")
+	}
+
 	if runOnWorkers {
 		required.Spec.Template.Spec.NodeSelector = map[string]string{}
 	}

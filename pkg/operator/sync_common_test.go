@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,11 +81,12 @@ func TestManageDeployment(t *testing.T) {
 	baseDeployment := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset(resourcePath + "deployment.yaml"))
 	baseDeploymentPopulated := deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).valueOrDie()
 	tests := []struct {
-		name               string
-		runOnWorkers       bool
-		loglevel           operatorv1.LogLevel
-		image              string
-		expectedDeployment *appsv1.Deployment
+		name                     string
+		runOnWorkers             bool
+		loglevel                 operatorv1.LogLevel
+		image                    string
+		shortCertRotationEnabled bool
+		expectedDeployment       *appsv1.Deployment
 	}{
 		{
 			name:               "base deployment",
@@ -107,6 +109,14 @@ func TestManageDeployment(t *testing.T) {
 			loglevel:           operatorv1.Normal,
 			expectedDeployment: deployment(baseDeployment).withImage("barbaz").withLogLevel(operatorv1.Normal).withNodeSelector(map[string]string{}).valueOrDie(),
 		},
+		{
+			name:                     "feature gates",
+			image:                    "foobar",
+			runOnWorkers:             false,
+			loglevel:                 operatorv1.Normal,
+			shortCertRotationEnabled: true,
+			expectedDeployment:       deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).withFeatureGates([]string{"ShortCertRotation=true"}).valueOrDie(),
+		},
 	}
 
 	for _, test := range tests {
@@ -114,8 +124,9 @@ func TestManageDeployment(t *testing.T) {
 			appsClient := fake.NewSimpleClientset(baseDeploymentPopulated).AppsV1()
 			os.Setenv("CONTROLLER_IMAGE", test.image)
 			operator := &serviceCAOperator{
-				appsv1Client:  appsClient,
-				eventRecorder: events.NewInMemoryRecorder("managedeployment_test", clock.RealClock{}),
+				appsv1Client:             appsClient,
+				eventRecorder:            events.NewInMemoryRecorder("managedeployment_test", clock.RealClock{}),
+				shortCertRotationEnabled: test.shortCertRotationEnabled,
 			}
 			serviceCA := &operatorv1.ServiceCA{
 				Spec: operatorv1.ServiceCASpec{
@@ -179,5 +190,13 @@ func (w *deploymentWrapper) withLogLevel(logLevel operatorv1.LogLevel) *deployme
 
 func (w *deploymentWrapper) withNodeSelector(selector map[string]string) *deploymentWrapper {
 	w.Deployment.Spec.Template.Spec.NodeSelector = selector
+	return w
+}
+
+func (w *deploymentWrapper) withFeatureGates(featureGates []string) *deploymentWrapper {
+	if len(w.Deployment.Spec.Template.Spec.Containers) > 0 {
+		arg := fmt.Sprintf("--feature-gates=%s", strings.Join(featureGates, ","))
+		w.Deployment.Spec.Template.Spec.Containers[0].Args = append(w.Deployment.Spec.Template.Spec.Containers[0].Args, arg)
+	}
 	return w
 }
