@@ -479,6 +479,19 @@ func TestE2E(t *testing.T) {
 		testCABundleInjectionConfigMapUpdate(t)
 	})
 
+	// test ca bundle injection secret
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("ca-bundle-injection-secret", func(t *testing.T) {
+		testCABundleInjectionSecret(t)
+	})
+
+	// test updated data in ca bundle injection secret will be stomped on
+	t.Run("ca-bundle-injection-secret-update", func(t *testing.T) {
+		testCABundleInjectionSecretUpdate(t)
+	})
+
 	// test vulnerable-legacy ca bundle injection configmap
 	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
 	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
