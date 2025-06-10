@@ -1,12 +1,12 @@
 module github.com/openshift/service-ca-operator
 
-go 1.22
+go 1.22.0
 
 require (
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/google/uuid v1.3.0
 	github.com/openshift/api v0.0.0-20240405095747-3e50337fcaea
-	github.com/openshift/build-machinery-go v0.0.0-20231128094528-1e9b1b0595c8
+	github.com/openshift/build-machinery-go v0.0.0-20250602125535-1b6d00b8c37c
 	github.com/openshift/client-go v0.0.0-20240405120947-c67c8325cdd8
 	github.com/openshift/library-go v0.0.0-20240416003630-5db38d8ad6a4
 	github.com/prometheus/client_golang v1.16.0
