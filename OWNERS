@@ -1,7 +1,9 @@
 reviewers:
-  - stlaz
+  - p0lyn0mial
+  - vrutkovs
+  - bertinatto
 approvers:
-  - stlaz
-  - sttts
-  - deads2k
+  - p0lyn0mial
+  - vrutkovs
+  - bertinatto
 component: service-ca
