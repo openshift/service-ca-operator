@@ -1,9 +1,11 @@
 all: build
 .PHONY: all
 
+GO_PACKAGE := github.com/openshift/service-ca-operator
+GO_LD_FLAGS := -ldflags "-X $(GO_PACKAGE)/pkg/version.versionFromGit=$(shell git describe --long --tags --abbrev=7 --match 'v[0-9]*')"
+
 # Include the library makefile
-include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
-	golang.mk \
+include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/,	golang.mk \
 	targets/openshift/bindata.mk \
 	targets/openshift/deps-gomod.mk \
 	targets/openshift/images.mk \
@@ -40,6 +42,38 @@ $(call add-bindata,v4.0.0,./bindata/v4.0.0/...,bindata,v4_00_assets,pkg/operator
 $(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
 $(call verify-golang-versions,Dockerfile.rhel7)
+
+# -------------------------------------------------------------------
+# OpenShift Tests Extension (Service CA Operator)
+# -------------------------------------------------------------------
+TESTS_EXT_BINARY := service-ca-operator-tests-ext
+TESTS_EXT_PACKAGE := ./cmd/service-ca-operator-tests-ext
+
+TESTS_EXT_GIT_COMMIT := $(shell git rev-parse --short HEAD)
+TESTS_EXT_BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+TESTS_EXT_GIT_TREE_STATE := $(shell if git diff --quiet; then echo clean; else echo dirty; fi)
+
+TESTS_EXT_LDFLAGS := -X 'github.com/openshift-eng/openshift-tests-extension/pkg/version.CommitFromGit=$(TESTS_EXT_GIT_COMMIT)' \
+					 -X 'github.com/openshift-eng/openshift-tests-extension/pkg/version.BuildDate=$(TESTS_EXT_BUILD_DATE)' \
+					 -X 'github.com/openshift-eng/openshift-tests-extension/pkg/version.GitTreeState=$(TESTS_EXT_GIT_TREE_STATE)'
+
+# -------------------------------------------------------------------
+# Build binary with metadata (CI-compliant)
+# -------------------------------------------------------------------
+.PHONY: tests-ext-build
+tests-ext-build:
+	GOOS=$(GOOS) GOARCH=$(GOARCH) GO_COMPLIANCE_POLICY=exempt_all CGO_ENABLED=0 \
+	go build -o $(TESTS_EXT_BINARY) -ldflags "$(TESTS_EXT_LDFLAGS)" $(TESTS_EXT_PACKAGE)
+
+# -------------------------------------------------------------------
+# Run "update" and strip env-specific metadata
+# -------------------------------------------------------------------
+.PHONY: tests-ext-update
+tests-ext-update: tests-ext-build
+	./$(TESTS_EXT_BINARY) update
+	for f in .openshift-tests-extension/*.json; do \
+		jq 'map(del(.codeLocations))' "$$f" > tmpp && mv tmpp "$$f"; \
+	done
 
 clean:
 	$(RM) ./service-ca-operator
