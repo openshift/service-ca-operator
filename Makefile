@@ -5,7 +5,8 @@ GO_PACKAGE := github.com/openshift/service-ca-operator
 GO_LD_FLAGS := -ldflags "-X $(GO_PACKAGE)/pkg/version.versionFromGit=$(shell git describe --long --tags --abbrev=7 --match 'v[0-9]*')"
 
 # Include the library makefile
-include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/,	golang.mk \
+include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
+	golang.mk \
 	targets/openshift/bindata.mk \
 	targets/openshift/deps-gomod.mk \
 	targets/openshift/images.mk \
