@@ -294,6 +294,11 @@ func ApplyConfigMapImproved(ctx context.Context, client coreclientv1.ConfigMapsG
 	serviceCAInjected := required.Annotations["service.beta.openshift.io/inject-cabundle"] == "true"
 	_, newServiceCARequired := required.Data["service-ca.crt"]
 
+	// conflict check
+	if caBundleInjected && serviceCAInjected {
+		return nil, false, fmt.Errorf("ConfigMap %s/%s has both service-ca and trusted-ca injection enabled, which is not allowed", required.Namespace, required.Name)
+	}
+
 	var modifiedKeys []string
 	for existingCopyKey, existingCopyValue := range existingCopy.Data {
 		// if we're injecting a ca-bundle or a service-ca and the required isn't forcing the value, then don't use the value of existing
