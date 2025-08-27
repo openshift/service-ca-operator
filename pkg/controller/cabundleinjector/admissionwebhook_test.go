@@ -70,6 +70,15 @@ func TestWebhookCABundleInjectorSync(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "conflicting annotations",
+			webhooks: []admissionregv1.ValidatingWebhook{
+				{
+					ClientConfig: admissionregv1.WebhookClientConfig{},
+				},
+			},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -81,6 +90,12 @@ func TestWebhookCABundleInjectorSync(t *testing.T) {
 					},
 				},
 				Webhooks: tt.webhooks,
+			}
+			if tt.name == "conflicting annotations" {
+				testWebhook.ObjectMeta.Annotations["service.beta.openshift.io/inject-cabundle"] = "true"
+				testWebhook.ObjectMeta.Labels = map[string]string{
+					"config.openshift.io/inject-trusted-cabundle": "true",
+				}
 			}
 
 			testCtx, cancel := context.WithCancel(context.Background())
