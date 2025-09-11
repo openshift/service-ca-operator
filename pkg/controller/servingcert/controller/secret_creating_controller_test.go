@@ -126,6 +126,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 	// add test cases
 	tests := []struct {
 		name                       string
+		secretName                 string
 		secretData                 []byte
 		serviceAnnotations         map[string]string
 		headlessService            bool
@@ -138,7 +139,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		expectedSecretAnnotations  map[string]string
 	}{
 		{
-			name: "basic controller flow",
+			name:       "basic controller flow",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
@@ -157,7 +159,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name: "basic controller flow - beta annotations",
+			name:       "basic controller flow - beta annotations",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
@@ -176,7 +179,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name: "basic controller flow - headless, beta annotations",
+			name:       "basic controller flow - headless, beta annotations",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
@@ -196,7 +200,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name: "secret already exists, is annotated but has no data",
+			name:       "secret already exists, is annotated but has no data",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
@@ -219,7 +224,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name: "secret already exists, is annotated but has no data - beta annotations",
+			name:       "secret already exists, is annotated but has no data - beta annotations",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
@@ -242,7 +248,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name: "secret already exists for different svc UID",
+			name:       "secret already exists for different svc UID",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
@@ -259,7 +266,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			},
 			updateService: true,
 		}, {
-			name: "secret already exists for different svc UID - beta annotations",
+			name:       "secret already exists for different svc UID - beta annotations",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
@@ -277,7 +285,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name: "secret creation fails",
+			name:       "secret creation fails",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
@@ -296,7 +305,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			secretCreateFails: true,
 		},
 		{
-			name: "secret creation fails - beta annotations",
+			name:       "secret creation fails - beta annotations",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
@@ -315,7 +325,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			secretCreateFails: true,
 		},
 		{
-			name: "secret already contains the right cert",
+			name:       "secret already contains the right cert",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
@@ -335,7 +346,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			},
 		},
 		{
-			name: "secret already contains the right cert - headless",
+			name:       "secret already contains the right cert - headless",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
@@ -356,7 +368,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			},
 		},
 		{
-			name: "secret already contains cert data, but it is invalid",
+			name:       "secret already contains cert data, but it is invalid",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
@@ -380,7 +393,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateSecret:  true,
 		},
 		{
-			name: "secret already contains pre-headless cert data, update to headless",
+			name:       "secret already contains pre-headless cert data, update to headless",
+			secretName: testSecretName,
 			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
@@ -405,7 +419,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateSecret:  true,
 		},
 		{
-			name: "secret points to a non-existent service (noop)",
+			name:       "secret points to a non-existent service (noop)",
+			secretName: testSecretName,
 			secretAnnotations: map[string]string{
 				api.ServiceUIDAnnotation:  "very-different-uid",
 				api.ServiceNameAnnotation: "very-different-svc-name",
@@ -437,13 +452,13 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			if secretExists {
 				// make the first secrets.Create fail with already exists because the kubeclient.CoreV1() derivate does not contain the actual object
 				kubeclient.PrependReactor("create", "secrets", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-					return true, &corev1.Secret{}, kapierrors.NewAlreadyExists(corev1.Resource("secrets"), "new-secret")
+					return true, &corev1.Secret{}, kapierrors.NewAlreadyExists(corev1.Resource("secrets"), tt.secretName)
 				})
 			}
 
 			if tt.secretCreateFails {
 				kubeclient.PrependReactor("create", "secrets", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-					return true, &corev1.Secret{}, kapierrors.NewForbidden(corev1.Resource("secrets"), "new-secret", fmt.Errorf("mom said no, it's a no then"))
+					return true, &corev1.Secret{}, kapierrors.NewForbidden(corev1.Resource("secrets"), tt.secretName, fmt.Errorf("mom said no, it's a no then"))
 				})
 			}
 
