@@ -127,7 +127,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 	tests := []struct {
 		name                       string
 		secretData                 []byte
-		serviceAnnocations         map[string]string
+		serviceAnnotations         map[string]string
 		headlessService            bool
 		secretAnnotations          map[string]string
 		updateSecret               bool
@@ -139,7 +139,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 	}{
 		{
 			name: "basic controller flow",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
 			expectedServiceAnnotations: map[string]string{
@@ -158,7 +158,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "basic controller flow - beta annotations",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			expectedServiceAnnotations: map[string]string{
@@ -177,7 +177,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "basic controller flow - headless, beta annotations",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			headlessService: true,
@@ -197,7 +197,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "secret already exists, is annotated but has no data",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -220,7 +220,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "secret already exists, is annotated but has no data - beta annotations",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -243,7 +243,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "secret already exists for different svc UID",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -260,7 +260,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		}, {
 			name: "secret already exists for different svc UID - beta annotations",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -278,7 +278,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "secret creation fails",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -297,7 +297,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "secret creation fails - beta annotations",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -316,7 +316,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "secret already contains the right cert",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -336,7 +336,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "secret already contains the right cert - headless",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			headlessService: true,
@@ -357,7 +357,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "secret already contains cert data, but it is invalid",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -381,7 +381,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		},
 		{
 			name: "secret already contains pre-headless cert data, update to headless",
-			serviceAnnocations: map[string]string{
+			serviceAnnotations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			headlessService: true,
@@ -425,7 +425,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			stopChannel := make(chan struct{})
 			defer close(stopChannel)
 
-			existingService := createTestSvc(tt.serviceAnnocations, tt.headlessService)
+			existingService := createTestSvc(tt.serviceAnnotations, tt.headlessService)
 
 			var existingSecret *corev1.Secret
 			secretExists := tt.secretAnnotations != nil
