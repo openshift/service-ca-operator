@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/kubernetes/fake"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	clientgotesting "k8s.io/client-go/testing"
@@ -133,7 +134,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 		secretAnnotations          map[string]string
 		updateSecret               bool
 		updateService              bool
-		secretCreateFails          bool
+		secretCreateError          *kapierrors.StatusError
 		useSecretQueueKey          bool
 		expectedServiceAnnotations map[string]string
 		expectedSecretAnnotations  map[string]string
@@ -302,7 +303,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertErrorNumAnnotation:      "1",
 			},
 			updateService:     true,
-			secretCreateFails: true,
+			secretCreateError: kapierrors.NewForbidden(corev1.Resource("secrets"), testSecretName, fmt.Errorf("mom said no, it's a no then")),
 		},
 		{
 			name:       "secret creation fails - beta annotations",
@@ -322,7 +323,34 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertErrorNumAnnotation:      "1",
 			},
 			updateService:     true,
-			secretCreateFails: true,
+			secretCreateError: kapierrors.NewForbidden(corev1.Resource("secrets"), testSecretName, fmt.Errorf("mom said no, it's a no then")),
+		},
+		{
+			name:       "secret creation fails - invalid secret name",
+			secretName: "invalid-${SECRET_NAME}",
+			serviceAnnotations: map[string]string{
+				api.AlphaServingCertSecretAnnotation: "invalid-${SECRET_NAME}",
+			},
+			secretAnnotations: map[string]string{
+				api.AlphaServiceUIDAnnotation:  testServiceUID,
+				api.AlphaServiceNameAnnotation: testServiceName,
+			},
+			expectedServiceAnnotations: map[string]string{
+				api.AlphaServingCertSecretAnnotation:   "invalid-${SECRET_NAME}",
+				api.AlphaServingCertErrorAnnotation:    `Secret "invalid-${SECRET_NAME}" is invalid: metadata.name: Invalid value: "invalid-${SECRET_NAME}": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, ''-'' or ''.'', and must start and end with an alphanumeric character (e.g. ''example.com'', regex used for validation is ''[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'')`,
+				api.ServingCertErrorAnnotation:         `Secret "invalid-${SECRET_NAME}" is invalid: metadata.name: Invalid value: "invalid-${SECRET_NAME}": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, ''-'' or ''.'', and must start and end with an alphanumeric character (e.g. ''example.com'', regex used for validation is ''[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'')`,
+				api.AlphaServingCertErrorNumAnnotation: "1",
+				api.ServingCertErrorNumAnnotation:      "1",
+			},
+			updateService: true,
+			secretCreateError: kapierrors.NewInvalid(
+				corev1.SchemeGroupVersion.WithKind("Secret").GroupKind(),
+				"invalid-${SECRET_NAME}",
+				field.ErrorList{field.Invalid(
+					field.NewPath("metadata.name"),
+					"invalid-${SECRET_NAME}",
+					`a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, ''-'' or ''.'', and must start and end with an alphanumeric character (e.g. ''example.com'', regex used for validation is ''[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'')`)},
+			),
 		},
 		{
 			name:       "secret already contains the right cert",
@@ -456,9 +484,9 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				})
 			}
 
-			if tt.secretCreateFails {
+			if tt.secretCreateError != nil {
 				kubeclient.PrependReactor("create", "secrets", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-					return true, &corev1.Secret{}, kapierrors.NewForbidden(corev1.Resource("secrets"), tt.secretName, fmt.Errorf("mom said no, it's a no then"))
+					return true, &corev1.Secret{}, tt.secretCreateError
 				})
 			}
 
