@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path"
 	"reflect"
+	"strconv"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -63,7 +64,7 @@ Cryo2APfUHF0zOtxK0JifCnYi47H
 `
 )
 
-func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secret *corev1.Secret) (*fake.Clientset, *serviceServingCertController) {
+func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secret *corev1.Secret) (*fake.Clientset, *serviceServingCertController, cache.Indexer) {
 	clientObjects := []runtime.Object{} // objects to init the kubeclient with
 
 	svcIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
@@ -106,7 +107,7 @@ func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secre
 		dnsSuffix:          "cluster.local",
 		maxRetries:         10,
 	}
-	return kubeclient, controller
+	return kubeclient, controller, svcIndexer
 }
 
 func TestServiceServingCertControllerSync(t *testing.T) {
@@ -476,7 +477,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				existingSecret = createTestSecret(tt.secretAnnotations, tt.secretData)
 			}
 
-			kubeclient, controller := controllerSetup(t, ca, existingService, existingSecret)
+			kubeclient, controller, _ := controllerSetup(t, ca, existingService, existingSecret)
 			if secretExists {
 				// make the first secrets.Create fail with already exists because the kubeclient.CoreV1() derivate does not contain the actual object
 				kubeclient.PrependReactor("create", "secrets", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -525,6 +526,86 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				t.Errorf("service: expected update: %v, but updated: %v", tt.updateService, foundServiceUpdate)
 			}
 		})
+	}
+}
+
+// TestSyncCreateSecretErrorDoesntHotloop ensures that an error when creating
+// the secret doesn't cause the controller to hotloop.
+// See https://issues.redhat.com/browse/OCPBUGS-56599 for details.
+func TestSyncCreateSecretErrorDoesntHotloop(t *testing.T) {
+	ctx := context.Background()
+	certDir := t.TempDir()
+	ca, err := crypto.MakeSelfSignedCA(
+		path.Join(certDir, "service-signer.crt"),
+		path.Join(certDir, "service-signer.key"),
+		path.Join(certDir, "service-signer.serial"),
+		signerName,
+		0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error making self signed CA: %v", err)
+	}
+
+	secretName := "invalid-${SECRET_NAME}"
+	serviceAnnotations := map[string]string{
+		api.ServingCertErrorNumAnnotation:    "0",
+		api.AlphaServingCertSecretAnnotation: secretName,
+	}
+	validationError := `a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, ''-'' or ''.'', and must start and end with an alphanumeric character (e.g. ''example.com'', regex used for validation is ''[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'')`
+	secretCreateError := kapierrors.NewInvalid(
+		corev1.SchemeGroupVersion.WithKind("Secret").GroupKind(),
+		secretName,
+		field.ErrorList{field.Invalid(
+			field.NewPath("metadata.name"),
+			secretName,
+			validationError)},
+	)
+
+	service := createTestSvc(serviceAnnotations, false)
+	var secret *corev1.Secret
+
+	kubeclient, controller, svcIndexer := controllerSetup(t, ca, service, secret)
+	kubeclient.PrependReactor("create", "secrets", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		return true, &corev1.Secret{}, secretCreateError
+	})
+
+	queueKey := namespacedObjToQueueKey(service)
+
+	repeat := controller.maxRetries + 2
+	for range repeat {
+		controller.Sync(ctx, newTestSyncContext(queueKey))
+
+		// controller.Sync updates the service via the fake kubeclient injected by
+		// controllerSetup, but the lister uses a separate indexer that's not
+		// automatically synchronized with the kubeclient.
+		// this updates the service indexer with any changes made by the controller.
+		for _, action := range kubeclient.Actions() {
+			if action.Matches("update", "services") {
+				updatedService := action.(clientgotesting.UpdateAction).GetObject().(*corev1.Service)
+				if err := svcIndexer.Update(updatedService); err != nil {
+					t.Fatalf("could not update svcIndexer: %s", err)
+				}
+			}
+		}
+		kubeclient.ClearActions()
+	}
+
+	updatedService, err := controller.serviceLister.Services(service.Namespace).Get(service.Name)
+	if err != nil {
+		t.Fatalf("could not get service %s: %s", service.Name, err)
+	}
+
+	numFailures, err := strconv.Atoi(updatedService.Annotations[api.ServingCertErrorNumAnnotation])
+	if err != nil {
+		t.Logf("service.Annotations: %+v", updatedService.Annotations)
+		t.Fatalf("could not cast ServingCertErrorNumAnnotation %q to int: %s",
+			updatedService.Annotations[api.ServingCertErrorNumAnnotation],
+			err,
+		)
+	}
+	if numFailures != controller.maxRetries {
+		t.Logf("num failures: %d, max retries: %d", numFailures, controller.maxRetries)
+		t.Fatalf("controller.Sync should not continue retrying after maxRetries")
 	}
 }
 
