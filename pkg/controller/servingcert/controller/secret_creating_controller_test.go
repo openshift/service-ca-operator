@@ -571,8 +571,11 @@ func TestSyncCreateSecretErrorDoesntHotloop(t *testing.T) {
 
 	queueKey := namespacedObjToQueueKey(service)
 
+	// to test that we do not hotloop we must call Sync more times than
+	// maxRetries. the choice of number 2 is arbitrary, this test would work
+	// any positive number.
 	repeat := controller.maxRetries + 2
-	for range repeat {
+	for i := 0; i < repeat; i++ {
 		controller.Sync(ctx, newTestSyncContext(queueKey))
 
 		// controller.Sync updates the service via the fake kubeclient injected by
@@ -585,6 +588,13 @@ func TestSyncCreateSecretErrorDoesntHotloop(t *testing.T) {
 				if err := svcIndexer.Update(updatedService); err != nil {
 					t.Fatalf("could not update svcIndexer: %s", err)
 				}
+			}
+		}
+		// we don't expect Sync to cause any kind of updates to the service
+		// after we hit maxRetries.
+		if i >= controller.maxRetries {
+			if len(kubeclient.Actions()) != 0 {
+				t.Fatalf("expected no updates after maxRetries. retry #%d, got %v", i, kubeclient.Actions())
 			}
 		}
 		kubeclient.ClearActions()
