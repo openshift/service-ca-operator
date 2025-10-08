@@ -18,15 +18,14 @@ spec:
       name: service-ca-operator
       annotations:
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
-        openshift.io/required-scc: nonroot-v2
+        openshift.io/required-scc: restricted-v3
       labels:
         app: service-ca-operator
     spec:
       serviceAccountName: service-ca-operator
+      hostUsers: false
       securityContext:
         runAsNonRoot: true
-        runAsGroup: 1001
-        runAsUser: 1001
         seccompProfile:
           type: RuntimeDefault
       containers:
