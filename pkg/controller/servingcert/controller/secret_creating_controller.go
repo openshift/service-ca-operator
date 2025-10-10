@@ -127,13 +127,6 @@ func (sc *serviceServingCertController) Sync(ctx context.Context, syncContext fa
 		return fmt.Errorf("unable to get service %s/%s: %v", serviceNS, serviceName, err)
 	}
 
-	// bail early if we already hit maxRetries.
-	// checking at this point in time avoid hotloops when creating the
-	// secret errors.
-	if getNumFailures(sharedService) >= sc.maxRetries {
-		return nil
-	}
-
 	if !sc.requiresCertGeneration(sharedService) {
 		return nil
 	}

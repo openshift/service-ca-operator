@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"path"
 	"reflect"
-	"strconv"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -17,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/kubernetes/fake"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	clientgotesting "k8s.io/client-go/testing"
@@ -64,7 +62,7 @@ Cryo2APfUHF0zOtxK0JifCnYi47H
 `
 )
 
-func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secret *corev1.Secret) (*fake.Clientset, *serviceServingCertController, cache.Indexer) {
+func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secret *corev1.Secret) (*fake.Clientset, *serviceServingCertController) {
 	clientObjects := []runtime.Object{} // objects to init the kubeclient with
 
 	svcIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
@@ -107,7 +105,7 @@ func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secre
 		dnsSuffix:          "cluster.local",
 		maxRetries:         10,
 	}
-	return kubeclient, controller, svcIndexer
+	return kubeclient, controller
 }
 
 func TestServiceServingCertControllerSync(t *testing.T) {
@@ -128,22 +126,20 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 	// add test cases
 	tests := []struct {
 		name                       string
-		secretName                 string
 		secretData                 []byte
-		serviceAnnotations         map[string]string
+		serviceAnnocations         map[string]string
 		headlessService            bool
 		secretAnnotations          map[string]string
 		updateSecret               bool
 		updateService              bool
-		secretCreateError          *kapierrors.StatusError
+		secretCreateFails          bool
 		useSecretQueueKey          bool
 		expectedServiceAnnotations map[string]string
 		expectedSecretAnnotations  map[string]string
 	}{
 		{
-			name:       "basic controller flow",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "basic controller flow",
+			serviceAnnocations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
 			expectedServiceAnnotations: map[string]string{
@@ -161,9 +157,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name:       "basic controller flow - beta annotations",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "basic controller flow - beta annotations",
+			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			expectedServiceAnnotations: map[string]string{
@@ -181,9 +176,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name:       "basic controller flow - headless, beta annotations",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "basic controller flow - headless, beta annotations",
+			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			headlessService: true,
@@ -202,9 +196,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name:       "secret already exists, is annotated but has no data",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret already exists, is annotated but has no data",
+			serviceAnnocations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -226,9 +219,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name:       "secret already exists, is annotated but has no data - beta annotations",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret already exists, is annotated but has no data - beta annotations",
+			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -250,9 +242,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name:       "secret already exists for different svc UID",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret already exists for different svc UID",
+			serviceAnnocations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -268,9 +259,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			},
 			updateService: true,
 		}, {
-			name:       "secret already exists for different svc UID - beta annotations",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret already exists for different svc UID - beta annotations",
+			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -287,9 +277,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateService: true,
 		},
 		{
-			name:       "secret creation fails",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret creation fails",
+			serviceAnnocations: map[string]string{
 				api.AlphaServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -304,12 +293,11 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertErrorNumAnnotation:      "1",
 			},
 			updateService:     true,
-			secretCreateError: kapierrors.NewForbidden(corev1.Resource("secrets"), testSecretName, fmt.Errorf("mom said no, it's a no then")),
+			secretCreateFails: true,
 		},
 		{
-			name:       "secret creation fails - beta annotations",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret creation fails - beta annotations",
+			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -324,39 +312,11 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				api.ServingCertErrorNumAnnotation:      "1",
 			},
 			updateService:     true,
-			secretCreateError: kapierrors.NewForbidden(corev1.Resource("secrets"), testSecretName, fmt.Errorf("mom said no, it's a no then")),
+			secretCreateFails: true,
 		},
 		{
-			name:       "secret creation fails - invalid secret name",
-			secretName: "invalid-${SECRET_NAME}",
-			serviceAnnotations: map[string]string{
-				api.AlphaServingCertSecretAnnotation: "invalid-${SECRET_NAME}",
-			},
-			secretAnnotations: map[string]string{
-				api.AlphaServiceUIDAnnotation:  testServiceUID,
-				api.AlphaServiceNameAnnotation: testServiceName,
-			},
-			expectedServiceAnnotations: map[string]string{
-				api.AlphaServingCertSecretAnnotation:   "invalid-${SECRET_NAME}",
-				api.AlphaServingCertErrorAnnotation:    `Secret "invalid-${SECRET_NAME}" is invalid: metadata.name: Invalid value: "invalid-${SECRET_NAME}": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, ''-'' or ''.'', and must start and end with an alphanumeric character (e.g. ''example.com'', regex used for validation is ''[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'')`,
-				api.ServingCertErrorAnnotation:         `Secret "invalid-${SECRET_NAME}" is invalid: metadata.name: Invalid value: "invalid-${SECRET_NAME}": a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, ''-'' or ''.'', and must start and end with an alphanumeric character (e.g. ''example.com'', regex used for validation is ''[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'')`,
-				api.AlphaServingCertErrorNumAnnotation: "1",
-				api.ServingCertErrorNumAnnotation:      "1",
-			},
-			updateService: true,
-			secretCreateError: kapierrors.NewInvalid(
-				corev1.SchemeGroupVersion.WithKind("Secret").GroupKind(),
-				"invalid-${SECRET_NAME}",
-				field.ErrorList{field.Invalid(
-					field.NewPath("metadata.name"),
-					"invalid-${SECRET_NAME}",
-					`a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, ''-'' or ''.'', and must start and end with an alphanumeric character (e.g. ''example.com'', regex used for validation is ''[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'')`)},
-			),
-		},
-		{
-			name:       "secret already contains the right cert",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret already contains the right cert",
+			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -375,9 +335,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			},
 		},
 		{
-			name:       "secret already contains the right cert - headless",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret already contains the right cert - headless",
+			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			headlessService: true,
@@ -397,9 +356,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			},
 		},
 		{
-			name:       "secret already contains cert data, but it is invalid",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret already contains cert data, but it is invalid",
+			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			secretAnnotations: map[string]string{
@@ -422,9 +380,8 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateSecret:  true,
 		},
 		{
-			name:       "secret already contains pre-headless cert data, update to headless",
-			secretName: testSecretName,
-			serviceAnnotations: map[string]string{
+			name: "secret already contains pre-headless cert data, update to headless",
+			serviceAnnocations: map[string]string{
 				api.ServingCertSecretAnnotation: testSecretName,
 			},
 			headlessService: true,
@@ -448,8 +405,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			updateSecret:  true,
 		},
 		{
-			name:       "secret points to a non-existent service (noop)",
-			secretName: testSecretName,
+			name: "secret points to a non-existent service (noop)",
 			secretAnnotations: map[string]string{
 				api.ServiceUIDAnnotation:  "very-different-uid",
 				api.ServiceNameAnnotation: "very-different-svc-name",
@@ -469,7 +425,7 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			stopChannel := make(chan struct{})
 			defer close(stopChannel)
 
-			existingService := createTestSvc(tt.serviceAnnotations, tt.headlessService)
+			existingService := createTestSvc(tt.serviceAnnocations, tt.headlessService)
 
 			var existingSecret *corev1.Secret
 			secretExists := tt.secretAnnotations != nil
@@ -477,17 +433,17 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				existingSecret = createTestSecret(tt.secretAnnotations, tt.secretData)
 			}
 
-			kubeclient, controller, _ := controllerSetup(t, ca, existingService, existingSecret)
+			kubeclient, controller := controllerSetup(t, ca, existingService, existingSecret)
 			if secretExists {
 				// make the first secrets.Create fail with already exists because the kubeclient.CoreV1() derivate does not contain the actual object
 				kubeclient.PrependReactor("create", "secrets", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-					return true, &corev1.Secret{}, kapierrors.NewAlreadyExists(corev1.Resource("secrets"), tt.secretName)
+					return true, &corev1.Secret{}, kapierrors.NewAlreadyExists(corev1.Resource("secrets"), "new-secret")
 				})
 			}
 
-			if tt.secretCreateError != nil {
+			if tt.secretCreateFails {
 				kubeclient.PrependReactor("create", "secrets", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-					return true, &corev1.Secret{}, tt.secretCreateError
+					return true, &corev1.Secret{}, kapierrors.NewForbidden(corev1.Resource("secrets"), "new-secret", fmt.Errorf("mom said no, it's a no then"))
 				})
 			}
 
@@ -526,96 +482,6 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 				t.Errorf("service: expected update: %v, but updated: %v", tt.updateService, foundServiceUpdate)
 			}
 		})
-	}
-}
-
-// TestSyncCreateSecretErrorDoesntHotloop ensures that an error when creating
-// the secret doesn't cause the controller to hotloop.
-// See https://issues.redhat.com/browse/OCPBUGS-56599 for details.
-func TestSyncCreateSecretErrorDoesntHotloop(t *testing.T) {
-	ctx := context.Background()
-	certDir := t.TempDir()
-	ca, err := crypto.MakeSelfSignedCA(
-		path.Join(certDir, "service-signer.crt"),
-		path.Join(certDir, "service-signer.key"),
-		path.Join(certDir, "service-signer.serial"),
-		signerName,
-		0,
-	)
-	if err != nil {
-		t.Fatalf("unexpected error making self signed CA: %v", err)
-	}
-
-	secretName := "invalid-${SECRET_NAME}"
-	serviceAnnotations := map[string]string{
-		api.ServingCertErrorNumAnnotation:    "0",
-		api.AlphaServingCertSecretAnnotation: secretName,
-	}
-	validationError := `a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, ''-'' or ''.'', and must start and end with an alphanumeric character (e.g. ''example.com'', regex used for validation is ''[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'')`
-	secretCreateError := kapierrors.NewInvalid(
-		corev1.SchemeGroupVersion.WithKind("Secret").GroupKind(),
-		secretName,
-		field.ErrorList{field.Invalid(
-			field.NewPath("metadata.name"),
-			secretName,
-			validationError)},
-	)
-
-	service := createTestSvc(serviceAnnotations, false)
-	var secret *corev1.Secret
-
-	kubeclient, controller, svcIndexer := controllerSetup(t, ca, service, secret)
-	kubeclient.PrependReactor("create", "secrets", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-		return true, &corev1.Secret{}, secretCreateError
-	})
-
-	queueKey := namespacedObjToQueueKey(service)
-
-	// to test that we do not hotloop we must call Sync more times than
-	// maxRetries. the choice of number 2 is arbitrary, this test would work
-	// any positive number.
-	repeat := controller.maxRetries + 2
-	for i := 0; i < repeat; i++ {
-		controller.Sync(ctx, newTestSyncContext(queueKey))
-
-		// controller.Sync updates the service via the fake kubeclient injected by
-		// controllerSetup, but the lister uses a separate indexer that's not
-		// automatically synchronized with the kubeclient.
-		// this updates the service indexer with any changes made by the controller.
-		for _, action := range kubeclient.Actions() {
-			if action.Matches("update", "services") {
-				updatedService := action.(clientgotesting.UpdateAction).GetObject().(*corev1.Service)
-				if err := svcIndexer.Update(updatedService); err != nil {
-					t.Fatalf("could not update svcIndexer: %s", err)
-				}
-			}
-		}
-		// we don't expect Sync to cause any kind of updates to the service
-		// after we hit maxRetries.
-		if i >= controller.maxRetries {
-			if len(kubeclient.Actions()) != 0 {
-				t.Fatalf("expected no updates after maxRetries. retry #%d, got %v", i, kubeclient.Actions())
-			}
-		}
-		kubeclient.ClearActions()
-	}
-
-	updatedService, err := controller.serviceLister.Services(service.Namespace).Get(service.Name)
-	if err != nil {
-		t.Fatalf("could not get service %s: %s", service.Name, err)
-	}
-
-	numFailures, err := strconv.Atoi(updatedService.Annotations[api.ServingCertErrorNumAnnotation])
-	if err != nil {
-		t.Logf("service.Annotations: %+v", updatedService.Annotations)
-		t.Fatalf("could not cast ServingCertErrorNumAnnotation %q to int: %s",
-			updatedService.Annotations[api.ServingCertErrorNumAnnotation],
-			err,
-		)
-	}
-	if numFailures != controller.maxRetries {
-		t.Logf("num failures: %d, max retries: %d", numFailures, controller.maxRetries)
-		t.Fatalf("controller.Sync should not continue retrying after maxRetries")
 	}
 }
 
