@@ -23,7 +23,7 @@ var (
 var _ = g.Describe("[Jira:service-ca][sig-api-machinery] Service CA Operator", func() {
 	defer g.GinkgoRecover()
 
-	g.It("should have a running operator and managed resources", func() {
+	g.It("should have a running operator and managed resources [Suite:openshift/service-ca-operator/conformance/parallel]", func() {
 		exutil.By("checking for the service-ca-operator deployment")
 		operatorDeployment, err := oc.AsAdmin().AdminKubeClient().AppsV1().Deployments(operatorNamespace).Get(context.Background(), "service-ca-operator", metav1.GetOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
@@ -47,7 +47,7 @@ var _ = g.Describe("[Jira:service-ca][sig-api-machinery] Service CA Operator", f
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
-	g.It("should inject a CA bundle into an annotated configmap", func() {
+	g.It("should inject a CA bundle into an annotated configmap [Suite:openshift/service-ca-operator/conformance/parallel]", func() {
 		exutil.By("creating a new namespace for the test")
 		testNamespace, err := oc.AsAdmin().AdminKubeClient().CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
