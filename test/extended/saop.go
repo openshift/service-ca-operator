@@ -35,7 +35,7 @@ var _ = g.Describe("[Jira:service-ca][sig-api-machinery] Service CA Operator", f
 			var err error
 			operandDeployment, err = oc.AsAdmin().AdminKubeClient().AppsV1().Deployments(operandNamespace).Get(context.Background(), "service-ca", metav1.GetOptions{})
 			g.Expect(err).NotTo(o.HaveOccurred())
-		}).WithTimeout(1*time.Minute).WithPolling(5*time.Second).Should(o.Succeed())
+		}).WithTimeout(1 * time.Minute).WithPolling(5 * time.Second).Should(o.Succeed())
 		o.Expect(operandDeployment.Status.AvailableReplicas).To(o.BeNumerically(">", 0))
 
 		exutil.By("checking for the signing-key secret")
@@ -77,7 +77,7 @@ var _ = g.Describe("[Jira:service-ca][sig-api-machinery] Service CA Operator", f
 			cm, pollErr = oc.AsAdmin().AdminKubeClient().CoreV1().ConfigMaps(testNamespace.Name).Get(context.Background(), cmName, metav1.GetOptions{})
 			g.Expect(pollErr).NotTo(o.HaveOccurred())
 			g.Expect(cm.Data).To(o.HaveKey("service-ca.crt"))
-		}).WithTimeout(1*time.Minute).WithPolling(5*time.Second).Should(o.Succeed())
+		}).WithTimeout(1 * time.Minute).WithPolling(5 * time.Second).Should(o.Succeed())
 
 		exutil.By("verifying the injected CA bundle is not empty")
 		o.Expect(cm.Data["service-ca.crt"]).NotTo(o.BeEmpty())
