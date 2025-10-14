@@ -501,6 +501,10 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 	if err != nil {
 		t.Fatalf("error retrieving signing key secret: %v", err)
 	}
+	// Store the old PEMs for comparison
+	oldCACertPEM := secret.Data[v1.TLSCertKey]
+	oldCAKeyPEM := secret.Data[v1.TLSPrivateKeyKey]
+	
 	currentCACerts, err := util.PemToCerts(secret.Data[v1.TLSCertKey])
 	if err != nil {
 		t.Fatalf("error unmarshaling %q: %v", v1.TLSCertKey, err)
@@ -542,7 +546,7 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 		t.Fatalf("error updating secret with test CA: %v", err)
 	}
 
-	_ = pollForCARotation(t, client, renewedCACertPEM, renewedCAKeyPEM)
+	_ = pollForCARotation(t, client, oldCACertPEM, oldCAKeyPEM)
 }
 
 // triggerForcedRotation forces the rotation of the current CA via the
@@ -615,9 +619,9 @@ func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, ca
 		if err != nil {
 			return nil, err
 		}
-		// Check if the cert or key has changed
-		if bytes.Equal(secret.Data[v1.TLSCertKey], caCertPEM) || bytes.Equal(secret.Data[v1.TLSPrivateKeyKey], caKeyPEM) {
-			return nil, fmt.Errorf("cert or key has not changed yet")
+		// Check if both cert and key are still the same as the old values
+		if bytes.Equal(secret.Data[v1.TLSCertKey], caCertPEM) && bytes.Equal(secret.Data[v1.TLSPrivateKeyKey], caKeyPEM) {
+			return nil, fmt.Errorf("cert and key have not changed yet")
 		}
 		return secret, nil
 	})
