@@ -884,7 +884,7 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 						Name:    "cert-checker",
 						Image:   "busybox:1.35",
 						Command: []string{"/bin/sh"},
-						Args: []string{"-c", fmt.Sprintf("echo 'Testing connection to %s:%d' && echo 'Connection test completed'", host, port)},
+						Args:    []string{"-c", fmt.Sprintf("echo 'Testing connection to %s:%d' && echo 'Connection test completed'", host, port)},
 						SecurityContext: &v1.SecurityContext{
 							AllowPrivilegeEscalation: pointer.BoolPtr(false),
 							RunAsNonRoot:             pointer.BoolPtr(true),
@@ -966,9 +966,9 @@ func pollForRunningStatefulSet(t *testing.T, client *kubernetes.Clientset, state
 		res := set.Status.ObservedGeneration == set.Generation &&
 			set.Status.ReadyReplicas == *set.Spec.Replicas
 		if !res {
-			tlogf(t, "StatefulSet %s/%s not ready: observedGeneration=%d, generation=%d, readyReplicas=%d, specReplicas=%d, currentReplicas=%d, updatedReplicas=%d", 
+			tlogf(t, "StatefulSet %s/%s not ready: observedGeneration=%d, generation=%d, readyReplicas=%d, specReplicas=%d, currentReplicas=%d, updatedReplicas=%d",
 				namespace, statefulSetName, set.Status.ObservedGeneration, set.Generation, set.Status.ReadyReplicas, *set.Spec.Replicas, set.Status.CurrentReplicas, set.Status.UpdatedReplicas)
-			
+
 			// Check pod status for better diagnostics
 			pods, err := client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 				LabelSelector: fmt.Sprintf("pod-label=%s-pod-label", statefulSetName),
