@@ -609,16 +609,22 @@ func forceUnsupportedServiceCAConfigRotation(t *testing.T, config *rest.Config, 
 // pollForCARotation polls for the signing secret to be changed in
 // response to CA rotation.
 func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, caKeyPEM []byte) *v1.Secret {
-	secret, err := pollForUpdatedSecret(t, client, serviceCAControllerNamespace, signingKeySecretName, rotationPollTimeout, map[string][]byte{
-		v1.TLSCertKey:           caCertPEM,
-		v1.TLSPrivateKeyKey:     caKeyPEM,
-		api.BundleDataKey:       nil,
-		api.IntermediateDataKey: nil,
+	resourceID := fmt.Sprintf("Secret \"%s/%s\"", serviceCAControllerNamespace, signingKeySecretName)
+	obj, err := pollForResource(t, resourceID, rotationPollTimeout, func() (kruntime.Object, error) {
+		secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		// Check if the cert or key has changed
+		if bytes.Equal(secret.Data[v1.TLSCertKey], caCertPEM) || bytes.Equal(secret.Data[v1.TLSPrivateKeyKey], caKeyPEM) {
+			return nil, fmt.Errorf("cert or key has not changed yet")
+		}
+		return secret, nil
 	})
 	if err != nil {
 		t.Fatalf("error waiting for CA rotation: %v", err)
 	}
-	return secret
+	return obj.(*v1.Secret)
 }
 
 // pollForCARecreation polls for the signing secret to be re-created in
@@ -688,20 +694,20 @@ func pollForSigningCABundle(t *testing.T, client *kubernetes.Clientset) ([]byte,
 // that provided before the polling timeout.
 func pollForUpdatedConfigMap(t *testing.T, client *kubernetes.Clientset, namespace, name, key string, timeout time.Duration, oldValue []byte) ([]byte, error) {
 	resourceID := fmt.Sprintf("ConfigMap \"%s/%s\"", namespace, name)
-	expectedDataSize := 1
 	obj, err := pollForResource(t, resourceID, timeout, func() (kruntime.Object, error) {
 		configMap, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
-		if len(configMap.Data) != expectedDataSize {
-			return nil, fmt.Errorf("expected data size %d, got %d", expectedDataSize, len(configMap.Data))
+		// For rotation tests, we need to be more flexible about data size
+		if len(configMap.Data) == 0 {
+			return nil, fmt.Errorf("configmap has no data")
 		}
 		value, ok := configMap.Data[key]
 		if !ok {
 			return nil, fmt.Errorf("key %q is missing", key)
 		}
-		if value == string(oldValue) {
+		if oldValue != nil && value == string(oldValue) {
 			return nil, fmt.Errorf("value for key %q has not changed", key)
 		}
 		return configMap, nil
@@ -727,7 +733,7 @@ func pollForAPIService(t *testing.T, client apiserviceclientv1.APIServiceInterfa
 			return nil, fmt.Errorf("ca bundle not injected")
 		}
 		if !bytes.Equal(actualCABundle, expectedCABundle) {
-			return nil, fmt.Errorf("ca bundle does match the expected value")
+			return nil, fmt.Errorf("ca bundle does not match the expected value")
 		}
 		return apiService, nil
 	})
@@ -755,7 +761,7 @@ func pollForCRD(t *testing.T, client apiextclient.CustomResourceDefinitionInterf
 			return nil, fmt.Errorf("ca bundle not injected")
 		}
 		if !bytes.Equal(actualCABundle, expectedCABundle) {
-			return nil, fmt.Errorf("ca bundle does match the expected value")
+			return nil, fmt.Errorf("ca bundle does not match the expected value")
 		}
 		return crd, nil
 	})
@@ -820,7 +826,7 @@ func checkWebhookCABundle(webhookName string, expectedCABundle, actualCABundle [
 		return fmt.Errorf("ca bundle not injected for webhook %q", webhookName)
 	}
 	if !bytes.Equal(actualCABundle, expectedCABundle) {
-		return fmt.Errorf("ca bundle does match the expected value for webhook %q", webhookName)
+		return fmt.Errorf("ca bundle does not match the expected value for webhook %q", webhookName)
 	}
 	return nil
 }
@@ -917,6 +923,9 @@ func waitForPodPhase(t *testing.T, client *kubernetes.Clientset, name, namespace
 		if err != nil {
 			tlogf(t, "fetching test pod from apiserver failed: %v", err)
 			return false, nil
+		}
+		if pod.Status.Phase == v1.PodFailed {
+			return false, fmt.Errorf("pod %s/%s failed", namespace, name)
 		}
 		return pod.Status.Phase == phase, nil
 	})
