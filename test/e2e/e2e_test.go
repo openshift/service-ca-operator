@@ -504,7 +504,7 @@ func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config
 	// Store the old PEMs for comparison
 	oldCACertPEM := secret.Data[v1.TLSCertKey]
 	oldCAKeyPEM := secret.Data[v1.TLSPrivateKeyKey]
-	
+
 	currentCACerts, err := util.PemToCerts(secret.Data[v1.TLSCertKey])
 	if err != nil {
 		t.Fatalf("error unmarshaling %q: %v", v1.TLSCertKey, err)
