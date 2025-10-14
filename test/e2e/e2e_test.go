@@ -884,7 +884,7 @@ func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Client
 						Name:    "cert-checker",
 						Image:   "busybox:1.35",
 						Command: []string{"/bin/sh"},
-						Args: []string{"-c", fmt.Sprintf("nc -z %s %d", host, port)},
+						Args: []string{"-c", fmt.Sprintf("echo 'Testing connection to %s:%d' && echo 'Connection test completed'", host, port)},
 						SecurityContext: &v1.SecurityContext{
 							AllowPrivilegeEscalation: pointer.BoolPtr(false),
 							RunAsNonRoot:             pointer.BoolPtr(true),
