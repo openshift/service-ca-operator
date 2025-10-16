@@ -16,6 +16,8 @@ import (
 	e "github.com/openshift-eng/openshift-tests-extension/pkg/extension"
 	et "github.com/openshift-eng/openshift-tests-extension/pkg/extension/extensiontests"
 	g "github.com/openshift-eng/openshift-tests-extension/pkg/ginkgo"
+	exutil "github.com/wangke19/origin-util"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/spf13/cobra"
 
@@ -94,12 +96,18 @@ func main() {
 
 	// Initialize environment before running any tests
 	specs.AddBeforeAll(func() {
-		// do stuff
+		if err := exutil.InitTest(false); err != nil {
+			panic(err)
+		}
+		e2e.AfterReadingAllFlags(exutil.TestContext)
+		e2e.TestContext.DumpLogsOnFailure = true
+		exutil.TestContext.DumpLogsOnFailure = true
 	})
 
 	ext.AddSpecs(specs)
 	registry.Register(ext)
 
+	exutil.InitStandardFlags()
 	root := &cobra.Command{
 		Long: "Service CA Operator Tests Extension",
 	}
