@@ -35,12 +35,10 @@ run-suite: build #HELP Run tests by suite name and generate JUnit report
 		echo "Usage: make run-suite SUITE=openshift/service-ca-operator/all [ARTIFACT_DIR=/tmp/artifacts]"; \
 		exit 1; \
 	fi
-	@if [ -z "$(ARTIFACT_DIR)" ]; then \
-		echo "Warning: ARTIFACT_DIR not set, using current directory for JUnit report"; \
-		ARTIFACT_DIR=.; \
-	fi
-	@mkdir -p $(ARTIFACT_DIR)
-	$(TOOLS_BIN_DIR)/service-ca-operator-tests-ext run-suite $(SUITE) -j $(ARTIFACT_DIR)/junit_$(shell date +%Y%m%d-%H%M%S).xml
+	@ARTIFACT_DIR_FINAL=$${ARTIFACT_DIR:-$(CURDIR)}; \
+	echo "Using ARTIFACT_DIR: $$ARTIFACT_DIR_FINAL"; \
+	mkdir -p $$ARTIFACT_DIR_FINAL; \
+	$(TOOLS_BIN_DIR)/service-ca-operator-tests-ext run-suite $(SUITE) -j $$ARTIFACT_DIR_FINAL/junit_$(shell date +%Y%m%d-%H%M%S).xml
 
 #SECTION Development
 .PHONY: verify #HELP To verify the code
