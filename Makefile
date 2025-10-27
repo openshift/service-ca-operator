@@ -59,6 +59,10 @@ tests-ext-update:
 tests-ext-clean:
 	$(MAKE) -C test/tests-extension clean
 
+.PHONY: run-suite
+run-suite:
+	$(MAKE) -C test/tests-extension run-suite SUITE=$(SUITE) ARTIFACT_DIR=$(ARTIFACT_DIR)
+
 clean: tests-ext-clean
 	$(RM) ./service-ca-operator
 .PHONY: clean
