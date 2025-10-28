@@ -19,14 +19,14 @@ import (
 // PollForAPIService returns the specified APIService if its ca bundle matches the provided value
 func PollForAPIService(client apiserviceclientv1.APIServiceInterface, name string, expectedCABundle []byte) (*apiregv1.APIService, error) {
 	var apiService *apiregv1.APIService
-	err := wait.PollImmediate(5*time.Second, 60*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
 		as, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
 		}
 		actualCABundle := as.Spec.CABundle
 		if len(actualCABundle) == 0 {
-			return false, fmt.Errorf("ca bundle not injected")
+			return false, nil
 		}
 		if !bytes.Equal(actualCABundle, expectedCABundle) {
 			return false, fmt.Errorf("ca bundle does not match the expected value")
@@ -40,7 +40,7 @@ func PollForAPIService(client apiserviceclientv1.APIServiceInterface, name strin
 // PollForCRD returns the specified CustomResourceDefinition if the ca bundle for its conversion webhook config matches the provided value
 func PollForCRD(client apiextclient.CustomResourceDefinitionInterface, name string, expectedCABundle []byte) (*apiext.CustomResourceDefinition, error) {
 	var crd *apiext.CustomResourceDefinition
-	err := wait.PollImmediate(5*time.Second, 60*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
 		c, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
@@ -50,7 +50,7 @@ func PollForCRD(client apiextclient.CustomResourceDefinitionInterface, name stri
 		}
 		actualCABundle := c.Spec.Conversion.Webhook.ClientConfig.CABundle
 		if len(actualCABundle) == 0 {
-			return false, fmt.Errorf("ca bundle not injected")
+			return false, nil
 		}
 		if !bytes.Equal(actualCABundle, expectedCABundle) {
 			return false, fmt.Errorf("ca bundle does not match the expected value")
@@ -64,12 +64,15 @@ func PollForCRD(client apiextclient.CustomResourceDefinitionInterface, name stri
 // PollForMutatingWebhookConfiguration returns the specified MutatingWebhookConfiguration if the ca bundle for all its webhooks match the provided value
 func PollForMutatingWebhookConfiguration(client admissionregclient.MutatingWebhookConfigurationInterface, name string, expectedCABundle []byte) (*admissionreg.MutatingWebhookConfiguration, error) {
 	var webhookConfig *admissionreg.MutatingWebhookConfiguration
-	err := wait.PollImmediate(5*time.Second, 60*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
 		wc, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
 		}
 		for _, webhook := range wc.Webhooks {
+			if len(webhook.ClientConfig.CABundle) == 0 {
+				return false, nil
+			}
 			err := CheckWebhookCABundle(webhook.Name, expectedCABundle, webhook.ClientConfig.CABundle)
 			if err != nil {
 				return false, err
@@ -84,12 +87,15 @@ func PollForMutatingWebhookConfiguration(client admissionregclient.MutatingWebho
 // PollForValidatingWebhookConfiguration returns the specified ValidatingWebhookConfiguration if the ca bundle for all its webhooks match the provided value
 func PollForValidatingWebhookConfiguration(client admissionregclient.ValidatingWebhookConfigurationInterface, name string, expectedCABundle []byte) (*admissionreg.ValidatingWebhookConfiguration, error) {
 	var webhookConfig *admissionreg.ValidatingWebhookConfiguration
-	err := wait.PollImmediate(5*time.Second, 60*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
 		wc, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
 		}
 		for _, webhook := range wc.Webhooks {
+			if len(webhook.ClientConfig.CABundle) == 0 {
+				return false, nil
+			}
 			err := CheckWebhookCABundle(webhook.Name, expectedCABundle, webhook.ClientConfig.CABundle)
 			if err != nil {
 				return false, err

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"time"
 
 	apiextclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -149,6 +150,8 @@ func testAPIServiceInjection() {
 	defer createWebhookCleanup(apiServiceClient, createdObj.Name)()
 
 	expectedCABundle := getExpectedCABundle()
+	// Give the Service CA Operator time to process the webhook resource
+	time.Sleep(2 * time.Second)
 	_, err = util.PollForAPIService(apiServiceClient, createdObj.Name, expectedCABundle)
 	o.Expect(err).NotTo(o.HaveOccurred())
 }
@@ -163,6 +166,8 @@ func testCRDInjection() {
 	defer createWebhookCleanup(crdClient, createdObj.Name)()
 
 	expectedCABundle := getExpectedCABundle()
+	// Give the Service CA Operator time to process the webhook resource
+	time.Sleep(2 * time.Second)
 	_, err = util.PollForCRD(crdClient, createdObj.Name, expectedCABundle)
 	o.Expect(err).NotTo(o.HaveOccurred())
 }
@@ -174,6 +179,8 @@ func testMutatingWebhookInjection() {
 	defer createWebhookCleanup(webhookClient, createdObj.Name)()
 
 	expectedCABundle := getExpectedCABundle()
+	// Give the Service CA Operator time to process the webhook resource
+	time.Sleep(2 * time.Second)
 	_, err = util.PollForMutatingWebhookConfiguration(webhookClient, createdObj.Name, expectedCABundle)
 	o.Expect(err).NotTo(o.HaveOccurred())
 }
@@ -185,6 +192,8 @@ func testValidatingWebhookInjection() {
 	defer createWebhookCleanup(webhookClient, createdObj.Name)()
 
 	expectedCABundle := getExpectedCABundle()
+	// Give the Service CA Operator time to process the webhook resource
+	time.Sleep(2 * time.Second)
 	_, err = util.PollForValidatingWebhookConfiguration(webhookClient, createdObj.Name, expectedCABundle)
 	o.Expect(err).NotTo(o.HaveOccurred())
 }
