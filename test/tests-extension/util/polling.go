@@ -11,8 +11,6 @@ import (
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-
-	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
 const (
@@ -96,7 +94,7 @@ func PollForConfigMapCAInjection(client kubernetes.Interface, configMapName, nam
 		if len(cm.Data) != 1 {
 			return false, nil
 		}
-		_, ok := cm.Data[api.InjectionDataKey]
+		_, ok := cm.Data[InjectionDataKey]
 		if !ok {
 			return false, nil
 		}

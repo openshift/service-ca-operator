@@ -10,8 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-
-	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
 // CheckServiceServingCertSecretData checks the service serving cert secret data
@@ -55,7 +53,7 @@ func CheckConfigMapCABundleInjectionData(client kubernetes.Interface, configMapN
 		return fmt.Errorf("unexpected ca bundle injection configmap data map length: %v", len(cm.Data))
 	}
 	ok := true
-	_, ok = cm.Data[api.InjectionDataKey]
+	_, ok = cm.Data[InjectionDataKey]
 	if !ok {
 		return fmt.Errorf("unexpected ca bundle injection configmap data: %v", cm.Data)
 	}

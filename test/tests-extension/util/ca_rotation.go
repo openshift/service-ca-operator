@@ -10,8 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-
-	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
 const (
@@ -64,12 +62,12 @@ func PollForUpdatedSecret(client kubernetes.Interface, namespace, name string, t
 
 // PollForInjectedCABundle returns the bytes for the injection key in the targeted configmap
 func PollForInjectedCABundle(client kubernetes.Interface, namespace, name string, timeout time.Duration, oldValue []byte) ([]byte, error) {
-	return PollForUpdatedConfigMap(client, namespace, name, api.InjectionDataKey, timeout, oldValue)
+	return PollForUpdatedConfigMap(client, namespace, name, InjectionDataKey, timeout, oldValue)
 }
 
 // PollForSigningCABundle returns the bytes for the bundle key of the signing ca bundle configmap
 func PollForSigningCABundle(client kubernetes.Interface) ([]byte, error) {
-	return PollForUpdatedConfigMap(client, serviceCAControllerNamespace, api.SigningCABundleConfigMapName, api.BundleDataKey, 60*time.Second, nil)
+	return PollForUpdatedConfigMap(client, serviceCAControllerNamespace, SigningCABundleConfigMapName, BundleDataKey, 60*time.Second, nil)
 }
 
 // PollForUpdatedConfigMap returns the given configmap if its data changes

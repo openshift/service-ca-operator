@@ -6,8 +6,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-
-	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
 // CreateTestNamespace creates a test namespace
@@ -34,7 +32,7 @@ func CreateServingCertAnnotatedService(client kubernetes.Interface, secretName, 
 		ObjectMeta: metav1.ObjectMeta{
 			Name: serviceName,
 			Annotations: map[string]string{
-				api.ServingCertSecretAnnotation: secretName,
+				ServingCertSecretAnnotation: secretName,
 			},
 		},
 		Spec: corev1.ServiceSpec{
@@ -74,5 +72,5 @@ func SetInjectionAnnotation(objMeta *metav1.ObjectMeta) {
 	if objMeta.Annotations == nil {
 		objMeta.Annotations = map[string]string{}
 	}
-	objMeta.Annotations[api.InjectCABundleAnnotationName] = "true"
+	objMeta.Annotations[InjectCABundleAnnotationName] = "true"
 }
