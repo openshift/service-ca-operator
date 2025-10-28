@@ -4,11 +4,11 @@ COPY . .
 ENV GO_PACKAGE github.com/openshift/service-ca-operator
 RUN make build \
     && make tests-ext-build \
-    && gzip service-ca-operator-tests-ext
+    && gzip test/tests-extension/bin/service-ca-operator-tests-ext
 
 FROM registry.ci.openshift.org/ocp/4.21:base-rhel9
 COPY --from=builder /go/src/github.com/openshift/service-ca-operator/service-ca-operator /usr/bin/
-COPY --from=builder /go/src/github.com/openshift/service-ca-operator/service-ca-operator-tests-ext.gz /usr/bin/
+COPY --from=builder /go/src/github.com/openshift/service-ca-operator/test/tests-extension/bin/service-ca-operator-tests-ext.gz /usr/bin/
 COPY manifests /manifests
 # Using the vendored CRD ensures compatibility with 'oc explain'
 COPY vendor/github.com/openshift/api/operator/v1/zz_generated.crd-manifests/0000_50_service-ca_02_servicecas.crd.yaml /manifests/02_crd.yaml
