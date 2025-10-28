@@ -30,16 +30,16 @@ func EditServingSecretData(client kubernetes.Interface, secretName, namespace, k
 	if err != nil {
 		return err
 	}
-	
+
 	// Create a copy and set invalid data (like the original test)
 	secretCopy := secret.DeepCopy()
 	secretCopy.Data[keyName] = []byte("blah")
-	
+
 	_, err = client.CoreV1().Secrets(namespace).Update(context.TODO(), secretCopy, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
-	
+
 	// Poll for secret change (wait for operator to regenerate)
 	return PollForSecretChange(client, secretCopy, keyName)
 }
@@ -50,16 +50,16 @@ func EditConfigMapCABundleInjectionData(client kubernetes.Interface, configMapNa
 	if err != nil {
 		return err
 	}
-	
+
 	// Create a copy and add extra data (like the original test)
 	cmCopy := cm.DeepCopy()
 	cmCopy.Data["foo"] = "blah"
-	
+
 	_, err = client.CoreV1().ConfigMaps(namespace).Update(context.TODO(), cmCopy, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
-	
+
 	// Poll for configmap change (wait for operator to clean up extra data)
 	return PollForConfigMapChange(client, cmCopy, "foo")
 }

@@ -82,7 +82,6 @@ func PollForCABundleInjectionConfigMapWithReturn(client kubernetes.Interface, co
 	return configmap, err
 }
 
-
 // PollForConfigMapCAInjection polls for configmap CA injection
 func PollForConfigMapCAInjection(client kubernetes.Interface, configMapName, namespace string) error {
 	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {

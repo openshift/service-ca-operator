@@ -16,7 +16,6 @@ import (
 	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
 )
 
-
 // PollForAPIService returns the specified APIService if its ca bundle matches the provided value
 func PollForAPIService(client apiserviceclientv1.APIServiceInterface, name string, expectedCABundle []byte) (*apiregv1.APIService, error) {
 	var apiService *apiregv1.APIService
