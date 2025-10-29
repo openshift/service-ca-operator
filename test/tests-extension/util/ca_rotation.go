@@ -6,6 +6,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -24,7 +25,10 @@ func PollForCARecreation(client kubernetes.Interface) error {
 	return wait.PollImmediate(time.Second, rotationPollTimeout, func() (bool, error) {
 		_, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
 		if err != nil {
-			return false, nil
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
 		}
 		return true, nil
 	})
