@@ -114,38 +114,3 @@ For information about how to build, deploy, test, update, and develop OpenShift 
 
 This section explains how to deploy OpenShift with your version of a service-ca-operator image:        
 [Testing a ClusterOperator/Operand image in a cluster](https://github.com/openshift/enhancements/blob/master/dev-guide/operators.md#how-can-i-test-changes-to-an-openshift-operatoroperandrelease-component)
-
-## Tests Extension
-
-The Service CA Operator includes a separate tests extension located in `test/tests-extension/` that provides comprehensive testing capabilities for the operator. This tests extension is built and maintained separately from the main operator component to avoid code contamination.
-
-For information about running and developing tests, see the [Tests Extension README](test/tests-extension/README.md).
-
-### Building Tests Extension
-
-To build the tests extension:
-
-```bash
-make tests-ext-build
-```
-
-To update test metadata:
-
-```bash
-make tests-ext-update
-```
-
-### Running Tests
-
-The tests can be run locally using the `service-ca-operator-tests-ext` binary:
-
-```bash
-# Build the tests extension
-make tests-ext-build
-
-# Run all tests
-./test/tests-extension/bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/all
-
-# Run a specific test
-./test/tests-extension/bin/service-ca-operator-tests-ext run-test -n "<test-name>"
-```
