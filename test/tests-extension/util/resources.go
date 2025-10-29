@@ -2,10 +2,12 @@ package util
 
 import (
 	"context"
-	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -21,11 +23,19 @@ func CreateTestNamespace(client kubernetes.Interface, namespaceName string) (*co
 		return nil, nil, err
 	}
 	cleanup := func() {
-		err := client.CoreV1().Namespaces().Delete(context.TODO(), ns.Name, metav1.DeleteOptions{})
-		if err != nil {
-			// Log the error with context for debugging
-			fmt.Printf("Failed to delete namespace %s: %v\n", ns.Name, err)
-		}
+		// best-effort delete + wait for termination
+		_ = client.CoreV1().Namespaces().Delete(context.TODO(), ns.Name, metav1.DeleteOptions{})
+		// Block until the namespace is fully gone to avoid name collisions
+		// (ignore errors after timeout to avoid hanging teardown).
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		wait.PollImmediateUntil(2*time.Second, func() (bool, error) {
+			_, err := client.CoreV1().Namespaces().Get(context.TODO(), ns.Name, metav1.GetOptions{})
+			if errors.IsNotFound(err) {
+				return true, nil
+			}
+			return false, nil
+		}, ctx.Done())
 	}
 	return ns, cleanup, err
 }
