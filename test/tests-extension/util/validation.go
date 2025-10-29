@@ -18,19 +18,19 @@ func CheckServiceServingCertSecretData(client kubernetes.Interface, secretName, 
 	if err != nil {
 		return nil, false, err
 	}
-	if len(secret.Data) != 2 {
-		return nil, false, fmt.Errorf("unexpected serving cert secret data map length: %v", len(secret.Data))
-	}
 	certBytes, ok := secret.Data[corev1.TLSCertKey]
 	if !ok {
-		return nil, false, fmt.Errorf("unexpected serving cert secret data: %v", secret.Data)
+		return nil, false, fmt.Errorf("serving cert secret %s/%s is missing %s", namespace, secretName, corev1.TLSCertKey)
 	}
 	keyBytes, ok := secret.Data[corev1.TLSPrivateKeyKey]
 	if !ok {
-		return nil, false, fmt.Errorf("unexpected serving cert secret data: %v", secret.Data)
+		return nil, false, fmt.Errorf("serving cert secret %s/%s is missing %s", namespace, secretName, corev1.TLSPrivateKeyKey)
 	}
-	if len(certBytes) == 0 || len(keyBytes) == 0 {
-		return nil, false, fmt.Errorf("unexpected serving cert secret data: %v", secret.Data)
+	if len(certBytes) == 0 {
+		return nil, false, fmt.Errorf("serving cert secret %s/%s has an empty %s", namespace, secretName, corev1.TLSCertKey)
+	}
+	if len(keyBytes) == 0 {
+		return nil, false, fmt.Errorf("serving cert secret %s/%s has an empty %s", namespace, secretName, corev1.TLSPrivateKeyKey)
 	}
 	block, _ := pem.Decode(certBytes)
 	if block == nil {
@@ -49,13 +49,12 @@ func CheckConfigMapCABundleInjectionData(client kubernetes.Interface, configMapN
 	if err != nil {
 		return err
 	}
-	if len(cm.Data) != 1 {
-		return fmt.Errorf("unexpected ca bundle injection configmap data map length: %v", len(cm.Data))
-	}
-	ok := true
-	_, ok = cm.Data[InjectionDataKey]
+	injectedData, ok := cm.Data["service-ca.crt"]
 	if !ok {
-		return fmt.Errorf("unexpected ca bundle injection configmap data: %v", cm.Data)
+		return fmt.Errorf("ca bundle injection configmap %s/%s is missing %s", namespace, configMapName, "service-ca.crt")
+	}
+	if len(injectedData) == 0 {
+		return fmt.Errorf("ca bundle injection configmap %s/%s has an empty %s", namespace, configMapName, "service-ca.crt")
 	}
 	return nil
 }

@@ -7,7 +7,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -47,11 +46,12 @@ func CheckMetricsCollection(promClient PrometheusClient, namespace string) error
 
 // CheckServiceCAMetrics checks service CA metrics
 func CheckServiceCAMetrics(client kubernetes.Interface, promClient PrometheusClient) error {
-	timeout := 120 * time.Second
-
 	secret, err := client.CoreV1().Secrets("openshift-service-ca").Get(context.TODO(), "signing-key", metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("error retrieving signing key secret: %v", err)
+	}
+	if secret.Data == nil || len(secret.Data[corev1.TLSCertKey]) == 0 {
+		return fmt.Errorf("signing secret missing tls.crt")
 	}
 	currentCACerts, err := PemToCerts(secret.Data[corev1.TLSCertKey])
 	if err != nil {
@@ -61,14 +61,5 @@ func CheckServiceCAMetrics(client kubernetes.Interface, promClient PrometheusCli
 		return fmt.Errorf("no signing keys found")
 	}
 
-	_ = currentCACerts[0].NotAfter // CA expiry time (for future use)
-	err = wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
-		// For now, just check that the secret exists and has the expected structure
-		// In a real implementation, this would query Prometheus metrics
-		return true, nil
-	})
-	if err != nil {
-		return fmt.Errorf("service ca expiry timer metrics collection failed: %v", err)
-	}
 	return nil
 }
