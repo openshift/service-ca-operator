@@ -8,6 +8,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -56,6 +57,9 @@ func EditConfigMapCABundleInjectionData(client kubernetes.Interface, configMapNa
 
 	// Create a copy and add extra data (like the original test)
 	cmCopy := cm.DeepCopy()
+	if cmCopy.Data == nil {
+		cmCopy.Data = map[string]string{}
+	}
 	cmCopy.Data["foo"] = "blah"
 
 	_, err = client.CoreV1().ConfigMaps(namespace).Update(context.TODO(), cmCopy, metav1.UpdateOptions{})
@@ -80,7 +84,10 @@ func PollForSecretChange(client kubernetes.Interface, secret *corev1.Secret, key
 	return wait.PollImmediate(5*time.Second, 4*time.Minute, func() (bool, error) {
 		s, err := client.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
 		if err != nil {
-			return false, nil
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
 		}
 		for _, key := range keysToChange {
 			if bytes.Equal(s.Data[key], secret.Data[key]) {
@@ -96,7 +103,10 @@ func PollForConfigMapChange(client kubernetes.Interface, compareConfigMap *corev
 	return wait.PollImmediate(5*time.Second, 4*time.Minute, func() (bool, error) {
 		cm, err := client.CoreV1().ConfigMaps(compareConfigMap.Namespace).Get(context.TODO(), compareConfigMap.Name, metav1.GetOptions{})
 		if err != nil {
-			return false, nil
+			if errors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
 		}
 		for _, key := range keysToChange {
 			if cm.Data[key] == compareConfigMap.Data[key] {
