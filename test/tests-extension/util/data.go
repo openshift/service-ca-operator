@@ -15,13 +15,16 @@ import (
 
 // RandSeq generates a random sequence of characters
 func RandSeq(n int) string {
-	rand.Seed(time.Now().UnixNano())
+	// Use nanosecond precision to ensure uniqueness
+	now := time.Now()
+	rand.Seed(now.UnixNano())
 	var letters = []rune("abcdefghijklmnopqrstuvwxyz")
 	b := make([]rune, n)
 	for i := range b {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
-	return string(b)
+	// Append nanosecond suffix to ensure uniqueness even with rapid successive calls
+	return string(b) + fmt.Sprintf("-%d", now.Nanosecond())
 }
 
 // EditServingSecretData edits serving secret data and polls for regeneration

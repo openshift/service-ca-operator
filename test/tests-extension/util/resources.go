@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,7 +21,11 @@ func CreateTestNamespace(client kubernetes.Interface, namespaceName string) (*co
 		return nil, nil, err
 	}
 	cleanup := func() {
-		client.CoreV1().Namespaces().Delete(context.TODO(), ns.Name, metav1.DeleteOptions{})
+		err := client.CoreV1().Namespaces().Delete(context.TODO(), ns.Name, metav1.DeleteOptions{})
+		if err != nil {
+			// Log the error with context for debugging
+			fmt.Printf("Failed to delete namespace %s: %v\n", ns.Name, err)
+		}
 	}
 	return ns, cleanup, err
 }
