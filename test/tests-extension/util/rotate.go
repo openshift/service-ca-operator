@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -59,10 +58,9 @@ func CheckRotation(t *testing.T, dnsName string, oldCertPEM, oldKeyPEM, oldBundl
 func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, bundlePEM []byte) {
 	// Emulate how a service will consume the serving cert by writing
 	// the cert and key to disk.
-	certFile, err := ioutil.TempFile("", v1.TLSCertKey)
+	certFile, err := os.CreateTemp("", v1.TLSCertKey)
 	if err != nil {
 		t.Fatalf("error creating tmpfile for cert: %v", err)
-
 	}
 	defer func() {
 		err := os.Remove(certFile.Name())
@@ -74,11 +72,18 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 	if err != nil {
 		t.Fatalf("Error writing cert to disk: %v", err)
 	}
+	err = certFile.Sync()
+	if err != nil {
+		t.Fatalf("Error syncing cert file: %v", err)
+	}
+	err = certFile.Close()
+	if err != nil {
+		t.Fatalf("Error closing cert file: %v", err)
+	}
 
-	keyFile, err := ioutil.TempFile("", v1.TLSPrivateKeyKey)
+	keyFile, err := os.CreateTemp("", v1.TLSPrivateKeyKey)
 	if err != nil {
 		t.Fatalf("error creating tmpfile for key: %v", err)
-
 	}
 	defer func() {
 		err := os.Remove(keyFile.Name())
@@ -89,6 +94,14 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 	_, err = keyFile.Write(keyPEM)
 	if err != nil {
 		t.Fatalf("Error writing key to disk: %v", err)
+	}
+	err = keyFile.Sync()
+	if err != nil {
+		t.Fatalf("Error syncing key file: %v", err)
+	}
+	err = keyFile.Close()
+	if err != nil {
+		t.Fatalf("Error closing key file: %v", err)
 	}
 
 	// The need to listen on a random port precludes the use of ListenAndServeTLS since that
