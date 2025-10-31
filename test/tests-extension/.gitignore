@@ -36,3 +36,6 @@ Thumbs.db
 # Build output
 bin/
 .openshift-tests-extension/
+
+# Test output files
+junit_*.xml
