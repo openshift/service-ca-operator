@@ -189,7 +189,8 @@ func testValidatingWebhookInjection() {
 	o.Expect(err).NotTo(o.HaveOccurred())
 }
 
-var _ = g.Describe("Service CA Operator", g.Serial, func() {
+// For new test, add label with g.Label("candidate"), when it is stable, set g.Label("conformance", "parallel") or something else.
+var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
 	g.BeforeEach(func() {
 		err := util.CheckComponents(client)
 		o.Expect(err).NotTo(o.HaveOccurred())
@@ -266,6 +267,7 @@ var _ = g.Describe("Service CA Operator", g.Serial, func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
+	// conformance/serial
 	g.It("should refresh CA when secret is deleted", func() {
 		err := util.PollForCARecreation(client)
 		o.Expect(err).NotTo(o.HaveOccurred())
@@ -295,18 +297,20 @@ var _ = g.Describe("Service CA Operator", g.Serial, func() {
 		testSecretModification(secretName2, namespace2, "foo", false)
 	})
 
+	// conformance/serial
 	g.It("should handle time-based CA rotation", func() {
 		err := util.CheckCARotation(client, config, util.TriggerTimeBasedRotation)
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
+	// conformance/serial
 	g.It("should handle forced CA rotation", func() {
 		err := util.CheckCARotation(client, config, util.TriggerForcedRotation)
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 })
 
-var _ = g.Describe("Service CA Operator Webhook Injection", func() {
+var _ = g.Describe("Service CA Operator Webhook Injection", g.Label("candidate"), func() {
 	g.BeforeEach(func() {
 		err := util.CheckComponents(client)
 		o.Expect(err).NotTo(o.HaveOccurred())

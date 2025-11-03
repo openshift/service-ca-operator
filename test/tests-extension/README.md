@@ -13,6 +13,10 @@ They use the framework: https://github.com/openshift-eng/openshift-tests-extensi
 | `./bin/service-ca-operator-tests-ext info`     | Shows info about the test binary and registered test suites.             |
 | `./bin/service-ca-operator-tests-ext list`     | Lists all available test cases.                                          |
 | `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/all` | Runs the full Service CA Operator test suite. |
+| `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/conformance/parallel` | Runs conformance tests that are parallel-safe (not Serial or Slow). |
+| `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/conformance/serial` | Runs conformance tests that must run serially (labeled [Serial]). |
+| `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/optional/slow` | Runs long-running tests (labeled [Slow]). |
+| `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/candidate` | Runs new tests under stability evaluation (NOT in CI jobs). |
 | `./bin/service-ca-operator-tests-ext run-test -n <test-name>` | Runs one specific test. Replace <test-name> with the test's full name.   |
 
 
@@ -118,6 +122,75 @@ Or, if used within helper functions:
 ```
 
 This ensures compatibility when running tests in non-OpenShift environments such as KinD.
+
+## Test Maturity Levels
+
+Tests in this project follow a maturity progression to ensure stability before being included in CI jobs. This prevents unstable tests from blocking PRs and OCP payload releases.
+
+### Maturity Stages
+
+| Stage | Label | Description | Included in CI? |
+|-------|-------|-------------|-----------------|
+| **Candidate** | `g.Label("candidate")` | New tests under stability evaluation. Run manually or in development environments. | ❌ No |
+| **Conformance** | `g.Label("conformance", "parallel")` | Stable, production-ready tests that can run in parallel. | ✅ Yes |
+| **Serial** | `g.Label("conformance", "serial")` | Stable tests that must run sequentially. | ✅ Yes |
+
+### Adding a New Test
+
+When adding a new test, **always start with the `candidate` label**:
+
+```go
+var _ = g.Describe("My New Feature", g.Label("candidate"), func() {
+    g.It("should work correctly", func() {
+        // test implementation
+    })
+})
+```
+
+### Promoting a Test from Candidate to Conformance
+
+Before promoting a test to `conformance`, it must be proven stable:
+
+1. **Run the test multiple times** - Use `/payload-aggregate` to run at least 5 times:
+   - For `[Serial]` tests: `/payload-aggregate periodic-ci-openshift-release-master-ci-4.20-e2e-gcp-ovn-techpreview-serial 5`
+   - For parallel tests: `/payload-aggregate periodic-ci-openshift-release-master-ci-4.20-e2e-gcp-ovn-techpreview 5`
+
+2. **Verify all runs passed** - Check that there are no flakes or intermittent failures
+
+3. **Update the label**:
+   ```go
+   // Change from:
+   var _ = g.Describe("My New Feature", g.Label("candidate"), func() {
+
+   // To:
+   var _ = g.Describe("My New Feature", g.Label("conformance", "parallel"), func() {
+   ```
+
+4. **Update metadata**:
+   ```bash
+   make build-update
+   ```
+
+5. **Create a PR** with the promotion, including evidence of successful test runs
+
+### Why This Process Matters
+
+- **Prevents CI Disruption**: Unstable tests in CI can block PRs and delay releases
+- **TRT Team Challenges**: Failed CI tests trigger scrutiny from the Test Readiness Team (TRT)
+- **Payload Release Impact**: Blocking tests can prevent OCP payload releases
+- **Developer Experience**: Reduces false negatives and builds confidence in the test suite
+
+### Running Candidate Tests
+
+Candidate tests are isolated in their own suite and not run in CI:
+
+```bash
+# Run all candidate tests
+make run-suite SUITE=openshift/service-ca-operator/candidate
+
+# Or use the binary directly
+./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/candidate
+```
 
 ## Development Workflow
 
