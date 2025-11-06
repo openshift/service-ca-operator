@@ -308,14 +308,28 @@ More info: https://docs.ci.openshift.org/docs/architecture/ci-operator/#testing-
 
 ## Makefile Commands
 
+This project uses `build-machinery-go` for consistent build tooling across all OpenShift components.
+
+### Common Targets
+
 | Target                   | Description                                                                  |
 |--------------------------|------------------------------------------------------------------------------|
 | `make build`             | Builds the test binary.                                                      |
 | `make update-metadata`   | Updates the metadata JSON file.                                              |
 | `make build-update`      | Runs build + update-metadata + cleans codeLocations.                         |
-| `make verify`            | Runs formatting, vet, and linter.                                            |
+| `make verify`            | Runs formatting, vet, and linter checks.                                     |
 | `make list-test-names`   | Shows all test names in the binary.                                          |
+| `make clean`             | Removes build artifacts and binaries.                                        |
 | `make clean-metadata`    | Removes machine-specific codeLocations from the JSON metadata. [More info](https://issues.redhat.com/browse/TRT-2186) |
+
+### Additional Targets (from build-machinery-go)
+
+| Target                   | Description                                                                  |
+|--------------------------|------------------------------------------------------------------------------|
+| `make update-gofmt`      | Auto-format Go code using gofmt.                                            |
+| `make verify-gofmt`      | Check if Go code is properly formatted.                                      |
+| `make verify-govet`      | Run go vet to check for common mistakes.                                    |
+| `make help`              | Show all available make targets.                                             |
 
 **Note:** Metadata is stored in: `.openshift-tests-extension/openshift_payload_service-ca-operator.json`
 
