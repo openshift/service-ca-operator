@@ -1,30 +1,53 @@
-# Get the directory where this Makefile is, so we can use it below for including
+# Get the directory where this Makefile is, and the repo root
 DIR := $(strip $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST)))))
+REPO_ROOT := $(shell git rev-parse --show-toplevel)
 
-# Definitions for the extended tests
+# Include build-machinery-go from the vendored copy in parent repo
+include $(addprefix $(REPO_ROOT)/vendor/github.com/openshift/build-machinery-go/make/, \
+	golang.mk \
+)
 
-GO_PKG_NAME := github.com/openshift-eng/openshift-tests-extension
+# Override defaults for test extension binary
+GO_PACKAGE := github.com/openshift-eng/openshift-tests-extension
+GO_BUILD_BINDIR := $(CURDIR)/bin
 
-GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo 'unknown')
-BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
-GIT_TREE_STATE := $(shell if git rev-parse --git-dir > /dev/null 2>&1; then if git diff --quiet; then echo clean; else echo dirty; fi; else echo unknown; fi)
+# openshift-tests-extension uses different variable names than standard build-machinery-go
+# It uses CommitFromGit (uppercase) instead of commitFromGit (lowercase)
+# Override GO_LD_FLAGS to use the correct variable names
+GO_LD_FLAGS :=-ldflags " \
+	-X '$(GO_PACKAGE)/pkg/version.CommitFromGit=$(SOURCE_GIT_COMMIT)' \
+	-X '$(GO_PACKAGE)/pkg/version.BuildDate=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')' \
+	-X '$(GO_PACKAGE)/pkg/version.GitTreeState=$(SOURCE_GIT_TREE_STATE)' \
+"
 
-LDFLAGS := -X '$(GO_PKG_NAME)/pkg/version.CommitFromGit=$(GIT_COMMIT)' \
-           -X '$(GO_PKG_NAME)/pkg/version.BuildDate=$(BUILD_DATE)' \
-           -X '$(GO_PKG_NAME)/pkg/version.GitTreeState=$(GIT_TREE_STATE)'
+# Test-specific binary should exempt FIPS compliance
+# GO_COMPLIANCE_POLICY="exempt_all" must only be used for test related binaries.
+# It prevents various FIPS compliance policies from being applied to this compilation.
+GO_COMPLIANCE_POLICY := exempt_all
+export GO_COMPLIANCE_POLICY
 
+# Metadata file location
+METADATA := $(CURDIR)/.openshift-tests-extension/openshift_payload_service-ca-operator.json
 
-METADATA := $(shell pwd)/.openshift-tests-extension/openshift_payload_service-ca-operator.json
+# Override build target to create custom binary name
+# build-machinery-go would use 'cmd' as the binary name, but we want 'service-ca-operator-tests-ext'
+.PHONY: build
+build:
+	@mkdir -p $(GO_BUILD_BINDIR)
+	$(GO) build $(GO_MOD_FLAGS) $(GO_BUILD_FLAGS) $(GO_LD_FLAGS) -o $(GO_BUILD_BINDIR)/service-ca-operator-tests-ext ./cmd/...
 
-.PHONY: help
-help: #HELP Display essential help.
-	@awk 'BEGIN {FS = ":[^#]*#HELP"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\n"} /^[a-zA-Z_0-9-]+:.*#HELP / { printf "  \033[36m%-17s\033[0m %s\n", $$1, $$2 } ' $(MAKEFILE_LIST)
+# Override clean to remove our custom binary
+.PHONY: clean-binaries
+clean-binaries:
+	$(RM) $(GO_BUILD_BINDIR)/service-ca-operator-tests-ext
+
+.PHONY: clean
+clean: clean-binaries
+	$(RM) -r $(GO_BUILD_BINDIR)
 
 #SECTION Tests
-TOOLS_BIN_DIR := $(CURDIR)/bin
-
 .PHONY: run-suite #HELP Run tests by suite name and generate JUnit report (e.g., make run-suite SUITE=openshift/service-ca-operator/all ARTIFACT_DIR=/tmp/artifacts)
-run-suite: build #HELP Run tests by suite name and generate JUnit report
+run-suite: build
 	@if [ -z "$(SUITE)" ]; then \
 		echo "Error: SUITE variable is required. Available suites:"; \
 		echo "  - openshift/service-ca-operator/all"; \
@@ -38,45 +61,13 @@ run-suite: build #HELP Run tests by suite name and generate JUnit report
 	@ARTIFACT_DIR_FINAL=$${ARTIFACT_DIR:-$(CURDIR)}; \
 	echo "Using ARTIFACT_DIR: $$ARTIFACT_DIR_FINAL"; \
 	mkdir -p $$ARTIFACT_DIR_FINAL; \
-	$(TOOLS_BIN_DIR)/service-ca-operator-tests-ext run-suite $(SUITE) -j $$ARTIFACT_DIR_FINAL/junit_$(shell date +%Y%m%d-%H%M%S).xml
+	$(GO_BUILD_BINDIR)/service-ca-operator-tests-ext run-suite $(SUITE) -j $$ARTIFACT_DIR_FINAL/junit_$(shell date +%Y%m%d-%H%M%S).xml
 
-#SECTION Development
-.PHONY: verify #HELP To verify the code
-verify: tidy fmt vet lint
-
-.PHONY: tidy #HELP Run go mod tidy.
-tidy:
-	go mod tidy
-
-.PHONY: fmt
-fmt: #HELP Run go fmt against code.
-	go fmt ./...
-
-.PHONY: vet
-vet: #HELP Run go vet against code.
-	go vet ./...
-
-.PHONY: lint
-lint: #HELP Run golangci linter.
-	@echo "Linting not configured for tests-extension"
-
-.PHONY: fix-lint
-fix-lint: #HELP Fix lint issues
-	@echo "Linting not configured for tests-extension"
-
-# GO_COMPLIANCE_POLICY="exempt_all" must only be used for test related binaries.
-# It prevents various FIPS compliance policies from being applied to this compilation.
-# Do not set globally.
-.PHONY: build
-build: #HELP Build the extended tests binary
-	@mkdir -p $(TOOLS_BIN_DIR)
-	GO_COMPLIANCE_POLICY="exempt_all" go build -ldflags "$(LDFLAGS)" -o $(TOOLS_BIN_DIR)/service-ca-operator-tests-ext ./cmd/...
-
-.PHONY: update-metadata
-update-metadata: build #HELP Build and run 'update-metadata' to generate test metadata
-	$(TOOLS_BIN_DIR)/service-ca-operator-tests-ext update --component openshift:payload:service-ca-operator
+#SECTION Metadata
+.PHONY: update-metadata #HELP Build and run 'update-metadata' to generate test metadata
+update-metadata: build
+	$(GO_BUILD_BINDIR)/service-ca-operator-tests-ext update --component openshift:payload:service-ca-operator
 	$(MAKE) clean-metadata
-
 
 # Ensure TestID is unique over time.
 # TestID is built over Product:Type:ComponentName:TestDescription
@@ -108,25 +99,19 @@ update-metadata: build #HELP Build and run 'update-metadata' to generate test me
 # 4. Run: make build-update.
 # This will regenerate the metadata without the test entry.
 #────────────────────────────────────────────────────────────────────
-.PHONY: build-update
-build-update: build update-metadata #HELP Build and update metadata and sanitize output
+.PHONY: build-update #HELP Build and update metadata and sanitize output
+build-update: build update-metadata
 
-.PHONY: clean
-clean: #HELP Remove build artifacts
-	rm -rf $(TOOLS_BIN_DIR)
-
-#SECTION Metadata
-
-.PHONY: list-test-names
-list-test-names: build #HELP Show current full test names
-	@$(TOOLS_BIN_DIR)/service-ca-operator-tests-ext list -o names
+.PHONY: list-test-names #HELP Show current full test names
+list-test-names: build
+	@$(GO_BUILD_BINDIR)/service-ca-operator-tests-ext list -o names
 
 # Remove 'codeLocations' to avoid absolute paths like:
 # "/Users/$(USER)/go/src/.../service-ca.go:12"
 # These are machine-specific and make the metadata non-idempotent.
 # More info: https://issues.redhat.com/browse/TRT-2186
-.PHONY: clean-metadata
-clean-metadata: #HELP Remove 'codeLocations' from metadata JSON
+.PHONY: clean-metadata #HELP Remove 'codeLocations' from metadata JSON
+clean-metadata:
 	@echo "Cleaning metadata (removing codeLocations)..."
 	@jq 'map(del(.codeLocations))' $(METADATA) > $(METADATA).tmp && mv $(METADATA).tmp $(METADATA)
 
@@ -136,3 +121,15 @@ verify-metadata: update-metadata
 		echo "ERROR: Metadata is out of date. Please run 'make build-update' and commit the result."; \
 		exit 1; \
 	fi
+
+#SECTION Development
+# Note: verify, update, tidy targets are provided by golang.mk from build-machinery-go
+# This ensures consistency with all other OpenShift components
+
+.PHONY: lint #HELP Run golangci linter (not configured for tests-extension)
+lint:
+	@echo "Linting not configured for tests-extension"
+
+.PHONY: fix-lint #HELP Fix lint issues (not configured for tests-extension)
+fix-lint:
+	@echo "Linting not configured for tests-extension"
