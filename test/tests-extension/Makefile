@@ -31,7 +31,6 @@ run-suite: build #HELP Run tests by suite name and generate JUnit report
 		echo "  - openshift/service-ca-operator/conformance/parallel"; \
 		echo "  - openshift/service-ca-operator/conformance/serial"; \
 		echo "  - openshift/service-ca-operator/optional/slow"; \
-		echo "  - openshift/service-ca-operator/candidate"; \
 		echo ""; \
 		echo "Usage: make run-suite SUITE=openshift/service-ca-operator/all [ARTIFACT_DIR=/tmp/artifacts]"; \
 		exit 1; \

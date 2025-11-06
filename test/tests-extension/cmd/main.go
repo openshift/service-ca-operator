@@ -32,7 +32,7 @@ func main() {
 		Name:    "openshift/service-ca-operator/conformance/parallel",
 		Parents: []string{"openshift/conformance/parallel"},
 		Qualifiers: []string{
-			`!(name.contains("[Serial]") || name.contains("[Slow]") || "candidate" in labels)`,
+			`!(name.contains("[Serial]") || name.contains("[Slow]"))`,
 		},
 	})
 
@@ -51,17 +51,6 @@ func main() {
 		Parents: []string{"openshift/optional/slow"},
 		Qualifiers: []string{
 			`name.contains("[Slow]")`,
-		},
-	})
-
-	// Suite: candidate (new tests under stability evaluation)
-	// IMPORTANT: This suite contains new tests that are NOT yet ready for CI.
-	// Tests remain here until proven stable through multiple successful runs.
-	// Promotion process: candidate → conformance/parallel (after 5+ successful runs)
-	ext.AddSuite(e.Suite{
-		Name: "openshift/service-ca-operator/candidate",
-		Qualifiers: []string{
-			`"candidate" in labels`,
 		},
 	})
 

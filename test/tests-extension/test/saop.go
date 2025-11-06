@@ -13,6 +13,7 @@ import (
 
 	g "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
+	ote "github.com/openshift-eng/openshift-tests-extension/pkg/ginkgo"
 	"github.com/openshift/service-ca-operator/test/tests-extension/util"
 )
 
@@ -189,14 +190,16 @@ func testValidatingWebhookInjection() {
 	o.Expect(err).NotTo(o.HaveOccurred())
 }
 
-// For new test, add label with g.Label("candidate"), when it is stable, set g.Label("conformance", "parallel") or something else.
-var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
+// For new tests, use ote.Informing() decorator to mark as non-blocking in CI.
+// Tests run in CI and collect data in Sippy, but don't block on failure.
+// Remove Informing() decorator once the test proves stable (>95% pass rate in Sippy).
+var _ = g.Describe("Service CA Operator", func() {
 	g.BeforeEach(func() {
 		err := util.CheckComponents(client)
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
-	g.It("should create a serving cert secret for services with the serving-cert annotation", func() {
+	g.It("should create a serving cert secret for services with the serving-cert annotation", ote.Informing(), g.Label("conformance", "parallel"), func() {
 		// Test regular service
 		secretName, _, namespace, cleanup := setupServingCertTest(false)
 		defer cleanup()
@@ -210,7 +213,7 @@ var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
 		o.Expect(ok2).To(o.BeTrue())
 	})
 
-	g.It("should recreate a serving cert secret when the secret is deleted", func() {
+	g.It("should recreate a serving cert secret when the secret is deleted", ote.Informing(), g.Label("conformance", "parallel"), func() {
 		// Test regular service
 		secretName, _, namespace, cleanup := setupServingCertTest(false)
 		defer cleanup()
@@ -222,7 +225,7 @@ var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
 		testSecretDeletionAndRecreation(secretName2, namespace2)
 	})
 
-	g.It("should inject a CA bundle into an annotated configmap", func() {
+	g.It("should inject a CA bundle into an annotated configmap", ote.Informing(), g.Label("conformance", "parallel"), func() {
 		configMapName, namespace := util.RandSeq(10), util.RandSeq(10)
 
 		defer createTestNamespaceWithCleanup(namespace)()
@@ -232,7 +235,7 @@ var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
-	g.It("should update CA bundle injection configmap when modified", func() {
+	g.It("should update CA bundle injection configmap when modified", ote.Informing(), g.Label("conformance", "parallel"), func() {
 		configMapName, namespace := util.RandSeq(10), util.RandSeq(10)
 
 		defer createTestNamespaceWithCleanup(namespace)()
@@ -245,7 +248,7 @@ var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
-	g.It("should handle vulnerable legacy CA bundle injection configmap", func() {
+	g.It("should handle vulnerable legacy CA bundle injection configmap", ote.Informing(), g.Label("conformance", "parallel"), func() {
 		namespace := util.RandSeq(10)
 		defer createTestNamespaceWithCleanup(namespace)()
 
@@ -254,7 +257,7 @@ var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
 		// the vulnerable legacy injection mechanism
 	})
 
-	g.It("should collect metrics and service CA metrics", func() {
+	g.It("should collect metrics and service CA metrics", ote.Informing(), g.Label("conformance", "parallel"), func() {
 		if promClient == nil {
 			g.Skip("skipping metrics test due to unavailable prometheus client")
 		}
@@ -268,12 +271,12 @@ var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
 	})
 
 	// conformance/serial
-	g.It("should refresh CA when secret is deleted", func() {
+	g.It("should refresh CA when secret is deleted", ote.Informing(), g.Label("conformance", "serial"), func() {
 		err := util.PollForCARecreation(client)
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
-	g.It("should regenerate serving cert secret when TLS cert is modified", func() {
+	g.It("should regenerate serving cert secret when TLS cert is modified", ote.Informing(), g.Label("conformance", "parallel"), func() {
 		// Test regular service
 		secretName, _, namespace, cleanup := setupServingCertTest(false)
 		defer cleanup()
@@ -285,7 +288,7 @@ var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
 		testSecretModification(secretName2, namespace2, "tls.crt", true)
 	})
 
-	g.It("should remove extra data from serving cert secret", func() {
+	g.It("should remove extra data from serving cert secret", ote.Informing(), g.Label("conformance", "parallel"), func() {
 		// Test regular service
 		secretName, _, namespace, cleanup := setupServingCertTest(false)
 		defer cleanup()
@@ -298,19 +301,19 @@ var _ = g.Describe("Service CA Operator", g.Label("candidate"), func() {
 	})
 
 	// conformance/serial
-	g.It("should handle time-based CA rotation", func() {
+	g.It("should handle time-based CA rotation", ote.Informing(), g.Label("conformance", "serial"), func() {
 		err := util.CheckCARotation(client, config, util.TriggerTimeBasedRotation)
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 
 	// conformance/serial
-	g.It("should handle forced CA rotation", func() {
+	g.It("should handle forced CA rotation", ote.Informing(), g.Label("conformance", "serial"), func() {
 		err := util.CheckCARotation(client, config, util.TriggerForcedRotation)
 		o.Expect(err).NotTo(o.HaveOccurred())
 	})
 })
 
-var _ = g.Describe("Service CA Operator Webhook Injection", g.Label("candidate"), func() {
+var _ = g.Describe("Service CA Operator Webhook Injection", ote.Informing(), g.Label("conformance", "serial"), func() {
 	g.BeforeEach(func() {
 		err := util.CheckComponents(client)
 		o.Expect(err).NotTo(o.HaveOccurred())

@@ -16,7 +16,6 @@ They use the framework: https://github.com/openshift-eng/openshift-tests-extensi
 | `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/conformance/parallel` | Runs conformance tests that are parallel-safe (not Serial or Slow). |
 | `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/conformance/serial` | Runs conformance tests that must run serially (labeled [Serial]). |
 | `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/optional/slow` | Runs long-running tests (labeled [Slow]). |
-| `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/candidate` | Runs new tests under stability evaluation (NOT in CI jobs). |
 | `./bin/service-ca-operator-tests-ext run-test -n <test-name>` | Runs one specific test. Replace <test-name> with the test's full name.   |
 
 
@@ -123,47 +122,61 @@ Or, if used within helper functions:
 
 This ensures compatibility when running tests in non-OpenShift environments such as KinD.
 
-## Test Maturity Levels
+## Test Stability: Using Informing Tests
 
-Tests in this project follow a maturity progression to ensure stability before being included in CI jobs. This prevents unstable tests from blocking PRs and OCP payload releases.
+To prevent unstable tests from blocking PRs and OCP payload releases, we use the **Informing** decorator for new tests. This allows tests to run in CI, collect data in Sippy, but not fail the CI job if they fail.
 
-### Maturity Stages
+### Why This Matters
 
-| Stage | Label | Description | Included in CI? |
-|-------|-------|-------------|-----------------|
-| **Candidate** | `g.Label("candidate")` | New tests under stability evaluation. Run manually or in development environments. | ❌ No |
-| **Conformance** | `g.Label("conformance", "parallel")` | Stable, production-ready tests that can run in parallel. | ✅ Yes |
-| **Serial** | `g.Label("conformance", "serial")` | Stable tests that must run sequentially. | ✅ Yes |
+**Real-world example**: In commit `87df21ba5` (TRT-2385), all tests had to be removed and replaced with a fake test because:
+- Tests passed locally but failed in e2e CI
+- TRT team demanded PR revert
+- This blocked PR merges and nightly payloads
+- Resulted in repetitive work and lost development time
 
-### Adding a New Test
+The `Informing()` decorator prevents this by:
+- ✅ Running tests in real CI environment (not just local)
+- ✅ Collecting data in Sippy and Component Readiness dashboards
+- ✅ NOT blocking CI jobs or payloads on failure
+- ✅ Allowing iteration without TRT intervention
 
-When adding a new test, **always start with the `candidate` label**:
+### Adding a New Test with Informing
+
+**Always use `ote.Informing()` for new tests:**
 
 ```go
-var _ = g.Describe("My New Feature", g.Label("candidate"), func() {
-    g.It("should work correctly", func() {
+import (
+    g "github.com/onsi/ginkgo/v2"
+    o "github.com/onsi/gomega"
+    ote "github.com/openshift-eng/openshift-tests-extension/pkg/ginkgo"
+)
+
+var _ = g.Describe("My New Feature", func() {
+    g.It("should work correctly", ote.Informing(), g.Label("conformance", "parallel"), func() {
         // test implementation
+        o.Expect(true).To(o.BeTrue())
     })
 })
 ```
 
-### Promoting a Test from Candidate to Conformance
+### Promoting an Informing Test to Blocking
 
-Before promoting a test to `conformance`, it must be proven stable:
+Tests **cannot stay informing forever**. Plan to promote to blocking in the next release at the latest.
 
-1. **Run the test multiple times** - Use `/payload-aggregate` to run at least 5 times:
-   - For `[Serial]` tests: `/payload-aggregate periodic-ci-openshift-release-master-ci-4.20-e2e-gcp-ovn-techpreview-serial 5`
-   - For parallel tests: `/payload-aggregate periodic-ci-openshift-release-master-ci-4.20-e2e-gcp-ovn-techpreview 5`
+**Promotion criteria:**
 
-2. **Verify all runs passed** - Check that there are no flakes or intermittent failures
+1. **Check Sippy for pass rate** - Must show >95% success rate over multiple CI runs
+   - View at: https://sippy.dptools.openshift.org/
 
-3. **Update the label**:
+2. **Verify no cluster destabilization** - Confirm test doesn't crash or corrupt clusters
+
+3. **Remove the decorator**:
    ```go
    // Change from:
-   var _ = g.Describe("My New Feature", g.Label("candidate"), func() {
+   g.It("my test", ote.Informing(), g.Label("conformance", "parallel"), func() {
 
    // To:
-   var _ = g.Describe("My New Feature", g.Label("conformance", "parallel"), func() {
+   g.It("my test", g.Label("conformance", "parallel"), func() {
    ```
 
 4. **Update metadata**:
@@ -171,26 +184,32 @@ Before promoting a test to `conformance`, it must be proven stable:
    make build-update
    ```
 
-5. **Create a PR** with the promotion, including evidence of successful test runs
+5. **Create a PR** with promotion, referencing Sippy data showing stability
 
-### Why This Process Matters
+### Test Lifecycle
 
-- **Prevents CI Disruption**: Unstable tests in CI can block PRs and delay releases
-- **TRT Team Challenges**: Failed CI tests trigger scrutiny from the Test Readiness Team (TRT)
-- **Payload Release Impact**: Blocking tests can prevent OCP payload releases
-- **Developer Experience**: Reduces false negatives and builds confidence in the test suite
-
-### Running Candidate Tests
-
-Candidate tests are isolated in their own suite and not run in CI:
-
-```bash
-# Run all candidate tests
-make run-suite SUITE=openshift/service-ca-operator/candidate
-
-# Or use the binary directly
-./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/candidate
 ```
+┌──────────────────────┐
+│ New Test             │
+│ ote.Informing()      │  ← Runs in CI, collects data, doesn't block
+└──────────┬───────────┘
+           │ ✅ Sippy shows >95% pass rate
+           │ ✅ Multiple releases of stability
+           ▼
+┌──────────────────────┐
+│ Production Test      │
+│ (no decorator)       │  ← Blocks CI on failure
+└──────────────────────┘
+```
+
+### Benefits Over Other Approaches
+
+| Approach | Problem |
+|----------|---------|
+| **Local testing only** | ❌ Can't catch CI-specific issues (timing, resources, infrastructure) |
+| **Direct to CI** | ❌ Blocks payloads immediately (this caused TRT-2385) |
+| **Isolated test suite** | ❌ No real CI data, slow iteration, manual testing burden |
+| **`ote.Informing()`** | ✅ Best of both worlds: CI testing + no blocking |
 
 ## Development Workflow
 
