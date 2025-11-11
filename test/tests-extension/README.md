@@ -13,6 +13,9 @@ They use the framework: https://github.com/openshift-eng/openshift-tests-extensi
 | `./bin/service-ca-operator-tests-ext info`     | Shows info about the test binary and registered test suites.             |
 | `./bin/service-ca-operator-tests-ext list`     | Lists all available test cases.                                          |
 | `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/all` | Runs the full Service CA Operator test suite. |
+| `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/conformance/parallel` | Runs conformance tests that are parallel-safe (not Serial or Slow). |
+| `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/conformance/serial` | Runs conformance tests that must run serially (labeled [Serial]). |
+| `./bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/optional/slow` | Runs long-running tests (labeled [Slow]). |
 | `./bin/service-ca-operator-tests-ext run-test -n <test-name>` | Runs one specific test. Replace <test-name> with the test's full name.   |
 
 
@@ -119,6 +122,95 @@ Or, if used within helper functions:
 
 This ensures compatibility when running tests in non-OpenShift environments such as KinD.
 
+## Test Stability: Using Informing Tests
+
+To prevent unstable tests from blocking PRs and OCP payload releases, we use the **Informing** decorator for new tests. This allows tests to run in CI, collect data in Sippy, but not fail the CI job if they fail.
+
+### Why This Matters
+
+**Real-world example**: In commit `87df21ba5` (TRT-2385), all tests had to be removed and replaced with a fake test because:
+- Tests passed locally but failed in e2e CI
+- TRT team demanded PR revert
+- This blocked PR merges and nightly payloads
+- Resulted in repetitive work and lost development time
+
+The `Informing()` decorator prevents this by:
+- ✅ Running tests in real CI environment (not just local)
+- ✅ Collecting data in Sippy and Component Readiness dashboards
+- ✅ NOT blocking CI jobs or payloads on failure
+- ✅ Allowing iteration without TRT intervention
+
+### Adding a New Test with Informing
+
+**Always use `ote.Informing()` for new tests:**
+
+```go
+import (
+    g "github.com/onsi/ginkgo/v2"
+    o "github.com/onsi/gomega"
+    ote "github.com/openshift-eng/openshift-tests-extension/pkg/ginkgo"
+)
+
+var _ = g.Describe("My New Feature", func() {
+    g.It("should work correctly", ote.Informing(), g.Label("conformance", "parallel"), func() {
+        // test implementation
+        o.Expect(true).To(o.BeTrue())
+    })
+})
+```
+
+### Promoting an Informing Test to Blocking
+
+Tests **cannot stay informing forever**. Plan to promote to blocking in the next release at the latest.
+
+**Promotion criteria:**
+
+1. **Check Sippy for pass rate** - Must show >95% success rate over multiple CI runs
+   - View at: https://sippy.dptools.openshift.org/
+
+2. **Verify no cluster destabilization** - Confirm test doesn't crash or corrupt clusters
+
+3. **Remove the decorator**:
+   ```go
+   // Change from:
+   g.It("my test", ote.Informing(), g.Label("conformance", "parallel"), func() {
+
+   // To:
+   g.It("my test", g.Label("conformance", "parallel"), func() {
+   ```
+
+4. **Update metadata**:
+   ```bash
+   make build-update
+   ```
+
+5. **Create a PR** with promotion, referencing Sippy data showing stability
+
+### Test Lifecycle
+
+```
+┌──────────────────────┐
+│ New Test             │
+│ ote.Informing()      │  ← Runs in CI, collects data, doesn't block
+└──────────┬───────────┘
+           │ ✅ Sippy shows >95% pass rate
+           │ ✅ Multiple releases of stability
+           ▼
+┌──────────────────────┐
+│ Production Test      │
+│ (no decorator)       │  ← Blocks CI on failure
+└──────────────────────┘
+```
+
+### Benefits Over Other Approaches
+
+| Approach | Problem |
+|----------|---------|
+| **Local testing only** | ❌ Can't catch CI-specific issues (timing, resources, infrastructure) |
+| **Direct to CI** | ❌ Blocks payloads immediately (this caused TRT-2385) |
+| **Isolated test suite** | ❌ No real CI data, slow iteration, manual testing burden |
+| **`ote.Informing()`** | ✅ Best of both worlds: CI testing + no blocking |
+
 ## Development Workflow
 
 - Add or update tests in: `test/tests-extension/test/`
@@ -216,14 +308,28 @@ More info: https://docs.ci.openshift.org/docs/architecture/ci-operator/#testing-
 
 ## Makefile Commands
 
+This project uses `build-machinery-go` for consistent build tooling across all OpenShift components.
+
+### Common Targets
+
 | Target                   | Description                                                                  |
 |--------------------------|------------------------------------------------------------------------------|
 | `make build`             | Builds the test binary.                                                      |
 | `make update-metadata`   | Updates the metadata JSON file.                                              |
 | `make build-update`      | Runs build + update-metadata + cleans codeLocations.                         |
-| `make verify`            | Runs formatting, vet, and linter.                                            |
+| `make verify`            | Runs formatting, vet, and linter checks.                                     |
 | `make list-test-names`   | Shows all test names in the binary.                                          |
+| `make clean`             | Removes build artifacts and binaries.                                        |
 | `make clean-metadata`    | Removes machine-specific codeLocations from the JSON metadata. [More info](https://issues.redhat.com/browse/TRT-2186) |
+
+### Additional Targets (from build-machinery-go)
+
+| Target                   | Description                                                                  |
+|--------------------------|------------------------------------------------------------------------------|
+| `make update-gofmt`      | Auto-format Go code using gofmt.                                            |
+| `make verify-gofmt`      | Check if Go code is properly formatted.                                      |
+| `make verify-govet`      | Run go vet to check for common mistakes.                                    |
+| `make help`              | Show all available make targets.                                             |
 
 **Note:** Metadata is stored in: `.openshift-tests-extension/openshift_payload_service-ca-operator.json`
 
