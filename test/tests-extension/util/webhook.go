@@ -17,9 +17,15 @@ import (
 )
 
 // PollForAPIService returns the specified APIService if its ca bundle matches the provided value
+// Note: This may trigger kube-apiserver restart, so we use a 15-minute timeout
 func PollForAPIService(client apiserviceclientv1.APIServiceInterface, name string, expectedCABundle []byte) (*apiregv1.APIService, error) {
+	return PollForAPIServiceWithTimeout(client, name, expectedCABundle, 15)
+}
+
+// PollForAPIServiceWithTimeout returns the specified APIService if its ca bundle matches the provided value with custom timeout
+func PollForAPIServiceWithTimeout(client apiserviceclientv1.APIServiceInterface, name string, expectedCABundle []byte, timeoutMinutes int) (*apiregv1.APIService, error) {
 	var apiService *apiregv1.APIService
-	err := wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, time.Duration(timeoutMinutes)*time.Minute, func() (bool, error) {
 		as, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
@@ -29,7 +35,8 @@ func PollForAPIService(client apiserviceclientv1.APIServiceInterface, name strin
 			return false, nil
 		}
 		if !bytes.Equal(actualCABundle, expectedCABundle) {
-			return false, fmt.Errorf("ca bundle does not match the expected value")
+			// CA bundle doesn't match yet, keep polling
+			return false, nil
 		}
 		apiService = as
 		return true, nil
@@ -38,22 +45,29 @@ func PollForAPIService(client apiserviceclientv1.APIServiceInterface, name strin
 }
 
 // PollForCRD returns the specified CustomResourceDefinition if the ca bundle for its conversion webhook config matches the provided value
+// Note: This may trigger kube-apiserver restart, so we use a 15-minute timeout
 func PollForCRD(client apiextclient.CustomResourceDefinitionInterface, name string, expectedCABundle []byte) (*apiext.CustomResourceDefinition, error) {
+	return PollForCRDWithTimeout(client, name, expectedCABundle, 15)
+}
+
+// PollForCRDWithTimeout returns the specified CustomResourceDefinition if the ca bundle for its conversion webhook config matches the provided value with custom timeout
+func PollForCRDWithTimeout(client apiextclient.CustomResourceDefinitionInterface, name string, expectedCABundle []byte, timeoutMinutes int) (*apiext.CustomResourceDefinition, error) {
 	var crd *apiext.CustomResourceDefinition
-	err := wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, time.Duration(timeoutMinutes)*time.Minute, func() (bool, error) {
 		c, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
 		}
 		if c.Spec.Conversion == nil || c.Spec.Conversion.Webhook == nil || c.Spec.Conversion.Webhook.ClientConfig == nil {
-			return false, fmt.Errorf("spec.conversion.webhook.webhook.clientConfig not set")
+			return false, nil
 		}
 		actualCABundle := c.Spec.Conversion.Webhook.ClientConfig.CABundle
 		if len(actualCABundle) == 0 {
 			return false, nil
 		}
 		if !bytes.Equal(actualCABundle, expectedCABundle) {
-			return false, fmt.Errorf("ca bundle does not match the expected value")
+			// CA bundle doesn't match yet, keep polling
+			return false, nil
 		}
 		crd = c
 		return true, nil
@@ -62,9 +76,15 @@ func PollForCRD(client apiextclient.CustomResourceDefinitionInterface, name stri
 }
 
 // PollForMutatingWebhookConfiguration returns the specified MutatingWebhookConfiguration if the ca bundle for all its webhooks match the provided value
+// Note: This may trigger kube-apiserver restart, so we use a 15-minute timeout
 func PollForMutatingWebhookConfiguration(client admissionregclient.MutatingWebhookConfigurationInterface, name string, expectedCABundle []byte) (*admissionreg.MutatingWebhookConfiguration, error) {
+	return PollForMutatingWebhookConfigurationWithTimeout(client, name, expectedCABundle, 15)
+}
+
+// PollForMutatingWebhookConfigurationWithTimeout returns the specified MutatingWebhookConfiguration if the ca bundle for all its webhooks match the provided value with custom timeout
+func PollForMutatingWebhookConfigurationWithTimeout(client admissionregclient.MutatingWebhookConfigurationInterface, name string, expectedCABundle []byte, timeoutMinutes int) (*admissionreg.MutatingWebhookConfiguration, error) {
 	var webhookConfig *admissionreg.MutatingWebhookConfiguration
-	err := wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, time.Duration(timeoutMinutes)*time.Minute, func() (bool, error) {
 		wc, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
@@ -73,9 +93,9 @@ func PollForMutatingWebhookConfiguration(client admissionregclient.MutatingWebho
 			if len(webhook.ClientConfig.CABundle) == 0 {
 				return false, nil
 			}
-			err := CheckWebhookCABundle(webhook.Name, expectedCABundle, webhook.ClientConfig.CABundle)
-			if err != nil {
-				return false, err
+			if !bytes.Equal(webhook.ClientConfig.CABundle, expectedCABundle) {
+				// CA bundle doesn't match yet, keep polling
+				return false, nil
 			}
 		}
 		webhookConfig = wc
@@ -85,9 +105,15 @@ func PollForMutatingWebhookConfiguration(client admissionregclient.MutatingWebho
 }
 
 // PollForValidatingWebhookConfiguration returns the specified ValidatingWebhookConfiguration if the ca bundle for all its webhooks match the provided value
+// Note: This may trigger kube-apiserver restart, so we use a 15-minute timeout
 func PollForValidatingWebhookConfiguration(client admissionregclient.ValidatingWebhookConfigurationInterface, name string, expectedCABundle []byte) (*admissionreg.ValidatingWebhookConfiguration, error) {
+	return PollForValidatingWebhookConfigurationWithTimeout(client, name, expectedCABundle, 15)
+}
+
+// PollForValidatingWebhookConfigurationWithTimeout returns the specified ValidatingWebhookConfiguration if the ca bundle for all its webhooks match the provided value with custom timeout
+func PollForValidatingWebhookConfigurationWithTimeout(client admissionregclient.ValidatingWebhookConfigurationInterface, name string, expectedCABundle []byte, timeoutMinutes int) (*admissionreg.ValidatingWebhookConfiguration, error) {
 	var webhookConfig *admissionreg.ValidatingWebhookConfiguration
-	err := wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, time.Duration(timeoutMinutes)*time.Minute, func() (bool, error) {
 		wc, err := client.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
@@ -96,9 +122,9 @@ func PollForValidatingWebhookConfiguration(client admissionregclient.ValidatingW
 			if len(webhook.ClientConfig.CABundle) == 0 {
 				return false, nil
 			}
-			err := CheckWebhookCABundle(webhook.Name, expectedCABundle, webhook.ClientConfig.CABundle)
-			if err != nil {
-				return false, err
+			if !bytes.Equal(webhook.ClientConfig.CABundle, expectedCABundle) {
+				// CA bundle doesn't match yet, keep polling
+				return false, nil
 			}
 		}
 		webhookConfig = wc

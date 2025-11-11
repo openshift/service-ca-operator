@@ -20,7 +20,7 @@ const (
 
 // PollForServiceServingSecret polls for a service serving secret to be created
 func PollForServiceServingSecret(client kubernetes.Interface, secretName, namespace string) error {
-	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+	return wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
 		_, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return false, nil
@@ -49,7 +49,7 @@ func PollForCABundleInjectionConfigMap(client kubernetes.Interface, configMapNam
 // PollForServiceServingSecretWithReturn polls for service serving secret and returns it
 func PollForServiceServingSecretWithReturn(client kubernetes.Interface, secretName, namespace string) (*corev1.Secret, error) {
 	var secret *corev1.Secret
-	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(5*time.Second, 120*time.Second, func() (bool, error) {
 		s, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return false, nil
