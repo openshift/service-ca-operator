@@ -32,9 +32,13 @@ METADATA := $(CURDIR)/.openshift-tests-extension/openshift_payload_service-ca-op
 # Override build target to create custom binary name
 # build-machinery-go would use 'cmd' as the binary name, but we want 'service-ca-operator-tests-ext'
 .PHONY: build
-build:
+build: vendor
 	@mkdir -p $(GO_BUILD_BINDIR)
 	$(GO) build $(GO_MOD_FLAGS) $(GO_BUILD_FLAGS) $(GO_LD_FLAGS) -o $(GO_BUILD_BINDIR)/service-ca-operator-tests-ext ./cmd/...
+
+.PHONY: vendor
+vendor:
+	$(GO) mod vendor
 
 # Override clean to remove our custom binary
 .PHONY: clean-binaries
