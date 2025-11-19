@@ -6,6 +6,7 @@
 *.dylib
 service-ca-operator
 /service-ca-operator-tests-ext
+/service-ca-operator-tests-ext.gz
 
 # Test binary, build with `go test -c`
 *.test

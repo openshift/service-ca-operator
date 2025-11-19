@@ -44,29 +44,6 @@ $(call add-profile-manifests,manifests,./profile-patches,./manifests)
 
 $(call verify-golang-versions,Dockerfile.rhel7)
 
-# -------------------------------------------------------------------
-# OpenShift Tests Extension (Service CA Operator)
-# -------------------------------------------------------------------
-.PHONY: tests-ext-build
-tests-ext-build:
-	$(MAKE) -C test/tests-extension build
-
-.PHONY: tests-ext-update
-tests-ext-update:
-	$(MAKE) -C test/tests-extension build-update
-
-.PHONY: tests-ext-clean
-tests-ext-clean:
-	$(MAKE) -C test/tests-extension clean
-
-.PHONY: run-suite
-run-suite:
-	$(MAKE) -C test/tests-extension run-suite SUITE=$(SUITE) ARTIFACT_DIR=$(ARTIFACT_DIR)
-
-clean: tests-ext-clean
-	$(RM) ./service-ca-operator
-.PHONY: clean
-
 GO_TEST_PACKAGES :=./pkg/... ./cmd/...
 
 .PHONY: test-e2e
