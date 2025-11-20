@@ -207,13 +207,12 @@ spec:
       name: service-ca
       annotations:
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
-        openshift.io/required-scc: restricted-v3
+        openshift.io/required-scc: restricted-v2
       labels:
         app: service-ca
         service-ca: "true"
     spec:
       serviceAccountName: service-ca
-      hostUsers: false
       containers:
       - name: service-ca-controller
         image: ${IMAGE}
@@ -221,6 +220,8 @@ spec:
         command: ["service-ca-operator", "controller"]
         ports:
         - containerPort: 8443
+        securityContext:
+          runAsNonRoot: true
         resources:
           requests:
             memory: 120Mi
