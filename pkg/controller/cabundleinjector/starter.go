@@ -3,11 +3,11 @@ package cabundleinjector
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"os"
 	"strings"
 	"time"
+
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -52,18 +52,18 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 	// TODO(marun) Detect and respond to changes in this path rather than
 	// depending on the operator for redeployment
 	caBundleFile := "/var/run/configmaps/signing-cabundle/ca-bundle.crt"
-	caBundleContent, err := ioutil.ReadFile(caBundleFile)
+	caBundleContent, err := os.ReadFile(caBundleFile)
 	if err != nil {
 		return err
 	}
 
 	// this construction matches what the old kube controller manager did. It added the entire ca.crt to the service-ca.crt.
-	vulnerableLegacyCABundleContent, err := ioutil.ReadFile(caBundleFile)
+	vulnerableLegacyCABundleContent, err := os.ReadFile(caBundleFile)
 	if err != nil {
 		return err
 	}
 	saTokenCAFile := "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-	saTokenCABundleContent, err := ioutil.ReadFile(saTokenCAFile)
+	saTokenCABundleContent, err := os.ReadFile(saTokenCAFile)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
