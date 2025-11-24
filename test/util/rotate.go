@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -59,7 +58,7 @@ func CheckRotation(t *testing.T, dnsName string, oldCertPEM, oldKeyPEM, oldBundl
 func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, bundlePEM []byte) {
 	// Emulate how a service will consume the serving cert by writing
 	// the cert and key to disk.
-	certFile, err := ioutil.TempFile("", v1.TLSCertKey)
+	certFile, err := os.CreateTemp("", v1.TLSCertKey)
 	if err != nil {
 		t.Fatalf("error creating tmpfile for cert: %v", err)
 
@@ -75,7 +74,7 @@ func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, b
 		t.Fatalf("Error writing cert to disk: %v", err)
 	}
 
-	keyFile, err := ioutil.TempFile("", v1.TLSPrivateKeyKey)
+	keyFile, err := os.CreateTemp("", v1.TLSPrivateKeyKey)
 	if err != nil {
 		t.Fatalf("error creating tmpfile for key: %v", err)
 

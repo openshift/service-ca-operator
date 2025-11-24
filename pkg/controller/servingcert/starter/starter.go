@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -103,7 +102,7 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 // bridge trust between the current and previous CA, but a new cluster
 // will not have a previous CA.
 func readIntermediateCACert(filename string) (*x509.Certificate, error) {
-	certsPEMBlock, err := ioutil.ReadFile(filename)
+	certsPEMBlock, err := os.ReadFile(filename)
 	if os.IsNotExist(err) {
 		klog.V(4).Infof("%q does not exist which indicates that an intermediate certificate was not specified", filename)
 		return nil, nil
