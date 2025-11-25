@@ -17,7 +17,7 @@ spec:
   template:
     metadata:
       annotations:
-        openshift.io/required-scc: restricted-v3
+        openshift.io/required-scc: nonroot-v2
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         app: service-ca-operator
@@ -53,10 +53,11 @@ spec:
           name: config
         - mountPath: /var/run/secrets/serving-cert
           name: serving-cert
-      hostUsers: false
       priorityClassName: system-cluster-critical
       securityContext:
+        runAsGroup: 1001
         runAsNonRoot: true
+        runAsUser: 1001
         seccompProfile:
           type: RuntimeDefault
       serviceAccountName: service-ca-operator
