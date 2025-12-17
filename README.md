@@ -115,37 +115,39 @@ For information about how to build, deploy, test, update, and develop OpenShift 
 This section explains how to deploy OpenShift with your version of a service-ca-operator image:        
 [Testing a ClusterOperator/Operand image in a cluster](https://github.com/openshift/enhancements/blob/master/dev-guide/operators.md#how-can-i-test-changes-to-an-openshift-operatoroperandrelease-component)
 
-## Tests Extension
+## Tests
 
-The Service CA Operator includes a separate tests extension located in `test/tests-extension/` that provides comprehensive testing capabilities for the operator. This tests extension is built and maintained separately from the main operator component to avoid code contamination.
+This repository is compatible with the [OpenShift Tests Extension (OTE)](https://github.com/openshift-eng/openshift-tests-extension) framework.
 
-For information about running and developing tests, see the [Tests Extension README](test/tests-extension/README.md).
-
-### Building Tests Extension
-
-To build the tests extension:
+### Building the test binary
 
 ```bash
-make tests-ext-build
+make build
 ```
 
-To update test metadata:
+### Running test suites and tests
 
 ```bash
-make tests-ext-update
+# Run a specific test suite or test
+./service-ca-operator-tests-ext run-suite openshift/service-ca-operator/operator/serial
+./service-ca-operator-tests-ext run-test "test-name"
+
+# To run serial suites cases serially, use the following command:
+./service-ca-operator-tests-ext run-suite openshift/service-ca-operator/operator/serial -c 1
+
+# Run with JUnit output
+./service-ca-operator-tests-ext run-suite openshift/service-ca-operator/operator/serial --junit-path=/tmp/junit.xml
+./service-ca-operator-tests-ext run-test "test-name" --junit-path=/tmp/junit.xml
 ```
 
-### Running Tests
-
-The tests can be run locally using the `service-ca-operator-tests-ext` binary:
+### Listing available tests and suites
 
 ```bash
-# Build the tests extension
-make tests-ext-build
+# List all test suites
+./service-ca-operator-tests-ext list suites
 
-# Run all tests
-./test/tests-extension/bin/service-ca-operator-tests-ext run-suite openshift/service-ca-operator/all
-
-# Run a specific test
-./test/tests-extension/bin/service-ca-operator-tests-ext run-test -n "<test-name>"
+# List tests in a suite
+./service-ca-operator-tests-ext list tests --suite=openshift/service-ca-operator/operator/serial
 ```
+
+For more information about the OTE framework, see the [openshift-tests-extension documentation](https://github.com/openshift-eng/openshift-tests-extension).
