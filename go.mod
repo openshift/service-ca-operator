@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/google/uuid v1.6.0
+	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/openshift-eng/openshift-tests-extension v0.0.0-20250804142706-7b3ab438a292
 	github.com/openshift/api v0.0.0-20250311085700-14a17c7009c4
 	github.com/openshift/build-machinery-go v0.0.0-20250211133638-a00a772ae1a2
@@ -68,7 +69,6 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/onsi/ginkgo/v2 v2.23.4 // indirect
 	github.com/onsi/gomega v1.38.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/profile v1.7.0 // indirect
