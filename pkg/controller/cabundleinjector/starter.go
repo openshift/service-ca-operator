@@ -89,6 +89,7 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 	configConstructors := []configBuilderFunc{
 		newAPIServiceInjectorConfig,
 		newConfigMapInjectorConfig,
+		newSecretInjectorConfig,
 		newCRDInjectorConfig,
 		newMutatingWebhookInjectorConfig,
 		newValidatingWebhookInjectorConfig,
