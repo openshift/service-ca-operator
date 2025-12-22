@@ -94,8 +94,6 @@ func checkComponents(t *testing.T, client *kubernetes.Clientset) {
 	}
 }
 
-
-
 func createStatefulSet(client *kubernetes.Clientset, secretName, statefulSetName, serviceName, namespace string, numReplicas int) error {
 	const podLabelName = "pod-label"
 	podLabelValue := statefulSetName + "-pod-label"
@@ -173,7 +171,6 @@ func createAnnotatedCABundleInjectionConfigMap(client *kubernetes.Clientset, con
 	return err
 }
 
-
 func pollForCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapName, namespace string) error {
 	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
 		_, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
@@ -219,7 +216,6 @@ func editConfigMapCABundleInjectionData(t *testing.T, client *kubernetes.Clients
 
 	return pollForConfigMapChange(t, client, cmcopy, "foo")
 }
-
 
 func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
 	cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
@@ -1795,4 +1791,3 @@ func TestE2E(t *testing.T) {
 		}
 	})
 }
-
