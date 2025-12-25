@@ -35,7 +35,6 @@ func init() {
 var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 	g.Context("serving-cert-annotation", func() {
 		for _, headless := range []bool{false, true} {
-			headless := headless // capture range variable
 			g.It(fmt.Sprintf("[Operator][Serial] should provision certificates for services with headless=%v", headless), func() {
 				testServingCertAnnotation(g.GinkgoTB(), headless)
 			})
