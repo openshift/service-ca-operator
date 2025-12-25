@@ -1038,6 +1038,9 @@ func TestE2E(t *testing.T) {
 	checkComponents(t, adminClient)
 
 	// test the main feature. annotate service -> created secret
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("serving-cert-annotation", func(t *testing.T) {
 		for _, headless := range []bool{false, true} {
 			t.Run(fmt.Sprintf("headless=%v", headless), func(t *testing.T) {
