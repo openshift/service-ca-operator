@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/pem"
@@ -33,6 +34,14 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 		for _, headless := range []bool{false, true} {
 			g.It(fmt.Sprintf("[Operator][Serial] should provision certificates for services with headless=%v", headless), func() {
 				testServingCertAnnotation(g.GinkgoTB(), headless)
+			})
+		}
+	})
+
+	g.Context("serving-cert-secret-modify-bad-tlsCert", func() {
+		for _, headless := range []bool{false, true} {
+			g.It(fmt.Sprintf("[Operator][Serial] should regenerate modified serving cert secrets with headless=%v", headless), func() {
+				testServingCertSecretModifyBadTLSCert(g.GinkgoTB(), headless)
 			})
 		}
 	})
@@ -200,4 +209,90 @@ func randSeq(n int) string {
 		b[i] = characters[rand.Intn(len(characters))]
 	}
 	return string(b)
+}
+
+// testServingCertSecretModifyBadTLSCert verifies that modified serving cert
+// secrets are regenerated with valid certificates.
+//
+// This test uses testing.TB interface for dual-compatibility with both
+// standard Go tests and Ginkgo tests.
+//
+// This situation is temporary until we test the new e2e jobs with OTE.
+// Eventually all tests will be run only as part of the OTE framework.
+func testServingCertSecretModifyBadTLSCert(t testing.TB, headless bool) {
+	adminClient, err := getKubeClient()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+	defer cleanup()
+
+	testServiceName := "test-service-" + randSeq(5)
+	testSecretName := "test-secret-" + randSeq(5)
+	err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, headless)
+	if err != nil {
+		t.Fatalf("error creating annotated service: %v", err)
+	}
+	err = pollForServiceServingSecret(adminClient, testSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error fetching created serving cert secret: %v", err)
+	}
+	originalBytes, _, err := checkServiceServingCertSecretData(adminClient, testSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error when checking serving cert secret: %v", err)
+	}
+
+	err = editServingSecretDataGinkgo(t, adminClient, testSecretName, ns.Name, v1.TLSCertKey)
+	if err != nil {
+		t.Fatalf("error editing serving cert secret: %v", err)
+	}
+	updatedBytes, is509, err := checkServiceServingCertSecretData(adminClient, testSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error when checking serving cert secret: %v", err)
+	}
+	if bytes.Equal(originalBytes, updatedBytes) {
+		t.Fatalf("expected TLSCertKey to be replaced with valid pem bytes")
+	}
+	if !is509 {
+		t.Fatalf("TLSCertKey not valid pem bytes")
+	}
+}
+
+// editServingSecretDataGinkgo modifies a secret's data and waits for the controller to fix it.
+// This version accepts testing.TB for dual compatibility.
+func editServingSecretDataGinkgo(t testing.TB, client *kubernetes.Clientset, secretName, namespace, keyName string) error {
+	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	scopy := sss.DeepCopy()
+	scopy.Data[keyName] = []byte("blah")
+	_, err = client.CoreV1().Secrets(namespace).Update(context.TODO(), scopy, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	return pollForSecretChangeGinkgo(t, client, scopy, keyName)
+}
+
+// pollForSecretChangeGinkgo waits for a secret to be changed by the controller.
+// This version accepts testing.TB for dual compatibility.
+func pollForSecretChangeGinkgo(t testing.TB, client *kubernetes.Clientset, secret *v1.Secret, keysToChange ...string) error {
+	return wait.PollImmediate(pollInterval, rotationPollTimeout, func() (bool, error) {
+		s, err := client.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
+		if err != nil {
+			t.Logf("failed to get secret: %v", err)
+			return false, nil
+		}
+		for _, key := range keysToChange {
+			if bytes.Equal(s.Data[key], secret.Data[key]) {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
 }
