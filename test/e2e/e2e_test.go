@@ -151,31 +151,6 @@ func createStatefulSet(client *kubernetes.Clientset, secretName, statefulSetName
 	return err
 }
 
-func createAnnotatedCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapName, namespace string) error {
-	obj := &v1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: configMapName,
-		},
-	}
-	setInjectionAnnotation(&obj.ObjectMeta)
-	_, err := client.CoreV1().ConfigMaps(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
-	return err
-}
-
-func pollForCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapName, namespace string) error {
-	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
-		_, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	})
-}
-
 func editServingSecretData(t *testing.T, client *kubernetes.Clientset, secretName, namespace, keyName string) error {
 	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
@@ -207,22 +182,6 @@ func editConfigMapCABundleInjectionData(t *testing.T, client *kubernetes.Clients
 	}
 
 	return pollForConfigMapChange(t, client, cmcopy, "foo")
-}
-
-func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
-	cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	if len(cm.Data) != 1 {
-		return fmt.Errorf("unexpected ca bundle injection configmap data map length: %v", len(cm.Data))
-	}
-	ok := true
-	_, ok = cm.Data[api.InjectionDataKey]
-	if !ok {
-		return fmt.Errorf("unexpected ca bundle injection configmap data: %v", cm.Data)
-	}
-	return nil
 }
 
 func pollForConfigMapCAInjection(client *kubernetes.Clientset, configMapName, namespace string) error {
@@ -741,13 +700,6 @@ func checkWebhookCABundle(webhookName string, expectedCABundle, actualCABundle [
 
 // setInjectionAnnotation sets the annotation that will trigger the
 // injection of a ca bundle.
-func setInjectionAnnotation(objMeta *metav1.ObjectMeta) {
-	if objMeta.Annotations == nil {
-		objMeta.Annotations = map[string]string{}
-	}
-	objMeta.Annotations[api.InjectCABundleAnnotationName] = "true"
-}
-
 // pollForResource returns a kruntime.Object if the accessor returns without error before the timeout.
 func pollForResource(t *testing.T, resourceID string, timeout time.Duration, accessor func() (kruntime.Object, error)) (kruntime.Object, error) {
 	var obj kruntime.Object
@@ -1124,29 +1076,11 @@ func TestE2E(t *testing.T) {
 	})
 
 	// test ca bundle injection configmap
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("ca-bundle-injection-configmap", func(t *testing.T) {
-		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
-		if err != nil {
-			t.Fatalf("could not create test namespace: %v", err)
-		}
-		defer cleanup()
-
-		testConfigMapName := "test-configmap-" + randSeq(5)
-
-		err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error creating annotated configmap: %v", err)
-		}
-
-		err = pollForCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error fetching ca bundle injection configmap: %v", err)
-		}
-
-		err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error when checking ca bundle injection configmap: %v", err)
-		}
+		testCABundleInjectionConfigMap(t)
 	})
 
 	// test updated data in ca bundle injection configmap will be stomped on

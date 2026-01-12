@@ -62,6 +62,12 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 			testServingCertSecretDeleteData(g.GinkgoTB())
 		})
 	})
+
+	g.Context("ca-bundle-injection-configmap", func() {
+		g.It("[Operator][Serial] should inject CA bundle into annotated configmaps", func() {
+			testCABundleInjectionConfigMap(g.GinkgoTB())
+		})
+	})
 })
 
 // testServingCertAnnotation checks that services with the serving-cert annotation
@@ -447,9 +453,6 @@ func pollForResourceGinkgo(t testing.TB, resourceID string, timeout time.Duratio
 	var obj kruntime.Object
 	err := wait.PollImmediate(pollInterval, timeout, func() (bool, error) {
 		o, err := accessor()
-		if err != nil && errors.IsNotFound(err) {
-			return false, nil
-		}
 		if err != nil {
 			t.Logf("%s: an error occurred while polling for %s: %v", time.Now().Format(time.RFC1123Z), resourceID, err)
 			return false, nil
@@ -538,4 +541,82 @@ func deletePodGinkgo(t testing.TB, client *kubernetes.Clientset, name, namespace
 	if err != nil {
 		t.Logf("error deleting pod %s/%s: %v", namespace, name, err)
 	}
+}
+
+func testCABundleInjectionConfigMap(t testing.TB) {
+	adminClient, err := getKubeClient()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+	defer cleanup()
+
+	testConfigMapName := "test-configmap-" + randSeq(5)
+
+	err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error creating annotated configmap: %v", err)
+	}
+
+	err = pollForCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error fetching ca bundle injection configmap: %v", err)
+	}
+
+	err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error when checking ca bundle injection configmap: %v", err)
+	}
+}
+
+func createAnnotatedCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapName, namespace string) error {
+	obj := &v1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: configMapName,
+		},
+	}
+	setInjectionAnnotation(&obj.ObjectMeta)
+	_, err := client.CoreV1().ConfigMaps(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+	return err
+}
+
+func pollForCABundleInjectionConfigMap(client *kubernetes.Clientset, configMapName, namespace string) error {
+	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+		_, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+}
+
+func checkConfigMapCABundleInjectionData(client *kubernetes.Clientset, configMapName, namespace string) error {
+	cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if len(cm.Data) != 1 {
+		return fmt.Errorf("unexpected ca bundle injection configmap data map length: %v", len(cm.Data))
+	}
+	ok := true
+	_, ok = cm.Data[api.InjectionDataKey]
+	if !ok {
+		return fmt.Errorf("unexpected ca bundle injection configmap data: %v", cm.Data)
+	}
+	return nil
+}
+
+func setInjectionAnnotation(objMeta *metav1.ObjectMeta) {
+	if objMeta.Annotations == nil {
+		objMeta.Annotations = map[string]string{}
+	}
+	objMeta.Annotations[api.InjectCABundleAnnotationName] = "true"
 }
