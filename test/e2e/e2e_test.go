@@ -1059,41 +1059,13 @@ func TestE2E(t *testing.T) {
 	})
 
 	// test extra data in serving-cert-secret will be removed
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("serving-cert-secret-add-data", func(t *testing.T) {
 		for _, headless := range []bool{false, true} {
 			t.Run(fmt.Sprintf("headless=%v", headless), func(t *testing.T) {
-				ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
-				if err != nil {
-					t.Fatalf("could not create test namespace: %v", err)
-				}
-				defer cleanup()
-
-				testServiceName := "test-service-" + randSeq(5)
-				testSecretName := "test-secret-" + randSeq(5)
-				err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, headless)
-				if err != nil {
-					t.Fatalf("error creating annotated service: %v", err)
-				}
-				err = pollForServiceServingSecret(adminClient, testSecretName, ns.Name)
-				if err != nil {
-					t.Fatalf("error fetching created serving cert secret: %v", err)
-				}
-				originalBytes, _, err := checkServiceServingCertSecretData(adminClient, testSecretName, ns.Name)
-				if err != nil {
-					t.Fatalf("error when checking serving cert secret: %v", err)
-				}
-
-				err = editServingSecretData(t, adminClient, testSecretName, ns.Name, "foo")
-				if err != nil {
-					t.Fatalf("error editing serving cert secret: %v", err)
-				}
-				updatedBytes, _, err := checkServiceServingCertSecretData(adminClient, testSecretName, ns.Name)
-				if err != nil {
-					t.Fatalf("error when checking serving cert secret: %v", err)
-				}
-				if !bytes.Equal(originalBytes, updatedBytes) {
-					t.Fatalf("did not expect TLSCertKey to be replaced with a new cert")
-				}
+				testServingCertSecretAddData(t, headless)
 			})
 		}
 	})
