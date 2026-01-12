@@ -56,11 +56,6 @@ const (
 	// createServingCertAnnotatedService
 	owningHeadlessServiceLabelName = "owning-headless-service"
 
-	// Rotation of all certs and bundles is expected to take a considerable amount of time
-	// due to the operator having to restart each controller and then each controller having
-	// to acquire the leader election lease and update all targeted resources.
-	rotationTimeout = 5 * time.Minute
-
 	signingCertificateLifetime = 790 * 24 * time.Hour
 )
 
@@ -1072,34 +1067,11 @@ func TestE2E(t *testing.T) {
 
 	// make sure that deleting service-cert-secret regenerates a secret again,
 	// and that the secret allows successful connections in practice.
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("serving-cert-secret-delete-data", func(t *testing.T) {
-		serviceName := "metrics"
-		operatorNamespace := "openshift-service-ca-operator"
-		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
-		if err != nil {
-			t.Fatalf("could not create test namespace: %v", err)
-		}
-		defer cleanup()
-
-		service, err := adminClient.CoreV1().Services(operatorNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
-		if err != nil {
-			t.Fatalf("fetching service from apiserver failed: %v", err)
-		}
-		secretName, ok := service.ObjectMeta.Annotations[api.ServingCertSecretAnnotation]
-		if !ok {
-			t.Fatalf("secret name not found in service annotations")
-		}
-		err = adminClient.CoreV1().Secrets(operatorNamespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
-		if err != nil {
-			t.Fatalf("deleting secret %s in namespace %s failed: %v", secretName, operatorNamespace, err)
-		}
-		updatedBytes, _, err := pollForUpdatedServingCert(t, adminClient, operatorNamespace, secretName, rotationTimeout, nil, nil)
-		if err != nil {
-			t.Fatalf("error fetching re-created serving cert secret: %v", err)
-		}
-
-		metricsHost := fmt.Sprintf("%s.%s.svc", service.Name, service.Namespace)
-		checkClientPodRcvdUpdatedServerCert(t, adminClient, ns.Name, metricsHost, service.Spec.Ports[0].Port, string(updatedBytes))
+		testServingCertSecretDeleteData(t)
 	})
 
 	// make sure that deleting aservice-cert-secret regenerates a secret again,
