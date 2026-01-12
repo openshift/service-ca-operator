@@ -68,6 +68,12 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 			testCABundleInjectionConfigMap(g.GinkgoTB())
 		})
 	})
+
+	g.Context("ca-bundle-injection-configmap-update", func() {
+		g.It("[Operator][Serial] should stomp on updated data in CA bundle injection configmaps", func() {
+			testCABundleInjectionConfigMapUpdate(g.GinkgoTB())
+		})
+	})
 })
 
 // testServingCertAnnotation checks that services with the serving-cert annotation
@@ -622,4 +628,78 @@ func setInjectionAnnotation(objMeta *metav1.ObjectMeta) {
 		objMeta.Annotations = map[string]string{}
 	}
 	objMeta.Annotations[api.InjectCABundleAnnotationName] = "true"
+}
+
+func testCABundleInjectionConfigMapUpdate(t testing.TB) {
+	adminClient, err := getKubeClient()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+	defer cleanup()
+
+	testConfigMapName := "test-configmap-" + randSeq(5)
+
+	err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error creating annotated configmap: %v", err)
+	}
+
+	err = pollForCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error fetching ca bundle injection configmap: %v", err)
+	}
+
+	err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error when checking ca bundle injection configmap: %v", err)
+	}
+
+	err = editConfigMapCABundleInjectionData(t, adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error editing ca bundle injection configmap: %v", err)
+	}
+
+	err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error when checking ca bundle injection configmap: %v", err)
+	}
+}
+
+func editConfigMapCABundleInjectionData(t testing.TB, client *kubernetes.Clientset, configMapName, namespace string) error {
+	cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	cmcopy := cm.DeepCopy()
+	if len(cmcopy.Data) != 1 {
+		return fmt.Errorf("ca bundle injection configmap missing data")
+	}
+	cmcopy.Data["foo"] = "blah"
+	_, err = client.CoreV1().ConfigMaps(namespace).Update(context.TODO(), cmcopy, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	return pollForConfigMapChange(t, client, cmcopy, "foo")
+}
+
+func pollForConfigMapChange(t testing.TB, client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap, keysToChange ...string) error {
+	return wait.PollImmediate(pollInterval, rotationPollTimeout, func() (bool, error) {
+		cm, err := client.CoreV1().ConfigMaps(compareConfigMap.Namespace).Get(context.TODO(), compareConfigMap.Name, metav1.GetOptions{})
+		if err != nil {
+			t.Logf("%s: failed to get configmap: %v", time.Now().Format(time.RFC1123Z), err)
+			return false, nil
+		}
+		for _, key := range keysToChange {
+			if cm.Data[key] == compareConfigMap.Data[key] {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
 }
