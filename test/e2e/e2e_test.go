@@ -166,24 +166,6 @@ func editServingSecretData(t *testing.T, client *kubernetes.Clientset, secretNam
 	return pollForSecretChange(t, client, scopy, keyName)
 }
 
-func editConfigMapCABundleInjectionData(t *testing.T, client *kubernetes.Clientset, configMapName, namespace string) error {
-	cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	cmcopy := cm.DeepCopy()
-	if len(cmcopy.Data) != 1 {
-		return fmt.Errorf("ca bundle injection configmap missing data")
-	}
-	cmcopy.Data["foo"] = "blah"
-	_, err = client.CoreV1().ConfigMaps(namespace).Update(context.TODO(), cmcopy, metav1.UpdateOptions{})
-	if err != nil {
-		return err
-	}
-
-	return pollForConfigMapChange(t, client, cmcopy, "foo")
-}
-
 func pollForConfigMapCAInjection(client *kubernetes.Clientset, configMapName, namespace string) error {
 	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
 		cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
@@ -246,22 +228,6 @@ func pollForSecretChange(t *testing.T, client *kubernetes.Clientset, secret *v1.
 		}
 		for _, key := range keysToChange {
 			if bytes.Equal(s.Data[key], secret.Data[key]) {
-				return false, nil
-			}
-		}
-		return true, nil
-	})
-}
-
-func pollForConfigMapChange(t *testing.T, client *kubernetes.Clientset, compareConfigMap *v1.ConfigMap, keysToChange ...string) error {
-	return wait.PollImmediate(pollInterval, rotationPollTimeout, func() (bool, error) {
-		cm, err := client.CoreV1().ConfigMaps(compareConfigMap.Namespace).Get(context.TODO(), compareConfigMap.Name, metav1.GetOptions{})
-		if err != nil {
-			tlogf(t, "failed to get configmap: %v", err)
-			return false, nil
-		}
-		for _, key := range keysToChange {
-			if cm.Data[key] == compareConfigMap.Data[key] {
 				return false, nil
 			}
 		}
@@ -1085,38 +1051,7 @@ func TestE2E(t *testing.T) {
 
 	// test updated data in ca bundle injection configmap will be stomped on
 	t.Run("ca-bundle-injection-configmap-update", func(t *testing.T) {
-		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
-		if err != nil {
-			t.Fatalf("could not create test namespace: %v", err)
-		}
-		defer cleanup()
-
-		testConfigMapName := "test-configmap-" + randSeq(5)
-
-		err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error creating annotated configmap: %v", err)
-		}
-
-		err = pollForCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error fetching ca bundle injection configmap: %v", err)
-		}
-
-		err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error when checking ca bundle injection configmap: %v", err)
-		}
-
-		err = editConfigMapCABundleInjectionData(t, adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error editing ca bundle injection configmap: %v", err)
-		}
-
-		err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error when checking ca bundle injection configmap: %v", err)
-		}
+		testCABundleInjectionConfigMapUpdate(t)
 	})
 
 	// test vulnerable-legacy ca bundle injection configmap
