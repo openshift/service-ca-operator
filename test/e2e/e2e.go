@@ -453,6 +453,9 @@ func pollForResourceGinkgo(t testing.TB, resourceID string, timeout time.Duratio
 	var obj kruntime.Object
 	err := wait.PollImmediate(pollInterval, timeout, func() (bool, error) {
 		o, err := accessor()
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
 		if err != nil {
 			t.Logf("%s: an error occurred while polling for %s: %v", time.Now().Format(time.RFC1123Z), resourceID, err)
 			return false, nil
