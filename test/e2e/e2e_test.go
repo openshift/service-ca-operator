@@ -166,27 +166,6 @@ func editServingSecretData(t *testing.T, client *kubernetes.Clientset, secretNam
 	return pollForSecretChange(t, client, scopy, keyName)
 }
 
-func pollForConfigMapCAInjection(client *kubernetes.Clientset, configMapName, namespace string) error {
-	return wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
-		cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-
-		if len(cm.Data) != 1 {
-			return false, nil
-		}
-		_, ok := cm.Data[api.InjectionDataKey]
-		if !ok {
-			return false, nil
-		}
-		return true, nil
-	})
-}
-
 func pollForServiceServingSecretWithReturn(client *kubernetes.Clientset, secretName, namespace string) (*v1.Secret, error) {
 	var secret *v1.Secret
 	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
@@ -1055,87 +1034,11 @@ func TestE2E(t *testing.T) {
 	})
 
 	// test vulnerable-legacy ca bundle injection configmap
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("vulnerable-legacy-ca-bundle-injection-configmap", func(t *testing.T) {
-		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
-		if err != nil {
-			t.Fatalf("could not create test namespace: %v", err)
-		}
-		defer cleanup()
-
-		// names other than the one we need are never published to
-		neverPublished := &v1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        "test-configmap-" + randSeq(5),
-				Annotations: map[string]string{api.VulnerableLegacyInjectCABundleAnnotationName: "true"},
-			},
-		}
-		_, err = adminClient.CoreV1().ConfigMaps(ns.Name).Create(context.TODO(), neverPublished, metav1.CreateOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		// with this name, content should never be published.  We wait ten seconds
-		err = pollForConfigMapCAInjection(adminClient, neverPublished.Name, ns.Name)
-		if err != wait.ErrWaitTimeout {
-			t.Fatal(err)
-		}
-
-		publishedConfigMap := &v1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        "openshift-service-ca.crt",
-				Annotations: map[string]string{api.VulnerableLegacyInjectCABundleAnnotationName: "true"},
-			},
-		}
-		publishedConfigMap, err = adminClient.CoreV1().ConfigMaps(ns.Name).Create(context.TODO(), publishedConfigMap, metav1.CreateOptions{})
-		// tolerate "already exists" to handle the case where we're running the e2e on a cluster that already has this
-		// configmap present and injected.
-		if err != nil && !errors.IsAlreadyExists(err) {
-			t.Fatal(err)
-		}
-		publishedConfigMap, err = adminClient.CoreV1().ConfigMaps(ns.Name).Get(context.TODO(), "openshift-service-ca.crt", metav1.GetOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// this one should be injected
-		err = pollForConfigMapCAInjection(adminClient, publishedConfigMap.Name, ns.Name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		originalContent := publishedConfigMap.Data[api.InjectionDataKey]
-
-		_, hasNewStyleAnnotation := publishedConfigMap.Annotations[api.InjectCABundleAnnotationName]
-		if hasNewStyleAnnotation {
-			// add old injection to be sure only new is honored
-			publishedConfigMap.Annotations[api.VulnerableLegacyInjectCABundleAnnotationName] = "true"
-			publishedConfigMap, err = adminClient.CoreV1().ConfigMaps(ns.Name).Update(context.TODO(), publishedConfigMap, metav1.UpdateOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-		} else {
-			// hand-off to new injector
-			publishedConfigMap.Annotations[api.InjectCABundleAnnotationName] = "true"
-			publishedConfigMap, err = adminClient.CoreV1().ConfigMaps(ns.Name).Update(context.TODO(), publishedConfigMap, metav1.UpdateOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		// the content should now change pretty quick.  We sleep because it's easier than writing a new poll and I'm pressed for time
-		time.Sleep(5 * time.Second)
-		publishedConfigMap, err = adminClient.CoreV1().ConfigMaps(ns.Name).Get(context.TODO(), publishedConfigMap.Name, metav1.GetOptions{})
-
-		// if we changed the injection, we should see different content
-		if hasNewStyleAnnotation {
-			if publishedConfigMap.Data[api.InjectionDataKey] != originalContent {
-				t.Fatal("Content switch and it should not have.  The better ca bundle should win.")
-			}
-		} else {
-			if publishedConfigMap.Data[api.InjectionDataKey] == originalContent {
-				t.Fatal("Content did not update like it was supposed to.  The better ca bundle should win.")
-			}
-		}
+		testVulnerableLegacyCABundleInjectionConfigMap(t)
 	})
 
 	t.Run("metrics", func(t *testing.T) {
