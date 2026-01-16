@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
 	g "github.com/onsi/ginkgo/v2"
+	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/model"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -19,9 +22,12 @@ import (
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
 
+	routeclient "github.com/openshift/client-go/route/clientset/versioned"
+	"github.com/openshift/library-go/test/library/metrics"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/test/util"
 )
@@ -85,6 +91,16 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 	g.Context("headless-stateful-serving-cert-secret-delete-data", func() {
 		g.It("[Operator][Serial] should regenerate deleted serving cert secrets for StatefulSet with headless service", func() {
 			testHeadlessStatefulServingCertSecretDeleteData(g.GinkgoTB())
+		})
+	})
+
+	g.Context("metrics", func() {
+		g.It("[Operator][Serial] should collect metrics from the operator", func() {
+			testMetricsCollection(g.GinkgoTB())
+		})
+
+		g.It("[Operator][Serial] should expose service CA expiry metrics", func() {
+			testServiceCAMetrics(g.GinkgoTB())
 		})
 	})
 })
@@ -1038,4 +1054,169 @@ func pollForRunningStatefulSet(t testing.TB, client *kubernetes.Clientset, state
 		t.Logf("%s: error waiting for StatefulSet restart: %v", time.Now().Format(time.RFC1123Z), err)
 	}
 	return err
+}
+
+// testMetricsCollection tests whether metrics are being successfully scraped from at
+// least one target in a namespace.
+//
+// This test uses testing.TB interface for dual-compatibility with both
+// standard Go tests and Ginkgo tests.
+//
+// This situation is temporary until we test the new e2e jobs with OTE.
+// Eventually all tests will be run only as part of the OTE framework.
+func testMetricsCollection(t testing.TB) {
+	_, adminConfig, err := getKubeClientAndConfig()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	promClient, err := newPrometheusClientForConfigGinkgo(adminConfig)
+	if err != nil {
+		t.Fatalf("error initializing prometheus client: %v", err)
+	}
+
+	// Metrics are scraped every 30s. Wait as long as 2 intervals to avoid failing if
+	// the target is temporarily unhealthy.
+	timeout := 60 * time.Second
+
+	err = wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
+		query := fmt.Sprintf("up{namespace=\"%s\"}", "openshift-service-ca-operator")
+		resultVector, err := runPromQueryForVectorGinkgo(t, promClient, query, time.Now())
+		if err != nil {
+			t.Logf("failed to execute prometheus query: %v", err)
+			return false, nil
+		}
+		metricsCollected := false
+		for _, sample := range resultVector {
+			metricsCollected = sample.Value == 1
+			if metricsCollected {
+				// Metrics are successfully being scraped for at least one target in the namespace
+				break
+			}
+		}
+		return metricsCollected, nil
+	})
+	if err != nil {
+		t.Fatalf("Health check of metrics collection in namespace %s did not succeed within %v", "openshift-service-ca-operator", timeout)
+	}
+}
+
+// testServiceCAMetrics tests that service CA metrics are collected properly.
+//
+// This test uses testing.TB interface for dual-compatibility with both
+// standard Go tests and Ginkgo tests.
+//
+// This situation is temporary until we test the new e2e jobs with OTE.
+// Eventually all tests will be run only as part of the OTE framework.
+func testServiceCAMetrics(t testing.TB) {
+	adminClient, adminConfig, err := getKubeClientAndConfig()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	promClient, err := newPrometheusClientForConfigGinkgo(adminConfig)
+	if err != nil {
+		t.Fatalf("error initializing prometheus client: %v", err)
+	}
+
+	timeout := 120 * time.Second
+
+	secret, err := adminClient.CoreV1().Secrets("openshift-service-ca").Get(context.TODO(), "signing-key", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error retrieving signing key secret: %v", err)
+	}
+	currentCACerts, err := util.PemToCerts(secret.Data[v1.TLSCertKey])
+	if err != nil {
+		t.Fatalf("error unmarshaling %q: %v", v1.TLSCertKey, err)
+	}
+	if len(currentCACerts) == 0 {
+		t.Fatalf("no signing keys found")
+	}
+
+	want := currentCACerts[0].NotAfter
+	err = wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
+		rawExpiryTime, err := getSampleForPromQueryGinkgo(t, promClient, `service_ca_expiry_time_seconds`, time.Now())
+		if err != nil {
+			t.Logf("failed to get sample value: %v", err)
+			return false, nil
+		}
+		if rawExpiryTime.Value == 0 { // The operator is starting
+			t.Logf("got zero value")
+			return false, nil
+		}
+
+		if float64(want.Unix()) != float64(rawExpiryTime.Value) {
+			t.Fatalf("service ca expiry time mismatch expected %v observed %v", float64(want.Unix()), float64(rawExpiryTime.Value))
+		}
+
+		return true, nil
+	})
+	if err != nil {
+		t.Fatalf("service ca expiry timer metrics collection failed: %v", err)
+	}
+}
+
+// getKubeClientAndConfig returns both a Kubernetes client and config for e2e tests.
+func getKubeClientAndConfig() (*kubernetes.Clientset, *rest.Config, error) {
+	confPath := "/tmp/admin.conf"
+	if conf := os.Getenv("KUBECONFIG"); conf != "" {
+		confPath = conf
+	}
+
+	config, err := clientcmd.BuildConfigFromFlags("", confPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error loading config: %w", err)
+	}
+
+	adminClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating kubernetes client: %w", err)
+	}
+	return adminClient, config, nil
+}
+
+// newPrometheusClientForConfigGinkgo returns a new prometheus client for the provided kubeconfig.
+// This version is used by Ginkgo tests.
+func newPrometheusClientForConfigGinkgo(config *rest.Config) (prometheusv1.API, error) {
+	routeClient, err := routeclient.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("error creating route client: %v", err)
+	}
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("error creating kube client: %v", err)
+	}
+	return metrics.NewPrometheusClient(context.TODO(), kubeClient, routeClient)
+}
+
+// runPromQueryForVectorGinkgo executes a Prometheus query and returns the result as a vector.
+// This version accepts testing.TB for dual compatibility.
+func runPromQueryForVectorGinkgo(t testing.TB, promClient prometheusv1.API, query string, sampleTime time.Time) (model.Vector, error) {
+	results, warnings, err := promClient.Query(context.Background(), query, sampleTime)
+	if err != nil {
+		return nil, err
+	}
+	if len(warnings) > 0 {
+		t.Logf("%s: prometheus query emitted warnings: %v", time.Now().Format(time.RFC1123Z), warnings)
+	}
+
+	result, ok := results.(model.Vector)
+	if !ok {
+		return nil, fmt.Errorf("expecting vector type result, found: %v ", reflect.TypeOf(results))
+	}
+
+	return result, nil
+}
+
+// getSampleForPromQueryGinkgo retrieves a single sample from a Prometheus query.
+// This version accepts testing.TB for dual compatibility.
+func getSampleForPromQueryGinkgo(t testing.TB, promClient prometheusv1.API, query string, sampleTime time.Time) (*model.Sample, error) {
+	res, err := runPromQueryForVectorGinkgo(t, promClient, query, sampleTime)
+	if err != nil {
+		return nil, err
+	}
+	if len(res) == 0 {
+		return nil, fmt.Errorf("no matching metrics found for query %s", query)
+	}
+	return res[0], nil
 }

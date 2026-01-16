@@ -5,13 +5,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	"github.com/prometheus/common/model"
 
 	admissionreg "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
@@ -32,11 +28,9 @@ import (
 	"k8s.io/utils/clock"
 
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
-	routeclient "github.com/openshift/client-go/route/clientset/versioned"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
-	"github.com/openshift/library-go/test/library/metrics"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
@@ -615,115 +609,6 @@ func deletePod(t *testing.T, client *kubernetes.Clientset, name, namespace strin
 	}
 }
 
-// newPrometheusClientForConfig returns a new prometheus client for
-// the provided kubeconfig.
-func newPrometheusClientForConfig(config *rest.Config) (prometheusv1.API, error) {
-	routeClient, err := routeclient.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("error creating route client: %v", err)
-	}
-	kubeClient, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("error creating kube client: %v", err)
-	}
-	return metrics.NewPrometheusClient(context.TODO(), kubeClient, routeClient)
-}
-
-// checkMetricsCollection tests whether metrics are being successfully scraped from at
-// least one target in a namespace.
-func checkMetricsCollection(t *testing.T, promClient prometheusv1.API, namespace string) {
-	// Metrics are scraped every 30s. Wait as long as 2 intervals to avoid failing if
-	// the target is temporarily unhealthy.
-	timeout := 60 * time.Second
-
-	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
-		query := fmt.Sprintf("up{namespace=\"%s\"}", namespace)
-		resultVector, err := runPromQueryForVector(t, promClient, query, time.Now())
-		if err != nil {
-			t.Errorf("failed to execute prometheus query: %v", err)
-			return false, nil
-		}
-		metricsCollected := false
-		for _, sample := range resultVector {
-			metricsCollected = sample.Value == 1
-			if metricsCollected {
-				// Metrics are successfully being scraped for at least one target in the namespace
-				break
-			}
-		}
-		return metricsCollected, nil
-	})
-	if err != nil {
-		t.Fatalf("Health check of metrics collection in namespace %s did not succeed within %v", serviceCAOperatorNamespace, timeout)
-	}
-}
-
-func runPromQueryForVector(t *testing.T, promClient prometheusv1.API, query string, sampleTime time.Time) (model.Vector, error) {
-	results, warnings, err := promClient.Query(context.Background(), query, sampleTime)
-	if err != nil {
-		return nil, err
-	}
-	if len(warnings) > 0 {
-		tlogf(t, "prometheus query emitted warnings: %v", warnings)
-	}
-
-	result, ok := results.(model.Vector)
-	if !ok {
-		return nil, fmt.Errorf("expecting vector type result, found: %v ", reflect.TypeOf(results))
-	}
-
-	return result, nil
-}
-
-func getSampleForPromQuery(t *testing.T, promClient prometheusv1.API, query string, sampleTime time.Time) (*model.Sample, error) {
-	res, err := runPromQueryForVector(t, promClient, query, sampleTime)
-	if err != nil {
-		return nil, err
-	}
-	if len(res) == 0 {
-		return nil, fmt.Errorf("no matching metrics found for query %s", query)
-	}
-	return res[0], nil
-}
-
-func checkServiceCAMetrics(t *testing.T, client *kubernetes.Clientset, promClient prometheusv1.API) {
-	timeout := 120 * time.Second
-
-	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("error retrieving signing key secret: %v", err)
-	}
-	currentCACerts, err := util.PemToCerts(secret.Data[v1.TLSCertKey])
-	if err != nil {
-		t.Fatalf("error unmarshaling %q: %v", v1.TLSCertKey, err)
-	}
-	if len(currentCACerts) == 0 {
-		t.Fatalf("no signing keys found")
-	}
-
-	want := currentCACerts[0].NotAfter
-	err = wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
-		rawExpiryTime, err := getSampleForPromQuery(t, promClient, `service_ca_expiry_time_seconds`, time.Now())
-		if err != nil {
-			tlogf(t, "failed to get sample value: %v", err)
-			return false, nil
-		}
-		if rawExpiryTime.Value == 0 { // The operator is starting
-			tlogf(t, "got zero value")
-			return false, nil
-		}
-
-		if float64(want.Unix()) != float64(rawExpiryTime.Value) {
-			t.Fatalf("service ca expiry time mismatch expected %v observed %v", float64(want.Unix()), float64(rawExpiryTime.Value))
-		}
-
-		return true, nil
-	})
-	if err != nil {
-		t.Fatalf("service ca expiry timer metrics collection failed: %v", err)
-	}
-}
-
 func TestE2E(t *testing.T) {
 	// use /tmp/admin.conf (placed by ci-operator) or KUBECONFIG env
 	confPath := "/tmp/admin.conf"
@@ -824,19 +709,17 @@ func TestE2E(t *testing.T) {
 		testVulnerableLegacyCABundleInjectionConfigMap(t)
 	})
 
+	// test metrics collection and service CA metrics
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("metrics", func(t *testing.T) {
-		promClient, err := newPrometheusClientForConfig(adminConfig)
-		if err != nil {
-			t.Fatalf("error initializing prometheus client: %v", err)
-		}
-		// Test that the operator's metrics endpoint is being read by prometheus
 		t.Run("collection", func(t *testing.T) {
-			checkMetricsCollection(t, promClient, "openshift-service-ca-operator")
+			testMetricsCollection(t)
 		})
 
-		// Test that service CA metrics are collected
 		t.Run("service-ca-metrics", func(t *testing.T) {
-			checkServiceCAMetrics(t, adminClient, promClient)
+			testServiceCAMetrics(t)
 		})
 	})
 
