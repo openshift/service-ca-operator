@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/common/model"
 
 	admissionreg "k8s.io/api/admissionregistration/v1"
-	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
@@ -31,7 +30,6 @@ import (
 	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
 	"k8s.io/utils/clock"
-	"k8s.io/utils/pointer"
 
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	routeclient "github.com/openshift/client-go/route/clientset/versioned"
@@ -86,71 +84,6 @@ func checkComponents(t *testing.T, client *kubernetes.Clientset) {
 	}
 }
 
-func createStatefulSet(client *kubernetes.Clientset, secretName, statefulSetName, serviceName, namespace string, numReplicas int) error {
-	const podLabelName = "pod-label"
-	podLabelValue := statefulSetName + "-pod-label"
-	replicasInt32 := int32(numReplicas)
-	_, err := client.AppsV1().StatefulSets(namespace).Create(context.TODO(), &appsv1.StatefulSet{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: statefulSetName,
-		},
-		Spec: appsv1.StatefulSetSpec{
-			Replicas: &replicasInt32,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{podLabelName: podLabelValue},
-			},
-			ServiceName:         serviceName,
-			PodManagementPolicy: appsv1.ParallelPodManagement, // We want changes to happen fast, there isn't really state to maintain.
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						podLabelName:                   podLabelValue,
-						owningHeadlessServiceLabelName: serviceName,
-					},
-				},
-				Spec: v1.PodSpec{
-					SecurityContext: &v1.PodSecurityContext{
-						RunAsNonRoot:   pointer.BoolPtr(true),
-						SeccompProfile: &v1.SeccompProfile{Type: v1.SeccompProfileTypeRuntimeDefault},
-					},
-					Containers: []v1.Container{{
-						Name:  statefulSetName + "-container",
-						Image: "busybox:1.35",
-						Ports: []v1.ContainerPort{{
-							ContainerPort: 8443,
-						}},
-						Command: []string{
-							"/bin/sh",
-							"-c",
-							`echo "Starting server on port 8443" && while true; do echo "Server running on port 8443" && sleep 30; done`,
-						},
-						WorkingDir: "/",
-						SecurityContext: &v1.SecurityContext{
-							AllowPrivilegeEscalation: pointer.BoolPtr(false),
-							RunAsNonRoot:             pointer.BoolPtr(true),
-							Capabilities:             &v1.Capabilities{Drop: []v1.Capability{"ALL"}},
-						},
-						VolumeMounts: []v1.VolumeMount{{
-							Name:      "serving-cert",
-							MountPath: "/srv/certificates",
-						}},
-					}},
-					Volumes: []v1.Volume{{
-						Name: "serving-cert",
-						VolumeSource: v1.VolumeSource{
-							Secret: &v1.SecretVolumeSource{
-								SecretName: secretName,
-							},
-						},
-					}},
-				},
-			},
-		},
-	}, metav1.CreateOptions{})
-	return err
-}
-
 func editServingSecretData(t *testing.T, client *kubernetes.Clientset, secretName, namespace, keyName string) error {
 	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
@@ -164,22 +97,6 @@ func editServingSecretData(t *testing.T, client *kubernetes.Clientset, secretNam
 	}
 
 	return pollForSecretChange(t, client, scopy, keyName)
-}
-
-func pollForServiceServingSecretWithReturn(client *kubernetes.Clientset, secretName, namespace string) (*v1.Secret, error) {
-	var secret *v1.Secret
-	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
-		s, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		secret = s
-		return true, nil
-	})
-	return secret, err
 }
 
 func pollForCABundleInjectionConfigMapWithReturn(client *kubernetes.Clientset, configMapName, namespace string) (*v1.ConfigMap, error) {
@@ -456,16 +373,6 @@ func pollForCARecreation(client *kubernetes.Clientset) error {
 
 // pollForUpdatedServingCert returns the cert and key PEM if it changes from
 // that provided before the polling timeout.
-func pollForUpdatedServingCert(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldCertValue, oldKeyValue []byte) ([]byte, []byte, error) {
-	secret, err := pollForUpdatedSecret(t, client, namespace, name, timeout, map[string][]byte{
-		v1.TLSCertKey:       oldCertValue,
-		v1.TLSPrivateKeyKey: oldKeyValue,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	return secret.Data[v1.TLSCertKey], secret.Data[v1.TLSPrivateKeyKey], nil
-}
 
 // pollForUpdatedSecret returns the given secret if its data changes from
 // that provided before the polling timeout.
@@ -669,59 +576,6 @@ func tlogf(t *testing.T, fmt string, args ...interface{}) {
 	t.Logf("%s: "+fmt, argsWithTimestamp...)
 }
 
-func checkClientPodRcvdUpdatedServerCert(t *testing.T, client *kubernetes.Clientset, testNS, host string, port int32, updatedServerCert string) {
-	timeout := 5 * time.Minute
-	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
-		podName := "client-pod-" + randSeq(5)
-		_, err := client.CoreV1().Pods(testNS).Create(context.TODO(), &v1.Pod{
-			TypeMeta: metav1.TypeMeta{},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      podName,
-				Namespace: testNS,
-			},
-			Spec: v1.PodSpec{
-				SecurityContext: &v1.PodSecurityContext{
-					RunAsNonRoot:   pointer.BoolPtr(true),
-					SeccompProfile: &v1.SeccompProfile{Type: v1.SeccompProfileTypeRuntimeDefault},
-				},
-				Containers: []v1.Container{
-					{
-						Name:    "cert-checker",
-						Image:   "busybox:1.35",
-						Command: []string{"/bin/sh"},
-						Args:    []string{"-c", fmt.Sprintf("echo 'Testing connection to %s:%d' && echo 'Connection test completed'", host, port)},
-						SecurityContext: &v1.SecurityContext{
-							AllowPrivilegeEscalation: pointer.BoolPtr(false),
-							RunAsNonRoot:             pointer.BoolPtr(true),
-							Capabilities:             &v1.Capabilities{Drop: []v1.Capability{"ALL"}},
-						},
-					},
-				},
-				RestartPolicy: v1.RestartPolicyOnFailure,
-			},
-		}, metav1.CreateOptions{})
-		if err != nil {
-			tlogf(t, "creating client pod failed: %v", err)
-			return false, nil
-		}
-		defer deletePod(t, client, podName, testNS)
-
-		err = waitForPodPhase(t, client, podName, testNS, v1.PodSucceeded)
-		if err != nil {
-			tlogf(t, "wait on pod to complete failed: %v", err)
-			return false, nil
-		}
-
-		// For now, just verify the pod succeeded (connection was made)
-		// The certificate verification is complex and the main test is that the secret was recreated
-		return true, nil
-	})
-	if err != nil {
-		t.Fatalf("failed to verify connection within timeout(%v)", timeout)
-	}
-
-}
-
 func waitForPodPhase(t *testing.T, client *kubernetes.Clientset, name, namespace string, phase v1.PodPhase) error {
 	return wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
 		pod, err := client.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{})
@@ -759,37 +613,6 @@ func deletePod(t *testing.T, client *kubernetes.Clientset, name, namespace strin
 	if err != nil {
 		t.Errorf("failed to delete pod: %v", err)
 	}
-}
-
-func pollForRunningStatefulSet(t *testing.T, client *kubernetes.Clientset, statefulSetName, namespace string, timeout time.Duration) error {
-	err := wait.PollImmediate(10*time.Second, timeout, func() (bool, error) {
-		set, err := client.AppsV1().StatefulSets(namespace).Get(context.TODO(), statefulSetName, metav1.GetOptions{})
-		if err != nil {
-			tlogf(t, "fetching StatefulSet failed: %v", err)
-			return false, err
-		}
-		res := set.Status.ObservedGeneration == set.Generation &&
-			set.Status.ReadyReplicas == *set.Spec.Replicas
-		if !res {
-			tlogf(t, "StatefulSet %s/%s not ready: observedGeneration=%d, generation=%d, readyReplicas=%d, specReplicas=%d, currentReplicas=%d, updatedReplicas=%d",
-				namespace, statefulSetName, set.Status.ObservedGeneration, set.Generation, set.Status.ReadyReplicas, *set.Spec.Replicas, set.Status.CurrentReplicas, set.Status.UpdatedReplicas)
-
-			// Check pod status for better diagnostics
-			pods, err := client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("pod-label=%s-pod-label", statefulSetName),
-			})
-			if err == nil {
-				for _, pod := range pods.Items {
-					tlogf(t, "Pod %s/%s status: %s, reason: %s, message: %s", pod.Namespace, pod.Name, pod.Status.Phase, pod.Status.Reason, pod.Status.Message)
-				}
-			}
-		}
-		return res, nil
-	})
-	if err != nil {
-		tlogf(t, "error waiting for StatefulSet restart: %v", err)
-	}
-	return err
 }
 
 // newPrometheusClientForConfig returns a new prometheus client for
@@ -973,51 +796,11 @@ func TestE2E(t *testing.T) {
 
 	// make sure that deleting aservice-cert-secret regenerates a secret again,
 	// and that the secret allows successful connections in practice.
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("headless-stateful-serving-cert-secret-delete-data", func(t *testing.T) {
-		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
-		if err != nil {
-			t.Fatalf("could not create test namespace: %v", err)
-		}
-		defer cleanup()
-
-		testServiceName := "test-service-" + randSeq(5)
-		testStatefulSetName := "test-statefulset-" + randSeq(5)
-		testStatefulSetSize := 3
-		testSecretName := "test-secret-" + randSeq(5)
-
-		if err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, true); err != nil {
-			t.Fatalf("error creating headless service: %v", err)
-		}
-		oldSecret, err := pollForServiceServingSecretWithReturn(adminClient, testSecretName, ns.Name)
-		if err != nil {
-			t.Fatalf("error fetching created serving cert secret: %v", err)
-		}
-
-		err = adminClient.CoreV1().Secrets(ns.Name).Delete(context.TODO(), testSecretName, metav1.DeleteOptions{})
-		if err != nil {
-			t.Fatalf("deleting secret %s in namespace %s failed: %v", testSecretName, ns.Name, err)
-		}
-		newCertPEM, _, err := pollForUpdatedServingCert(t, adminClient, ns.Name, testSecretName, rotationTimeout,
-			oldSecret.Data[v1.TLSCertKey], oldSecret.Data[v1.TLSPrivateKeyKey])
-		if err != nil {
-			t.Fatalf("error fetching re-created serving cert secret: %v", err)
-		}
-
-		if err := createStatefulSet(adminClient, testSecretName, testStatefulSetName, testServiceName, ns.Name, testStatefulSetSize); err != nil {
-			t.Fatalf("error creating annotated StatefulSet: %v", err)
-		}
-		if err := pollForRunningStatefulSet(t, adminClient, testStatefulSetName, ns.Name, 5*time.Minute); err != nil {
-			t.Fatalf("error starting StatefulSet: %v", err)
-		}
-
-		// Individual StatefulSet pods are reachable using the generated certificate
-		for i := 0; i < testStatefulSetSize; i++ {
-			host := fmt.Sprintf("%s-%d.%s.%s.svc", testStatefulSetName, i, testServiceName, ns.Name)
-			checkClientPodRcvdUpdatedServerCert(t, adminClient, ns.Name, host, 8443, string(newCertPEM))
-		}
-		// The (headless) service is reachable using the generated certificate
-		host := fmt.Sprintf("%s.%s.svc", testServiceName, ns.Name)
-		checkClientPodRcvdUpdatedServerCert(t, adminClient, ns.Name, host, 8443, string(newCertPEM))
+		testHeadlessStatefulServingCertSecretDeleteData(t)
 	})
 
 	// test ca bundle injection configmap
