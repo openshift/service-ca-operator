@@ -103,6 +103,12 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 			testServiceCAMetrics(g.GinkgoTB())
 		})
 	})
+
+	g.Context("refresh-CA", func() {
+		g.It("[Operator][Serial] should regenerate serving certs and configmaps when CA is deleted and recreated", func() {
+			testRefreshCA(g.GinkgoTB())
+		})
+	})
 })
 
 // testServingCertAnnotation checks that services with the serving-cert annotation
@@ -1219,4 +1225,125 @@ func getSampleForPromQueryGinkgo(t testing.TB, promClient prometheusv1.API, quer
 		return nil, fmt.Errorf("no matching metrics found for query %s", query)
 	}
 	return res[0], nil
+}
+
+// testRefreshCA verifies that when the CA secret is deleted and recreated,
+// all serving certs and configmaps get updated with the new CA.
+//
+// This test uses testing.TB interface for dual-compatibility with both
+// standard Go tests and Ginkgo tests.
+//
+// This situation is temporary until we test the new e2e jobs with OTE.
+// Eventually all tests will be run only as part of the OTE framework.
+func testRefreshCA(t testing.TB) {
+	adminClient, err := getKubeClient()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+	defer cleanup()
+
+	// create secrets
+	testServiceName := "test-service-" + randSeq(5)
+	testSecretName := "test-secret-" + randSeq(5)
+	testHeadlessServiceName := "test-headless-service-" + randSeq(5)
+	testHeadlessSecretName := "test-headless-secret-" + randSeq(5)
+
+	err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, false)
+	if err != nil {
+		t.Fatalf("error creating annotated service: %v", err)
+	}
+	if err = createServingCertAnnotatedService(adminClient, testHeadlessSecretName, testHeadlessServiceName, ns.Name, true); err != nil {
+		t.Fatalf("error creating annotated headless service: %v", err)
+	}
+
+	secret, err := pollForServiceServingSecretWithReturn(adminClient, testSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error fetching created serving cert secret: %v", err)
+	}
+	secretCopy := secret.DeepCopy()
+	headlessSecret, err := pollForServiceServingSecretWithReturn(adminClient, testHeadlessSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error fetching created serving cert secret: %v", err)
+	}
+	headlessSecretCopy := headlessSecret.DeepCopy()
+
+	// create configmap
+	testConfigMapName := "test-configmap-" + randSeq(5)
+
+	err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error creating annotated configmap: %v", err)
+	}
+
+	configmap, err := pollForCABundleInjectionConfigMapWithReturn(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error fetching ca bundle injection configmap: %v", err)
+	}
+	configmapCopy := configmap.DeepCopy()
+	err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error when checking ca bundle injection configmap: %v", err)
+	}
+
+	// delete ca secret
+	err = adminClient.CoreV1().Secrets("openshift-service-ca").Delete(context.TODO(), "signing-key", metav1.DeleteOptions{})
+	if err != nil {
+		t.Fatalf("error deleting signing key: %v", err)
+	}
+
+	// make sure it's recreated
+	err = pollForCARecreation(adminClient)
+	if err != nil {
+		t.Fatalf("signing key was not recreated: %v", err)
+	}
+
+	err = pollForConfigMapChange(t, adminClient, configmapCopy, api.InjectionDataKey)
+	if err != nil {
+		t.Fatalf("configmap bundle did not change: %v", err)
+	}
+
+	err = pollForSecretChangeGinkgo(t, adminClient, secretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey)
+	if err != nil {
+		t.Fatalf("secret cert did not change: %v", err)
+	}
+	if err := pollForSecretChangeGinkgo(t, adminClient, headlessSecretCopy); err != nil {
+		t.Fatalf("headless secret cert did not change: %v", err)
+	}
+}
+
+// pollForCABundleInjectionConfigMapWithReturn polls for a CA bundle injection configmap and returns it.
+func pollForCABundleInjectionConfigMapWithReturn(client *kubernetes.Clientset, configMapName, namespace string) (*v1.ConfigMap, error) {
+	var configmap *v1.ConfigMap
+	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+		cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		configmap = cm
+		return true, nil
+	})
+	return configmap, err
+}
+
+// pollForCARecreation polls for the signing secret to be re-created in
+// response to CA secret deletion.
+func pollForCARecreation(client *kubernetes.Clientset) error {
+	return wait.PollImmediate(time.Second, rotationPollTimeout, func() (bool, error) {
+		_, err := client.CoreV1().Secrets("openshift-service-ca").Get(context.TODO(), "signing-key", metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	})
 }

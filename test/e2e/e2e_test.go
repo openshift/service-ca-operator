@@ -93,22 +93,6 @@ func editServingSecretData(t *testing.T, client *kubernetes.Clientset, secretNam
 	return pollForSecretChange(t, client, scopy, keyName)
 }
 
-func pollForCABundleInjectionConfigMapWithReturn(client *kubernetes.Clientset, configMapName, namespace string) (*v1.ConfigMap, error) {
-	var configmap *v1.ConfigMap
-	err := wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
-		cm, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		configmap = cm
-		return true, nil
-	})
-	return configmap, err
-}
-
 func pollForSecretChange(t *testing.T, client *kubernetes.Clientset, secret *v1.Secret, keysToChange ...string) error {
 	return wait.PollImmediate(pollInterval, rotationPollTimeout, func() (bool, error) {
 		s, err := client.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
@@ -352,19 +336,6 @@ func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, ca
 
 // pollForCARecreation polls for the signing secret to be re-created in
 // response to CA secret deletion.
-func pollForCARecreation(client *kubernetes.Clientset) error {
-	return wait.PollImmediate(time.Second, rotationPollTimeout, func() (bool, error) {
-		_, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	})
-}
-
 // pollForUpdatedServingCert returns the cert and key PEM if it changes from
 // that provided before the polling timeout.
 
@@ -723,80 +694,12 @@ func TestE2E(t *testing.T) {
 		})
 	})
 
+	// test CA refresh - delete and recreate CA secret, verify serving certs and configmaps are updated
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("refresh-CA", func(t *testing.T) {
-		ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
-		if err != nil {
-			t.Fatalf("could not create test namespace: %v", err)
-		}
-		defer cleanup()
-
-		// create secrets
-		testServiceName := "test-service-" + randSeq(5)
-		testSecretName := "test-secret-" + randSeq(5)
-		testHeadlessServiceName := "test-headless-service-" + randSeq(5)
-		testHeadlessSecretName := "test-headless-secret-" + randSeq(5)
-
-		err = createServingCertAnnotatedService(adminClient, testSecretName, testServiceName, ns.Name, false)
-		if err != nil {
-			t.Fatalf("error creating annotated service: %v", err)
-		}
-		if err = createServingCertAnnotatedService(adminClient, testHeadlessSecretName, testHeadlessServiceName, ns.Name, true); err != nil {
-			t.Fatalf("error creating annotated headless service: %v", err)
-		}
-
-		secret, err := pollForServiceServingSecretWithReturn(adminClient, testSecretName, ns.Name)
-		if err != nil {
-			t.Fatalf("error fetching created serving cert secret: %v", err)
-		}
-		secretCopy := secret.DeepCopy()
-		headlessSecret, err := pollForServiceServingSecretWithReturn(adminClient, testHeadlessSecretName, ns.Name)
-		if err != nil {
-			t.Fatalf("error fetching created serving cert secret: %v", err)
-		}
-		headlessSecretCopy := headlessSecret.DeepCopy()
-
-		// create configmap
-		testConfigMapName := "test-configmap-" + randSeq(5)
-
-		err = createAnnotatedCABundleInjectionConfigMap(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error creating annotated configmap: %v", err)
-		}
-
-		configmap, err := pollForCABundleInjectionConfigMapWithReturn(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error fetching ca bundle injection configmap: %v", err)
-		}
-		configmapCopy := configmap.DeepCopy()
-		err = checkConfigMapCABundleInjectionData(adminClient, testConfigMapName, ns.Name)
-		if err != nil {
-			t.Fatalf("error when checking ca bundle injection configmap: %v", err)
-		}
-
-		// delete ca secret
-		err = adminClient.CoreV1().Secrets(serviceCAControllerNamespace).Delete(context.TODO(), signingKeySecretName, metav1.DeleteOptions{})
-		if err != nil {
-			t.Fatalf("error deleting signing key: %v", err)
-		}
-
-		// make sure it's recreated
-		err = pollForCARecreation(adminClient)
-		if err != nil {
-			t.Fatalf("signing key was not recreated: %v", err)
-		}
-
-		err = pollForConfigMapChange(t, adminClient, configmapCopy, api.InjectionDataKey)
-		if err != nil {
-			t.Fatalf("configmap bundle did not change: %v", err)
-		}
-
-		err = pollForSecretChange(t, adminClient, secretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey)
-		if err != nil {
-			t.Fatalf("secret cert did not change: %v", err)
-		}
-		if err := pollForSecretChange(t, adminClient, headlessSecretCopy); err != nil {
-			t.Fatalf("headless secret cert did not change: %v", err)
-		}
+		testRefreshCA(t)
 	})
 
 	// This test triggers rotation by updating the CA to have an
