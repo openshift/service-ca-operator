@@ -70,6 +70,12 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 		})
 	})
 
+	g.Context("headless-stateful-serving-cert-secret-delete-data", func() {
+		g.It("[Operator][Serial] should regenerate deleted serving cert secrets for StatefulSet with headless service", func() {
+			testHeadlessStatefulServingCertSecretDeleteData(g.GinkgoTB())
+		})
+	})
+
 	g.Context("ca-bundle-injection-configmap", func() {
 		g.It("[Operator][Serial] should inject CA bundle into annotated configmaps", func() {
 			testCABundleInjectionConfigMap(g.GinkgoTB())
@@ -85,12 +91,6 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 	g.Context("vulnerable-legacy-ca-bundle-injection-configmap", func() {
 		g.It("[Operator][Serial] should only inject CA bundle for specific configmap names with legacy annotation", func() {
 			testVulnerableLegacyCABundleInjectionConfigMap(g.GinkgoTB())
-		})
-	})
-
-	g.Context("headless-stateful-serving-cert-secret-delete-data", func() {
-		g.It("[Operator][Serial] should regenerate deleted serving cert secrets for StatefulSet with headless service", func() {
-			testHeadlessStatefulServingCertSecretDeleteData(g.GinkgoTB())
 		})
 	})
 
