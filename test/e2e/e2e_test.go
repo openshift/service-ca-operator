@@ -25,12 +25,8 @@ import (
 	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
 	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
-	"k8s.io/utils/clock"
 
 	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
-	"github.com/openshift/library-go/pkg/crypto"
-	"github.com/openshift/library-go/pkg/operator/events"
-	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
@@ -204,68 +200,6 @@ func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Co
 		dnsName := fmt.Sprintf("some-statefulset-%d.%s.%s.svc", i, testHeadlessServiceName, ns.Name)
 		util.CheckRotation(t, dnsName, oldHeadlessCertPEM, oldHeadlessKeyPEM, oldBundlePEM, newHeadlessCertPEM, newHeadlessKeyPEM, newBundlePEM)
 	}
-}
-
-// triggerTimeBasedRotation replaces the current CA cert with one that
-// is not valid for the minimum required duration and waits for the CA
-// to be rotated.
-func triggerTimeBasedRotation(t *testing.T, client *kubernetes.Clientset, config *rest.Config) {
-	// A rotation-prompting CA cert needs to be a renewed instance
-	// (i.e. share the same public and private keys) of the current
-	// cert to ensure that trust will be maintained for unrefreshed
-	// clients and servers.
-
-	// Retrieve current CA
-	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("error retrieving signing key secret: %v", err)
-	}
-	// Store the old PEMs for comparison
-	oldCACertPEM := secret.Data[v1.TLSCertKey]
-	oldCAKeyPEM := secret.Data[v1.TLSPrivateKeyKey]
-
-	currentCACerts, err := util.PemToCerts(secret.Data[v1.TLSCertKey])
-	if err != nil {
-		t.Fatalf("error unmarshaling %q: %v", v1.TLSCertKey, err)
-	}
-	currentCAKey, err := util.PemToKey(secret.Data[v1.TLSPrivateKeyKey])
-	if err != nil {
-		t.Fatalf("error unmarshalling %q: %v", v1.TLSPrivateKeyKey, err)
-	}
-	currentCAConfig := &crypto.TLSCertificateConfig{
-		Certs: currentCACerts,
-		Key:   currentCAKey,
-	}
-
-	// Trigger rotation by renewing the current ca with an expiry that
-	// is sooner than the minimum required duration.
-	renewedCAConfig, err := operator.RenewSelfSignedCertificate(currentCAConfig, 1*time.Hour, true)
-	if err != nil {
-		t.Fatalf("error renewing ca to half-expired form: %v", err)
-	}
-	renewedCACertPEM, renewedCAKeyPEM, err := renewedCAConfig.GetPEMBytes()
-	if err != nil {
-		t.Fatalf("error encoding renewed ca to pem: %v", err)
-	}
-
-	// Write the renewed CA
-	secret = &v1.Secret{
-		Type: v1.SecretTypeTLS,
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      signingKeySecretName,
-			Namespace: serviceCAControllerNamespace,
-		},
-		Data: map[string][]byte{
-			v1.TLSCertKey:       renewedCACertPEM,
-			v1.TLSPrivateKeyKey: renewedCAKeyPEM,
-		},
-	}
-	_, _, err = resourceapply.ApplySecret(context.Background(), client.CoreV1(), events.NewInMemoryRecorder("test", clock.RealClock{}), secret)
-	if err != nil {
-		t.Fatalf("error updating secret with test CA: %v", err)
-	}
-
-	_ = pollForCARotation(t, client, oldCACertPEM, oldCAKeyPEM)
 }
 
 // triggerForcedRotation forces the rotation of the current CA via the
@@ -803,8 +737,11 @@ func TestE2E(t *testing.T) {
 	// expiry that is less than the minimum required duration and then
 	// validates that both refreshed and unrefreshed clients and
 	// servers can continue to communicate in a trusted fashion.
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("time-based-ca-rotation", func(t *testing.T) {
-		checkCARotation(t, adminClient, adminConfig, triggerTimeBasedRotation)
+		testTimeBasedCARotation(t)
 	})
 
 	// This test triggers rotation by updating the operator
