@@ -39,7 +39,7 @@ const (
 
 var characters = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
 
-var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
+var _ = g.Describe("[sig-service-ca] service-ca-operator", g.Ordered, func() {
 	g.Context("serving-cert-annotation", func() {
 		for _, headless := range []bool{false, true} {
 			g.It(fmt.Sprintf("[Operator][Serial] should provision certificates for services with headless=%v", headless), func() {
