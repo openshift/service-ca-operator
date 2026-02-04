@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -30,6 +32,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/client-go/util/cert"
+
+	configv1 "github.com/openshift/api/config/v1"
 )
 
 // TLS versions that are known to golang. Go 1.13 adds support for
@@ -110,15 +114,6 @@ func DefaultTLSVersion() uint16 {
 	return tls.VersionTLS12
 }
 
-// ciphersTLS13 copies golang 1.13 implementation, where TLS1.3 suites are not
-// configurable (cipherSuites field is ignored for TLS1.3 flows and all of the
-// below three - and none other - are used)
-var ciphersTLS13 = map[string]uint16{
-	"TLS_AES_128_GCM_SHA256":       tls.TLS_AES_128_GCM_SHA256,
-	"TLS_AES_256_GCM_SHA384":       tls.TLS_AES_256_GCM_SHA384,
-	"TLS_CHACHA20_POLY1305_SHA256": tls.TLS_CHACHA20_POLY1305_SHA256,
-}
-
 var ciphers = map[string]uint16{
 	"TLS_RSA_WITH_RC4_128_SHA":                      tls.TLS_RSA_WITH_RC4_128_SHA,
 	"TLS_RSA_WITH_3DES_EDE_CBC_SHA":                 tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
@@ -144,10 +139,17 @@ var ciphers = map[string]uint16{
 	"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305":        tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
 	"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256":   tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
 	"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256": tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+	"TLS_AES_128_GCM_SHA256":                        tls.TLS_AES_128_GCM_SHA256,
+	"TLS_AES_256_GCM_SHA384":                        tls.TLS_AES_256_GCM_SHA384,
+	"TLS_CHACHA20_POLY1305_SHA256":                  tls.TLS_CHACHA20_POLY1305_SHA256,
 }
 
 // openSSLToIANACiphersMap maps OpenSSL cipher suite names to IANA names
-// ref: https://www.iana.org/assignments/tls-parameters/tls-parameters.xml
+// Ref: https://www.iana.org/assignments/tls-parameters/tls-parameters.xml
+// This must hold a 1:1 mapping for each OpenSSL cipher defined in openshift/api TLSSecurityProfiles,
+// so it can be used to translate OpenSSL ciphers to IANA ciphers, which is what go's crypto/tls understands.
+// Ciphers in this map must also be compatible with go's crypto/tls ciphers:
+// https://github.com/golang/go/blob/d4febb45179fa99ee1d5783bcb693ed7ba14115c/src/crypto/tls/cipher_suites.go#L682-L724
 var openSSLToIANACiphersMap = map[string]string{
 	// TLS 1.3 ciphers - not configurable in go 1.13, all of them are used in TLSv1.3 flows
 	"TLS_AES_128_GCM_SHA256":       "TLS_AES_128_GCM_SHA256",       // 0x13,0x01
@@ -167,6 +169,21 @@ var openSSLToIANACiphersMap = map[string]string{
 	"AES256-GCM-SHA384":             "TLS_RSA_WITH_AES_256_GCM_SHA384",               // 0x00,0x9D
 	"AES128-SHA256":                 "TLS_RSA_WITH_AES_128_CBC_SHA256",               // 0x00,0x3C
 
+	// Go's crypto/tls does not support CBC mode and DHE ciphers, so we don't want to include them here.
+	// See:
+	//   - https://github.com/golang/go/issues/26652
+	//   - https://github.com/golang/go/issues/7758
+	//   - https://redhat-internal.slack.com/archives/C098FU5MRAB/p1770309657097269
+	//
+	// "ECDHE-ECDSA-AES256-SHA384":     "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384",       // 0xC0,0x24
+	// "ECDHE-RSA-AES256-SHA384":       "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384",         // 0xC0,0x28
+	// "AES256-SHA256":                 "TLS_RSA_WITH_AES_256_CBC_SHA256",               // 0x00,0x3D
+	// "DHE-RSA-AES128-GCM-SHA256":     "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256",           // 0x00,0x9E
+	// "DHE-RSA-AES256-GCM-SHA384":     "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384",           // 0x00,0x9F
+	// "DHE-RSA-CHACHA20-POLY1305":     "TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256",     // 0xCC,0xAA
+	// "DHE-RSA-AES128-SHA256":         "TLS_DHE_RSA_WITH_AES_128_CBC_SHA256",           // 0x00,0x67
+	// "DHE-RSA-AES256-SHA256":         "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256",           // 0x00,0x6B
+
 	// TLS 1
 	"ECDHE-ECDSA-AES128-SHA": "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA", // 0xC0,0x09
 	"ECDHE-RSA-AES128-SHA":   "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",   // 0xC0,0x13
@@ -174,9 +191,10 @@ var openSSLToIANACiphersMap = map[string]string{
 	"ECDHE-RSA-AES256-SHA":   "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",   // 0xC0,0x14
 
 	// SSL 3
-	"AES128-SHA":   "TLS_RSA_WITH_AES_128_CBC_SHA",  // 0x00,0x2F
-	"AES256-SHA":   "TLS_RSA_WITH_AES_256_CBC_SHA",  // 0x00,0x35
-	"DES-CBC3-SHA": "TLS_RSA_WITH_3DES_EDE_CBC_SHA", // 0x00,0x0A
+	"AES128-SHA":             "TLS_RSA_WITH_AES_128_CBC_SHA",        // 0x00,0x2F
+	"AES256-SHA":             "TLS_RSA_WITH_AES_256_CBC_SHA",        // 0x00,0x35
+	"DES-CBC3-SHA":           "TLS_RSA_WITH_3DES_EDE_CBC_SHA",       // 0x00,0x0A
+	"ECDHE-RSA-DES-CBC3-SHA": "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA", // 0xC0,0x12
 }
 
 // CipherSuitesToNamesOrDie given a list of cipher suites as ints, return their readable names
@@ -223,10 +241,6 @@ func CipherSuite(cipherName string) (uint16, error) {
 		return cipher, nil
 	}
 
-	if _, ok := ciphersTLS13[cipherName]; ok {
-		return 0, fmt.Errorf("all golang TLSv1.3 ciphers are always used for TLSv1.3 flows")
-	}
-
 	return 0, fmt.Errorf("unknown cipher name %q", cipherName)
 }
 
@@ -252,35 +266,47 @@ func ValidCipherSuites() []string {
 	sort.Strings(validCipherSuites)
 	return validCipherSuites
 }
+
+// DefaultTLSProfileType is the intermediate profile type.
+const DefaultTLSProfileType = configv1.TLSProfileIntermediateType
+
+// DefaultCiphers returns the default cipher suites for TLS connections.
+//
+// RECOMMENDATION: Instead of relying on this function directly, consumers should respect
+// TLSSecurityProfile settings from one of the OpenShift API configuration resources:
+//   - For API servers: Use apiserver.config.openshift.io/cluster Spec.TLSSecurityProfile
+//   - For ingress controllers: Use operator.openshift.io/v1 IngressController Spec.TLSSecurityProfile
+//   - For kubelet: Use machineconfiguration.openshift.io/v1 KubeletConfig Spec.TLSSecurityProfile
+//
+// These API resources allow cluster administrators to choose between Old, Intermediate,
+// Modern, or Custom TLS profiles. Components should observe these settings.
 func DefaultCiphers() []uint16 {
-	// HTTP/2 mandates TLS 1.2 or higher with an AEAD cipher
-	// suite (GCM, Poly1305) and ephemeral key exchange (ECDHE, DHE) for
-	// perfect forward secrecy. Servers may provide additional cipher
-	// suites for backwards compatibility with HTTP/1.1 clients.
-	// See RFC7540, section 9.2 (Use of TLS Features) and Appendix A
-	// (TLS 1.2 Cipher Suite Black List).
+	// Aligned with intermediate profile of the 5.7 version of the Mozilla Server
+	// Side TLS guidelines found at: https://ssl-config.mozilla.org/guidelines/5.7.json
+	//
+	// Latest guidelines: https://ssl-config.mozilla.org/guidelines/latest.json
+	//
+	// This profile provides strong security with wide compatibility.
+	// It requires TLS 1.2+ and uses only AEAD cipher suites (GCM, ChaCha20-Poly1305)
+	// with ECDHE key exchange for perfect forward secrecy.
+	//
+	// All CBC-mode ciphers have been removed due to padding oracle vulnerabilities.
+	// All RSA key exchange ciphers have been removed due to lack of perfect forward secrecy.
+	//
+	// HTTP/2 compliance: All ciphers are compliant with RFC7540, section 9.2.
 	return []uint16{
+		// TLS 1.2 cipher suites with ECDHE + AEAD
 		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
 		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
 		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, // required by http/2
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, // required by HTTP/2
 		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256, // forbidden by http/2, not flagged by http2isBadCipher() in go1.8
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,   // forbidden by http/2, not flagged by http2isBadCipher() in go1.8
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,    // forbidden by http/2
-		tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,    // forbidden by http/2
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,      // forbidden by http/2
-		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,      // forbidden by http/2
-		tls.TLS_RSA_WITH_AES_128_GCM_SHA256,         // forbidden by http/2
-		tls.TLS_RSA_WITH_AES_256_GCM_SHA384,         // forbidden by http/2
-		// the next one is in the intermediate suite, but go1.8 http2isBadCipher() complains when it is included at the recommended index
-		// because it comes after ciphers forbidden by the http/2 spec
-		// tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
-		// tls.TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA, // forbidden by http/2, disabled to mitigate SWEET32 attack
-		// tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,       // forbidden by http/2, disabled to mitigate SWEET32 attack
-		tls.TLS_RSA_WITH_AES_128_CBC_SHA, // forbidden by http/2
-		tls.TLS_RSA_WITH_AES_256_CBC_SHA, // forbidden by http/2
+
+		// TLS 1.3 cipher suites (negotiated automatically, not configurable)
+		tls.TLS_AES_128_GCM_SHA256,
+		tls.TLS_AES_256_GCM_SHA384,
+		tls.TLS_CHACHA20_POLY1305_SHA256,
 	}
 }
 
@@ -437,6 +463,16 @@ const (
 
 	// Default keys are 2048 bits
 	keyBits = 2048
+)
+
+// KeyAlgorithm represents the type of key pair to generate
+type KeyAlgorithm int
+
+const (
+	// AlgorithmRSA generates 2048-bit RSA key pairs (default for backwards compatibility)
+	AlgorithmRSA KeyAlgorithm = iota
+	// AlgorithmECDSA generates P-256 ECDSA key pairs
+	AlgorithmECDSA
 )
 
 type CA struct {
@@ -636,35 +672,40 @@ func MakeSelfSignedCAConfig(name string, lifetime time.Duration) (*TLSCertificat
 func MakeSelfSignedCAConfigForSubject(subject pkix.Name, lifetime time.Duration) (*TLSCertificateConfig, error) {
 	if lifetime <= 0 {
 		lifetime = DefaultCACertificateLifetimeDuration
-		fmt.Fprintf(os.Stderr, "Validity period of the certificate for %q is unset, resetting to %d years!\n", subject.CommonName, lifetime)
+		fmt.Fprintf(os.Stderr, "Validity period of the certificate for %q is unset, resetting to %s!\n", subject.CommonName, lifetime.String())
 	}
 
 	if lifetime > DefaultCACertificateLifetimeDuration {
 		warnAboutCertificateLifeTime(subject.CommonName, DefaultCACertificateLifetimeDuration)
 	}
-	return makeSelfSignedCAConfigForSubjectAndDuration(subject, time.Now, lifetime)
+	return makeSelfSignedCAConfigForSubjectAndDuration(subject, time.Now, lifetime, AlgorithmRSA)
 }
 
 func MakeSelfSignedCAConfigForDuration(name string, caLifetime time.Duration) (*TLSCertificateConfig, error) {
 	subject := pkix.Name{CommonName: name}
-	return makeSelfSignedCAConfigForSubjectAndDuration(subject, time.Now, caLifetime)
+	return makeSelfSignedCAConfigForSubjectAndDuration(subject, time.Now, caLifetime, AlgorithmRSA)
+}
+
+func MakeSelfSignedCAConfigForDurationWithAlgorithm(name string, caLifetime time.Duration, algorithm KeyAlgorithm) (*TLSCertificateConfig, error) {
+	subject := pkix.Name{CommonName: name}
+	return makeSelfSignedCAConfigForSubjectAndDuration(subject, time.Now, caLifetime, algorithm)
 }
 
 func UnsafeMakeSelfSignedCAConfigForDurationAtTime(name string, currentTime func() time.Time, caLifetime time.Duration) (*TLSCertificateConfig, error) {
 	subject := pkix.Name{CommonName: name}
-	return makeSelfSignedCAConfigForSubjectAndDuration(subject, currentTime, caLifetime)
+	return makeSelfSignedCAConfigForSubjectAndDuration(subject, currentTime, caLifetime, AlgorithmRSA)
 }
 
-func makeSelfSignedCAConfigForSubjectAndDuration(subject pkix.Name, currentTime func() time.Time, caLifetime time.Duration) (*TLSCertificateConfig, error) {
+func makeSelfSignedCAConfigForSubjectAndDuration(subject pkix.Name, currentTime func() time.Time, caLifetime time.Duration, algorithm KeyAlgorithm) (*TLSCertificateConfig, error) {
 	// Create CA cert
-	rootcaPublicKey, rootcaPrivateKey, publicKeyHash, err := newKeyPairWithHash()
+	rootcaPublicKey, rootcaPrivateKey, publicKeyHash, err := newKeyPairWithAlgorithm(algorithm)
 	if err != nil {
 		return nil, err
 	}
 	// AuthorityKeyId and SubjectKeyId should match for a self-signed CA
 	authorityKeyId := publicKeyHash
 	subjectKeyId := publicKeyHash
-	rootcaTemplate := newSigningCertificateTemplateForDuration(subject, caLifetime, currentTime, authorityKeyId, subjectKeyId)
+	rootcaTemplate := newSigningCertificateTemplateForDuration(subject, caLifetime, currentTime, authorityKeyId, subjectKeyId, algorithm)
 	rootcaCert, err := signCertificate(rootcaTemplate, rootcaPublicKey, rootcaTemplate, rootcaPrivateKey)
 	if err != nil {
 		return nil, err
@@ -677,14 +718,22 @@ func makeSelfSignedCAConfigForSubjectAndDuration(subject pkix.Name, currentTime 
 }
 
 func MakeCAConfigForDuration(name string, caLifetime time.Duration, issuer *CA) (*TLSCertificateConfig, error) {
+	return makeCAConfigForDuration(name, caLifetime, issuer, AlgorithmRSA)
+}
+
+func MakeCAConfigForDurationWithAlgorithm(name string, caLifetime time.Duration, issuer *CA, algorithm KeyAlgorithm) (*TLSCertificateConfig, error) {
+	return makeCAConfigForDuration(name, caLifetime, issuer, algorithm)
+}
+
+func makeCAConfigForDuration(name string, caLifetime time.Duration, issuer *CA, algorithm KeyAlgorithm) (*TLSCertificateConfig, error) {
 	// Create CA cert
-	signerPublicKey, signerPrivateKey, publicKeyHash, err := newKeyPairWithHash()
+	signerPublicKey, signerPrivateKey, publicKeyHash, err := newKeyPairWithAlgorithm(algorithm)
 	if err != nil {
 		return nil, err
 	}
 	authorityKeyId := issuer.Config.Certs[0].SubjectKeyId
 	subjectKeyId := publicKeyHash
-	signerTemplate := newSigningCertificateTemplateForDuration(pkix.Name{CommonName: name}, caLifetime, time.Now, authorityKeyId, subjectKeyId)
+	signerTemplate := newSigningCertificateTemplateForDuration(pkix.Name{CommonName: name}, caLifetime, time.Now, authorityKeyId, subjectKeyId, algorithm)
 	signerCert, err := issuer.SignCertificate(signerTemplate, signerPublicKey)
 	if err != nil {
 		return nil, err
@@ -792,19 +841,44 @@ func (ca *CA) MakeAndWriteServerCert(certFile, keyFile string, hostnames sets.Se
 type CertificateExtensionFunc func(*x509.Certificate) error
 
 func (ca *CA) MakeServerCert(hostnames sets.Set[string], lifetime time.Duration, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
-	serverPublicKey, serverPrivateKey, publicKeyHash, _ := newKeyPairWithHash()
+	return ca.makeServerCert(hostnames, lifetime, AlgorithmRSA, fns...)
+}
+
+func (ca *CA) MakeServerCertForDuration(hostnames sets.Set[string], lifetime time.Duration, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
+	return ca.makeServerCertForDuration(hostnames, lifetime, AlgorithmRSA, fns...)
+}
+
+// MakeServerCertWithAlgorithm creates a server certificate with the specified key algorithm
+func (ca *CA) MakeServerCertWithAlgorithm(hostnames sets.Set[string], lifetime time.Duration, algorithm KeyAlgorithm, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
+	return ca.makeServerCert(hostnames, lifetime, algorithm, fns...)
+}
+
+// MakeServerCertForDurationWithAlgorithm creates a server certificate with specified duration and algorithm
+func (ca *CA) MakeServerCertForDurationWithAlgorithm(hostnames sets.Set[string], lifetime time.Duration, algorithm KeyAlgorithm, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
+	return ca.makeServerCertForDuration(hostnames, lifetime, algorithm, fns...)
+}
+
+func (ca *CA) makeServerCert(hostnames sets.Set[string], lifetime time.Duration, algorithm KeyAlgorithm, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
+	serverPublicKey, serverPrivateKey, publicKeyHash, err := newKeyPairWithAlgorithm(algorithm)
+	if err != nil {
+		return nil, err
+	}
+
 	authorityKeyId := ca.Config.Certs[0].SubjectKeyId
 	subjectKeyId := publicKeyHash
-	serverTemplate := newServerCertificateTemplate(pkix.Name{CommonName: sets.List(hostnames)[0]}, sets.List(hostnames), lifetime, time.Now, authorityKeyId, subjectKeyId)
+	serverTemplate := newServerCertificateTemplate(pkix.Name{CommonName: sets.List(hostnames)[0]}, sets.List(hostnames), lifetime, time.Now, authorityKeyId, subjectKeyId, algorithm)
+
 	for _, fn := range fns {
 		if err := fn(serverTemplate); err != nil {
 			return nil, err
 		}
 	}
+
 	serverCrt, err := ca.SignCertificate(serverTemplate, serverPublicKey)
 	if err != nil {
 		return nil, err
 	}
+
 	server := &TLSCertificateConfig{
 		Certs: append([]*x509.Certificate{serverCrt}, ca.Config.Certs...),
 		Key:   serverPrivateKey,
@@ -812,20 +886,27 @@ func (ca *CA) MakeServerCert(hostnames sets.Set[string], lifetime time.Duration,
 	return server, nil
 }
 
-func (ca *CA) MakeServerCertForDuration(hostnames sets.Set[string], lifetime time.Duration, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
-	serverPublicKey, serverPrivateKey, publicKeyHash, _ := newKeyPairWithHash()
+func (ca *CA) makeServerCertForDuration(hostnames sets.Set[string], lifetime time.Duration, algorithm KeyAlgorithm, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
+	serverPublicKey, serverPrivateKey, publicKeyHash, err := newKeyPairWithAlgorithm(algorithm)
+	if err != nil {
+		return nil, err
+	}
+
 	authorityKeyId := ca.Config.Certs[0].SubjectKeyId
 	subjectKeyId := publicKeyHash
-	serverTemplate := newServerCertificateTemplateForDuration(pkix.Name{CommonName: sets.List(hostnames)[0]}, sets.List(hostnames), lifetime, time.Now, authorityKeyId, subjectKeyId)
+	serverTemplate := newServerCertificateTemplateForDuration(pkix.Name{CommonName: sets.List(hostnames)[0]}, sets.List(hostnames), lifetime, time.Now, authorityKeyId, subjectKeyId, algorithm)
+
 	for _, fn := range fns {
 		if err := fn(serverTemplate); err != nil {
 			return nil, err
 		}
 	}
+
 	serverCrt, err := ca.SignCertificate(serverTemplate, serverPublicKey)
 	if err != nil {
 		return nil, err
 	}
+
 	server := &TLSCertificateConfig{
 		Certs: append([]*x509.Certificate{serverCrt}, ca.Config.Certs...),
 		Key:   serverPrivateKey,
@@ -997,12 +1078,74 @@ func newRSAKeyPair() (*rsa.PublicKey, *rsa.PrivateKey, error) {
 	return &privateKey.PublicKey, privateKey, nil
 }
 
+// newECDSAKeyPair generates a new P-256 ECDSA key pair
+func newECDSAKeyPair() (*ecdsa.PublicKey, *ecdsa.PrivateKey, error) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &privateKey.PublicKey, privateKey, nil
+}
+
+// subjectPublicKeyInfo mirrors the ASN.1 SubjectPublicKeyInfo structure from RFC 5280 Section 4.1.
+// It is used to extract the subjectPublicKey BIT STRING for hashing per Section 4.2.1.2.
+type subjectPublicKeyInfo struct {
+	Algorithm pkix.AlgorithmIdentifier
+	PublicKey asn1.BitString
+}
+
+// newECDSAKeyPairWithHash generates a new ECDSA key pair and computes the public key hash.
+// Uses SHA-1 over the subjectPublicKey BIT STRING per RFC 5280 Section 4.2.1.2,
+// matching the RSA convention.
+func newECDSAKeyPairWithHash() (crypto.PublicKey, crypto.PrivateKey, []byte, error) {
+	publicKey, privateKey, err := newECDSAKeyPair()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(publicKey)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var spki subjectPublicKeyInfo
+	if _, err := asn1.Unmarshal(pubDER, &spki); err != nil {
+		return nil, nil, nil, err
+	}
+	hash := sha1.New()
+	hash.Write(spki.PublicKey.Bytes)
+	publicKeyHash := hash.Sum(nil)
+	return publicKey, privateKey, publicKeyHash, nil
+}
+
+// newKeyPairWithAlgorithm generates a new key pair using the specified algorithm
+func newKeyPairWithAlgorithm(algo KeyAlgorithm) (crypto.PublicKey, crypto.PrivateKey, []byte, error) {
+	switch algo {
+	case AlgorithmECDSA:
+		return newECDSAKeyPairWithHash()
+	case AlgorithmRSA:
+		return newKeyPairWithHash()
+	default:
+		// This can only be reached if a new KeyAlgorithm constant is added
+		// to the const block above without a corresponding case here.
+		return nil, nil, nil, fmt.Errorf("unsupported key algorithm: %d", algo)
+	}
+}
+
+// baseKeyUsageForAlgorithm returns the appropriate KeyUsage for the given algorithm.
+// RSA keys use KeyEncipherment (for RSA key transport in TLS) + DigitalSignature.
+// ECDSA keys use only DigitalSignature per RFC 5480 Section 3.
+func baseKeyUsageForAlgorithm(algorithm KeyAlgorithm) x509.KeyUsage {
+	switch algorithm {
+	case AlgorithmECDSA:
+		return x509.KeyUsageDigitalSignature
+	default:
+		return x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
+	}
+}
+
 // Can be used for CA or intermediate signing certs
-func newSigningCertificateTemplateForDuration(subject pkix.Name, caLifetime time.Duration, currentTime func() time.Time, authorityKeyId, subjectKeyId []byte) *x509.Certificate {
+func newSigningCertificateTemplateForDuration(subject pkix.Name, caLifetime time.Duration, currentTime func() time.Time, authorityKeyId, subjectKeyId []byte, algorithm KeyAlgorithm) *x509.Certificate {
 	return &x509.Certificate{
 		Subject: subject,
-
-		SignatureAlgorithm: x509.SHA256WithRSA,
 
 		NotBefore: currentTime().Add(-1 * time.Second),
 		NotAfter:  currentTime().Add(caLifetime),
@@ -1012,7 +1155,7 @@ func newSigningCertificateTemplateForDuration(subject pkix.Name, caLifetime time
 		// signing certificate is ever rotated.
 		SerialNumber: big.NewInt(randomSerialNumber()),
 
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		KeyUsage:              baseKeyUsageForAlgorithm(algorithm) | x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 
@@ -1022,31 +1165,29 @@ func newSigningCertificateTemplateForDuration(subject pkix.Name, caLifetime time
 }
 
 // Can be used for ListenAndServeTLS
-func newServerCertificateTemplate(subject pkix.Name, hosts []string, lifetime time.Duration, currentTime func() time.Time, authorityKeyId, subjectKeyId []byte) *x509.Certificate {
+func newServerCertificateTemplate(subject pkix.Name, hosts []string, lifetime time.Duration, currentTime func() time.Time, authorityKeyId, subjectKeyId []byte, algorithm KeyAlgorithm) *x509.Certificate {
 	if lifetime <= 0 {
 		lifetime = DefaultCertificateLifetimeDuration
-		fmt.Fprintf(os.Stderr, "Validity period of the certificate for %q is unset, resetting to %d years!\n", subject.CommonName, lifetime)
+		fmt.Fprintf(os.Stderr, "Validity period of the certificate for %q is unset, resetting to %s!\n", subject.CommonName, lifetime.String())
 	}
 
 	if lifetime > DefaultCertificateLifetimeDuration {
 		warnAboutCertificateLifeTime(subject.CommonName, DefaultCertificateLifetimeDuration)
 	}
 
-	return newServerCertificateTemplateForDuration(subject, hosts, lifetime, currentTime, authorityKeyId, subjectKeyId)
+	return newServerCertificateTemplateForDuration(subject, hosts, lifetime, currentTime, authorityKeyId, subjectKeyId, algorithm)
 }
 
 // Can be used for ListenAndServeTLS
-func newServerCertificateTemplateForDuration(subject pkix.Name, hosts []string, lifetime time.Duration, currentTime func() time.Time, authorityKeyId, subjectKeyId []byte) *x509.Certificate {
+func newServerCertificateTemplateForDuration(subject pkix.Name, hosts []string, lifetime time.Duration, currentTime func() time.Time, authorityKeyId, subjectKeyId []byte, algorithm KeyAlgorithm) *x509.Certificate {
 	template := &x509.Certificate{
 		Subject: subject,
-
-		SignatureAlgorithm: x509.SHA256WithRSA,
 
 		NotBefore:    currentTime().Add(-1 * time.Second),
 		NotAfter:     currentTime().Add(lifetime),
 		SerialNumber: big.NewInt(1),
 
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		KeyUsage:              baseKeyUsageForAlgorithm(algorithm),
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 
@@ -1112,7 +1253,7 @@ func CertsFromPEM(pemCerts []byte) ([]*x509.Certificate, error) {
 func NewClientCertificateTemplate(subject pkix.Name, lifetime time.Duration, currentTime func() time.Time) *x509.Certificate {
 	if lifetime <= 0 {
 		lifetime = DefaultCertificateLifetimeDuration
-		fmt.Fprintf(os.Stderr, "Validity period of the certificate for %q is unset, resetting to %d years!\n", subject.CommonName, lifetime)
+		fmt.Fprintf(os.Stderr, "Validity period of the certificate for %q is unset, resetting to %s!\n", subject.CommonName, lifetime.String())
 	}
 
 	if lifetime > DefaultCertificateLifetimeDuration {
@@ -1126,8 +1267,6 @@ func NewClientCertificateTemplate(subject pkix.Name, lifetime time.Duration, cur
 func NewClientCertificateTemplateForDuration(subject pkix.Name, lifetime time.Duration, currentTime func() time.Time) *x509.Certificate {
 	return &x509.Certificate{
 		Subject: subject,
-
-		SignatureAlgorithm: x509.SHA256WithRSA,
 
 		NotBefore:    currentTime().Add(-1 * time.Second),
 		NotAfter:     currentTime().Add(lifetime),

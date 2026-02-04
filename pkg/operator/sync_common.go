@@ -107,7 +107,7 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 	if existingCert == nil {
 		// Secret does not exist or lacks the expected cert.
 		validityDuration := serviceCAConfig.CAConfig.ValidityDurationForTesting
-		if err := initializeSigningSecret(secret, validityDuration, c.signingCertificateLifetime); err != nil {
+		if err := initializeSigningSecret(secret, validityDuration, c.signingCertificateLifetime, serviceCAConfig.CAConfig.cryptoKeyAlgorithm()); err != nil {
 			return false, err
 		}
 	} else {
@@ -142,11 +142,17 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 // PEM-encoded certificate and private key of a new self-signed
 // CA. The duration, if non-zero, will be used to set the
 // expiry of the CA.
-func initializeSigningSecret(secret *corev1.Secret, duration time.Duration, lifetime time.Duration) error {
+func initializeSigningSecret(secret *corev1.Secret, duration time.Duration, lifetime time.Duration, algorithm crypto.KeyAlgorithm) error {
 	name := serviceServingCertSignerName()
 	klog.V(4).Infof("generating signing CA: %s", name)
 
-	ca, err := crypto.MakeSelfSignedCAConfig(name, lifetime)
+	var ca *crypto.TLSCertificateConfig
+	var err error
+	if algorithm == crypto.AlgorithmECDSA {
+		ca, err = crypto.MakeSelfSignedCAConfigForDurationWithAlgorithm(name, lifetime, algorithm)
+	} else {
+		ca, err = crypto.MakeSelfSignedCAConfig(name, lifetime)
+	}
 	if err != nil {
 		return err
 	}

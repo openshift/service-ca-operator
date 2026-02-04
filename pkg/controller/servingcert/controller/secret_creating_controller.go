@@ -151,7 +151,7 @@ func (sc *serviceServingCertController) generateCert(ctx context.Context, servic
 
 	secret := toBaseSecret(serviceCopy)
 	if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, serviceCopy, secret, sc.certificateLifetime); err != nil {
-		return err
+		return sc.updateServiceFailure(ctx, serviceCopy, err)
 	}
 	setSecretOwnerDescription(secret, serviceCopy)
 
@@ -381,9 +381,26 @@ func certSubjectsForService(service *corev1.Service, dnsSuffix string) sets.Set[
 
 func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, lifetime time.Duration) (*crypto.TLSCertificateConfig, error) {
 	subjects := certSubjectsForService(service, dnsSuffix)
-	servingCert, err := ca.MakeServerCert(
+
+	// Check for key algorithm annotation
+	algorithm := crypto.AlgorithmRSA // Default to RSA for backwards compatibility
+	if service.Annotations != nil {
+		if algoStr := service.Annotations[api.ServingCertKeyAlgorithmAnnotation]; algoStr != "" {
+			switch strings.ToLower(algoStr) {
+			case "ecdsa":
+				algorithm = crypto.AlgorithmECDSA
+			case "rsa":
+				algorithm = crypto.AlgorithmRSA
+			default:
+				return nil, fmt.Errorf("invalid key algorithm %q, must be 'rsa' or 'ecdsa'", algoStr)
+			}
+		}
+	}
+
+	servingCert, err := ca.MakeServerCertWithAlgorithm(
 		subjects,
 		lifetime,
+		algorithm,
 		cryptoextensions.ServiceServerCertificateExtensionV1(service.UID),
 	)
 	if err != nil {

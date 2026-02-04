@@ -318,7 +318,7 @@ func forceUnsupportedServiceCAConfigRotation(t *testing.T, config *rest.Config, 
 			break
 		}
 	}
-	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(forceRotationReason, validityDuration)
+	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(forceRotationReason, validityDuration, "")
 	if err != nil {
 		t.Fatalf("failed to create raw unsupported config overrides: %v", err)
 	}

@@ -51,6 +51,9 @@ const (
 	// regeneration
 	ServingCertCreatedByAnnotation      = "service.beta.openshift.io/serving-cert-signed-by"
 	AlphaServingCertCreatedByAnnotation = "service.alpha.openshift.io/serving-cert-signed-by"
+	// ServingCertKeyAlgorithmAnnotation specifies the key algorithm to use (rsa or ecdsa).
+	// If not specified, defaults to RSA for backwards compatibility.
+	ServingCertKeyAlgorithmAnnotation = "service.beta.openshift.io/serving-cert-key-algorithm"
 	// ServingCertErrorAnnotation stores the error that caused cert generation failures.
 	ServingCertErrorAnnotation      = "service.beta.openshift.io/serving-cert-generation-error"
 	AlphaServingCertErrorAnnotation = "service.alpha.openshift.io/serving-cert-generation-error"

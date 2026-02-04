@@ -45,7 +45,9 @@ func TestInitializeSigningSecret(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			now := time.Now()
 			secret := &corev1.Secret{}
-			initializeSigningSecret(secret, 0, tc.duration)
+			if err := initializeSigningSecret(secret, 0, tc.duration, crypto.AlgorithmRSA); err != nil {
+				t.Fatalf("initializeSigningSecret failed: %v", err)
+			}
 
 			// Check that the initialized key pair is valid
 			rawCert := secret.Data[corev1.TLSCertKey]
