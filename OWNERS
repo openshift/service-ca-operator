@@ -1,9 +1,9 @@
 reviewers:
   - p0lyn0mial
-  - vrutkovs
+  - sanchezl
   - bertinatto
 approvers:
   - p0lyn0mial
-  - vrutkovs
+  - sanchezl
   - bertinatto
 component: service-ca
