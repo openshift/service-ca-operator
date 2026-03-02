@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -462,6 +463,24 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			secretAnnotations: map[string]string{},
 			secretData:        []byte(testCertUnknownIssuer),
 		},
+		{
+			name:       "invalid key algorithm annotation",
+			secretName: testSecretName,
+			serviceAnnotations: map[string]string{
+				api.ServingCertSecretAnnotation:      testSecretName,
+				api.ServingCertKeyAlgorithmAnnotation: "invalid-algo",
+			},
+			expectedServiceAnnotations: map[string]string{
+				api.ServingCertSecretAnnotation:      testSecretName,
+				api.ServingCertKeyAlgorithmAnnotation: "invalid-algo",
+				api.ServingCertErrorAnnotation:       "invalid key algorithm \"invalid-algo\", must be 'rsa' or 'ecdsa'",
+				api.AlphaServingCertErrorAnnotation:  "invalid key algorithm \"invalid-algo\", must be 'rsa' or 'ecdsa'",
+				api.ServingCertErrorNumAnnotation:    "1",
+				api.AlphaServingCertErrorNumAnnotation: "1",
+			},
+			updateService: true,
+			updateSecret:  false, // Secret should not be created
+		},
 	}
 
 	for _, tt := range tests {
@@ -781,5 +800,128 @@ func newTestSyncContext(queueKey string) factory.SyncContext {
 	return testSyncContext{
 		queueKey:      queueKey,
 		eventRecorder: events.NewInMemoryRecorder("test", clock.RealClock{}),
+	}
+}
+
+// TestECDSACertificateGeneration tests that ECDSA certificates can be generated via annotation
+func TestECDSACertificateGeneration(t *testing.T) {
+	dnsSuffix := "cluster.local"
+	caLifetime := 365 * 24 * time.Hour
+	certLifetime := 180 * 24 * time.Hour
+
+	caDir := t.TempDir()
+	ca, _, err := crypto.EnsureCA(
+		path.Join(caDir, "test-ca.crt"),
+		path.Join(caDir, "test-ca.key"),
+		path.Join(caDir, "test-ca.serial"),
+		signerName,
+		caLifetime,
+	)
+	if err != nil {
+		t.Fatalf("failed to create CA: %v", err)
+	}
+
+	tests := []struct {
+		name                string
+		algorithmAnnotation string
+		expectedKeyType     string
+		expectError         bool
+	}{
+		{
+			name:                "RSA certificate (default)",
+			algorithmAnnotation: "",
+			expectedKeyType:     "RSA",
+			expectError:         false,
+		},
+		{
+			name:                "RSA certificate (explicit)",
+			algorithmAnnotation: "rsa",
+			expectedKeyType:     "RSA",
+			expectError:         false,
+		},
+		{
+			name:                "ECDSA certificate",
+			algorithmAnnotation: "ecdsa",
+			expectedKeyType:     "ECDSA",
+			expectError:         false,
+		},
+		{
+			name:                "ECDSA certificate (case insensitive)",
+			algorithmAnnotation: "ECDSA",
+			expectedKeyType:     "ECDSA",
+			expectError:         false,
+		},
+		{
+			name:                "Invalid algorithm",
+			algorithmAnnotation: "invalid",
+			expectedKeyType:     "",
+			expectError:         true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testServiceName,
+					Namespace: testNamespace,
+					UID:       testServiceUID,
+					Annotations: map[string]string{
+						api.ServingCertSecretAnnotation: testSecretName,
+					},
+				},
+			}
+
+			if tt.algorithmAnnotation != "" {
+				service.Annotations[api.ServingCertKeyAlgorithmAnnotation] = tt.algorithmAnnotation
+			}
+
+			servingCert, err := MakeServingCert(dnsSuffix, ca, nil, service, certLifetime)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("expected error, got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Verify certificate was generated
+			if servingCert == nil {
+				t.Fatal("servingCert is nil")
+			}
+
+			if len(servingCert.Certs) == 0 {
+				t.Fatal("no certificates generated")
+			}
+
+			// Verify key type
+			cert := servingCert.Certs[0]
+			switch tt.expectedKeyType {
+			case "RSA":
+				if cert.PublicKeyAlgorithm != x509.RSA {
+					t.Errorf("expected RSA public key algorithm, got %v", cert.PublicKeyAlgorithm)
+				}
+			case "ECDSA":
+				if cert.PublicKeyAlgorithm != x509.ECDSA {
+					t.Errorf("expected ECDSA public key algorithm, got %v", cert.PublicKeyAlgorithm)
+				}
+			}
+
+			// Verify certificate subjects include service name
+			foundServiceName := false
+			for _, dnsName := range cert.DNSNames {
+				if dnsName == fmt.Sprintf("%s.%s.svc", testServiceName, testNamespace) {
+					foundServiceName = true
+					break
+				}
+			}
+			if !foundServiceName {
+				t.Errorf("certificate DNS names %v do not include expected service name", cert.DNSNames)
+			}
+		})
 	}
 }

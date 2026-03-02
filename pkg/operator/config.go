@@ -2,7 +2,10 @@ package operator
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
+
+	"github.com/openshift/library-go/pkg/crypto"
 )
 
 type unsupportedServiceCAConfig struct {
@@ -19,6 +22,17 @@ type caConfig struct {
 	// months.
 	// +optional
 	ValidityDurationForTesting time.Duration `json:"validityDurationForTesting"`
+	// keyAlgorithm specifies the key algorithm to use for the CA
+	// (rsa or ecdsa). Defaults to RSA if unspecified.
+	// +optional
+	KeyAlgorithm string `json:"keyAlgorithm"`
+}
+
+func (c caConfig) cryptoKeyAlgorithm() crypto.KeyAlgorithm {
+	if strings.EqualFold(c.KeyAlgorithm, "ecdsa") {
+		return crypto.AlgorithmECDSA
+	}
+	return crypto.AlgorithmRSA
 }
 
 type forceRotationConfig struct {
@@ -42,10 +56,11 @@ func loadUnsupportedServiceCAConfig(raw []byte) (unsupportedServiceCAConfig, err
 // RawUnsupportedServiceCAConfig returns the raw value of the operator
 // field UnsupportedConfigOverrides for the given force rotation
 // reason.
-func RawUnsupportedServiceCAConfig(reason string, duration time.Duration) ([]byte, error) {
+func RawUnsupportedServiceCAConfig(reason string, duration time.Duration, algorithm string) ([]byte, error) {
 	config := &unsupportedServiceCAConfig{
 		CAConfig: caConfig{
 			ValidityDurationForTesting: duration,
+			KeyAlgorithm:               algorithm,
 		},
 		ForceRotation: forceRotationConfig{
 			Reason: reason,

@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,6 +95,24 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 		})
 	})
 
+	g.Context("serving-cert-annotation-ecdsa", func() {
+		g.It("[Operator][Serial] should provision ECDSA certificates for services", func() {
+			testServingCertAnnotationWithAlgorithm(g.GinkgoTB(), "ecdsa")
+		})
+	})
+
+	g.Context("serving-cert-annotation-invalid-algorithm", func() {
+		g.It("[Operator][Serial] should reject invalid algorithm annotation", func() {
+			testServingCertAnnotationInvalidAlgorithm(g.GinkgoTB())
+		})
+	})
+
+	g.Context("serving-cert-secret-regeneration-ecdsa", func() {
+		g.It("[Operator][Serial] should regenerate deleted ECDSA serving cert secrets", func() {
+			testServingCertSecretDeleteDataWithAlgorithm(g.GinkgoTB())
+		})
+	})
+
 	g.Context("metrics", func() {
 		g.It("[Operator][Serial] should collect metrics from the operator", func() {
 			testMetricsCollection(g.GinkgoTB())
@@ -145,6 +164,220 @@ func testServingCertAnnotation(t testing.TB, headless bool) {
 	if !is509 {
 		t.Fatalf("TLSCertKey not valid pem bytes")
 	}
+}
+
+// testServingCertAnnotationWithAlgorithm checks that services with the
+// serving-cert annotation and a key algorithm annotation get TLS certificates
+// provisioned with the specified algorithm.
+func testServingCertAnnotationWithAlgorithm(t testing.TB, algorithm string) {
+	adminClient, err := getKubeClient()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+	defer cleanup()
+
+	testServiceName := "test-service-" + randSeq(5)
+	testSecretName := "test-secret-" + randSeq(5)
+
+	err = createServingCertAnnotatedServiceWithAlgorithm(adminClient, testSecretName, testServiceName, ns.Name, algorithm)
+	if err != nil {
+		t.Fatalf("error creating annotated service: %v", err)
+	}
+
+	err = pollForServiceServingSecret(adminClient, testSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error fetching created serving cert secret: %v", err)
+	}
+
+	certBytes, is509, err := checkServiceServingCertSecretData(adminClient, testSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error when checking serving cert secret: %v", err)
+	}
+	if !is509 {
+		t.Fatalf("TLSCertKey not valid pem bytes")
+	}
+
+	block, _ := pem.Decode(certBytes)
+	if block == nil {
+		t.Fatalf("failed to decode PEM block from cert")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("failed to parse certificate: %v", err)
+	}
+	var expected x509.PublicKeyAlgorithm
+	switch {
+	case strings.EqualFold(algorithm, "ecdsa"):
+		expected = x509.ECDSA
+	case strings.EqualFold(algorithm, "rsa"):
+		expected = x509.RSA
+	default:
+		t.Fatalf("unsupported algorithm for test expectation: %q", algorithm)
+	}
+	if cert.PublicKeyAlgorithm != expected {
+		t.Fatalf("expected %v public key algorithm, got %v", expected, cert.PublicKeyAlgorithm)
+	}
+	if len(cert.DNSNames) == 0 {
+		t.Fatalf("expected DNS names in certificate, got none")
+	}
+}
+
+// testServingCertAnnotationInvalidAlgorithm checks that an invalid algorithm
+// annotation causes an error annotation on the service and the secret is not created.
+func testServingCertAnnotationInvalidAlgorithm(t testing.TB) {
+	adminClient, err := getKubeClient()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+	defer cleanup()
+
+	testServiceName := "test-service-" + randSeq(5)
+	testSecretName := "test-secret-" + randSeq(5)
+
+	err = createServingCertAnnotatedServiceWithAlgorithm(adminClient, testSecretName, testServiceName, ns.Name, "invalid-algo")
+	if err != nil {
+		t.Fatalf("error creating annotated service: %v", err)
+	}
+
+	// Poll for the error annotation on the service
+	err = wait.PollImmediate(time.Second, pollTimeout, func() (bool, error) {
+		svc, err := adminClient.CoreV1().Services(ns.Name).Get(context.TODO(), testServiceName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		errAnnotation := svc.Annotations[api.ServingCertErrorAnnotation]
+		return len(errAnnotation) > 0, nil
+	})
+	if err != nil {
+		t.Fatalf("error waiting for error annotation on service: %v", err)
+	}
+
+	// Verify the secret is not created over a short stabilization window.
+	err = wait.PollImmediate(time.Second, 10*time.Second, func() (bool, error) {
+		_, err := adminClient.CoreV1().Secrets(ns.Name).Get(context.TODO(), testSecretName, metav1.GetOptions{})
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return false, fmt.Errorf("secret %s/%s was unexpectedly created", ns.Name, testSecretName)
+	})
+	if err != nil && err != wait.ErrWaitTimeout {
+		t.Fatalf("invalid algorithm should not produce a secret: %v", err)
+	}
+}
+
+// testServingCertSecretDeleteDataWithAlgorithm checks that corrupting the
+// tls.crt data of an ECDSA serving cert secret triggers regeneration and
+// the regenerated cert is still ECDSA.
+func testServingCertSecretDeleteDataWithAlgorithm(t testing.TB) {
+	adminClient, err := getKubeClient()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+	defer cleanup()
+
+	testServiceName := "test-service-" + randSeq(5)
+	testSecretName := "test-secret-" + randSeq(5)
+
+	err = createServingCertAnnotatedServiceWithAlgorithm(adminClient, testSecretName, testServiceName, ns.Name, "ecdsa")
+	if err != nil {
+		t.Fatalf("error creating annotated service: %v", err)
+	}
+
+	err = pollForServiceServingSecret(adminClient, testSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error fetching created serving cert secret: %v", err)
+	}
+
+	certBytes, is509, err := checkServiceServingCertSecretData(adminClient, testSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error when checking serving cert secret: %v", err)
+	}
+	if !is509 {
+		t.Fatalf("TLSCertKey not valid pem bytes")
+	}
+
+	// Verify initial cert is ECDSA
+	block, _ := pem.Decode(certBytes)
+	if block == nil {
+		t.Fatalf("failed to decode PEM block from cert")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("failed to parse certificate: %v", err)
+	}
+	if cert.PublicKeyAlgorithm != x509.ECDSA {
+		t.Fatalf("expected ECDSA public key algorithm, got %v", cert.PublicKeyAlgorithm)
+	}
+
+	// Corrupt the tls.crt data to trigger regeneration
+	err = editServingSecretDataGinkgo(t, adminClient, testSecretName, ns.Name, "tls.crt")
+	if err != nil {
+		t.Fatalf("error editing serving cert secret: %v", err)
+	}
+
+	// Verify regenerated cert is still ECDSA
+	regeneratedBytes, is509, err := checkServiceServingCertSecretData(adminClient, testSecretName, ns.Name)
+	if err != nil {
+		t.Fatalf("error when checking regenerated serving cert secret: %v", err)
+	}
+	if !is509 {
+		t.Fatalf("regenerated TLSCertKey not valid pem bytes")
+	}
+
+	block, _ = pem.Decode(regeneratedBytes)
+	if block == nil {
+		t.Fatalf("failed to decode PEM block from regenerated cert")
+	}
+	cert, err = x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("failed to parse regenerated certificate: %v", err)
+	}
+	if cert.PublicKeyAlgorithm != x509.ECDSA {
+		t.Fatalf("expected ECDSA public key algorithm after regeneration, got %v", cert.PublicKeyAlgorithm)
+	}
+}
+
+// createServingCertAnnotatedServiceWithAlgorithm creates a service with the
+// serving-cert annotation and a key algorithm annotation.
+func createServingCertAnnotatedServiceWithAlgorithm(client *kubernetes.Clientset, secretName, serviceName, namespace, algorithm string) error {
+	service := &v1.Service{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: serviceName,
+			Annotations: map[string]string{
+				api.ServingCertSecretAnnotation:       secretName,
+				api.ServingCertKeyAlgorithmAnnotation: algorithm,
+			},
+		},
+		Spec: v1.ServiceSpec{
+			Ports: []v1.ServicePort{
+				{
+					Name: "tests",
+					Port: 8443,
+				},
+			},
+		},
+	}
+	_, err := client.CoreV1().Services(namespace).Create(context.TODO(), service, metav1.CreateOptions{})
+	return err
 }
 
 // getKubeClient returns a Kubernetes client for e2e tests.
