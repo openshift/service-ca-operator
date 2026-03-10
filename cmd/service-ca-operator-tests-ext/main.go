@@ -69,7 +69,18 @@ func prepareOperatorTestsRegistry() (*oteextension.Registry, error) {
 	registry := oteextension.NewRegistry()
 	extension := oteextension.NewExtension("openshift", "payload", "service-ca-operator")
 
-	// Non-disruptive tests run with default (Stable) cluster health monitoring.
+	// Parallel tests run concurrently with default (Stable) cluster health monitoring.
+	// Tests that are not tagged with [Serial] and have [Operator] are included in this suite.
+	extension.AddSuite(oteextension.Suite{
+		Name:        "openshift/service-ca-operator/operator/parallel",
+		Parallelism: 4,
+		Qualifiers: []string{
+			`!name.contains("[Serial]") && name.contains("[Operator]") && !name.contains("[Disruptive]")`,
+		},
+	})
+
+	// Serial tests run one at a time with default (Stable) cluster health monitoring.
+	// Tests tagged with [Serial] and [Operator] but not [Disruptive] are included in this suite.
 	extension.AddSuite(oteextension.Suite{
 		Name:        "openshift/service-ca-operator/operator/serial",
 		Parallelism: 1,
@@ -80,6 +91,7 @@ func prepareOperatorTestsRegistry() (*oteextension.Registry, error) {
 
 	// Disruptive tests (e.g. CA rotation) that cause expected cluster-wide TLS disruption.
 	// Monitors will relax thresholds for this suite.
+	// Tests tagged with [Operator], [Serial], and [Disruptive] are included in this suite.
 	extension.AddSuite(oteextension.Suite{
 		Name:             "openshift/service-ca-operator/operator/serial-disruptive",
 		Parallelism:      1,
