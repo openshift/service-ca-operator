@@ -17,13 +17,6 @@ go test ./pkg/operator/ -run TestSyncName -count 1
 # Run e2e tests (requires cluster access)
 make test-e2e
 
-# Regenerate bindata (after modifying files in bindata/v4.0.0/)
-# Output: pkg/operator/v4_00_assets/bindata.go (generated — never hand-edit)
-make update-bindata
-
-# Verify bindata is up-to-date
-make verify-bindata
-
 # Verify all generated files
 make verify
 
@@ -41,7 +34,7 @@ This is an OpenShift ClusterOperator with a two-process architecture running fro
 ### Operator Process (`service-ca-operator operator`)
 - **Package:** `pkg/operator/`
 - Has two main responsibilities:
-  1. **Operand lifecycle:** Manages the controller Deployment in the `openshift-service-ca` namespace, syncing static resources (namespace, service account, RBAC, deployment) from bindata
+  1. **Operand lifecycle:** Manages the controller Deployment in the `openshift-service-ca` namespace, syncing static resources (namespace, service account, RBAC, deployment) from embedded assets
   2. **Signing CA management:** Creates and rotates the signing CA keypair (Secret) and maintains the CA bundle ConfigMap
 - Reports the "service-ca" ClusterOperator status conditions
 
@@ -51,6 +44,13 @@ This is an OpenShift ClusterOperator with a two-process architecture running fro
   1. **Serving Cert Signer** (`pkg/controller/servingcert/`): Signs TLS serving certs for Services annotated with `service.beta.openshift.io/serving-cert-secret-name`
   2. **ConfigMap CA Bundle Injector** (`pkg/controller/cabundleinjector/configmap.go`): Injects the CA bundle into ConfigMaps annotated with `service.beta.openshift.io/inject-cabundle=true`
   3. **Generic CA Bundle Injector** (`pkg/controller/cabundleinjector/`): Injects the CA bundle into APIServices, MutatingWebhookConfigurations, ValidatingWebhookConfigurations, and CRDs with the same annotation
+
+### Embedded Assets
+Static resource manifests are embedded using Go's native `embed.FS`:
+- **Asset location:** `bindata/assets/*.yaml`
+- **Embed declaration:** `bindata/assets.go` (uses `//go:embed assets/*.yaml`)
+- **Usage:** `bindata.MustAsset("assets/<filename>.yaml")` to read asset bytes at runtime
+- No code generation step is required — assets are embedded at compile time
 
 ### User-Facing Annotations
 Users interact with the controller by annotating their resources. The annotation constants are defined in `pkg/controller/api/api.go`.
@@ -76,12 +76,9 @@ Legacy `service.alpha.openshift.io` equivalents of both annotations are also sup
 
 PRs should separate code changes from generated/vendored artifacts:
 
-**Code commits** — one or more commits with source code changes. Exclude `go.mod`, `go.sum`, `vendor/`, and generated files (like `bindata.go`) from these commits.
+**Code commits** — one or more commits with source code changes. Exclude `go.mod`, `go.sum`, and `vendor/` from these commits.
 
-**Generated/vendor commit (if needed)** — a single final commit containing all generated and vendored changes. If a PR has no dependency or generated file changes, this commit is not needed. Contents and commit message by scenario:
-- Vendor only (`go.mod`, `go.sum`, `vendor/`): `vendor: bump(*)`
-- Bindata only (`pkg/operator/v4_00_assets/bindata.go`): `update bindata`
-- Both vendor and bindata: `vendor: bump(*), update bindata`
+**Vendor commit (if needed)** — a single final commit containing all vendored changes (`go.mod`, `go.sum`, `vendor/`). Commit message: `vendor: bump(*)`. If a PR has no dependency changes, this commit is not needed.
 
 Always base commits on `upstream/main`, not `origin/main`.
 
