@@ -45,7 +45,8 @@ func TestInitializeSigningSecret(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			now := time.Now()
 			secret := &corev1.Secret{}
-			initializeSigningSecret(secret, 0, tc.duration)
+			operator := &serviceCAOperator{}
+			operator.initializeSigningSecret(secret, 0, tc.duration)
 
 			// Check that the initialized key pair is valid
 			rawCert := secret.Data[corev1.TLSCertKey]
@@ -85,6 +86,7 @@ func TestManageDeployment(t *testing.T) {
 		runOnWorkers             bool
 		loglevel                 operatorv1.LogLevel
 		image                    string
+		operatorVersion          string
 		shortCertRotationEnabled bool
 		expectedDeployment       *appsv1.Deployment
 	}{
@@ -117,12 +119,20 @@ func TestManageDeployment(t *testing.T) {
 			shortCertRotationEnabled: true,
 			expectedDeployment:       deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).withFeatureGates([]string{"ShortCertRotation=true"}).valueOrDie(),
 		},
+		{
+			name:               "operator version propagated to controller",
+			image:              "foobar",
+			loglevel:           operatorv1.Normal,
+			operatorVersion:    "4.22.0",
+			expectedDeployment: deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).withOperatorVersionEnv("4.22.0").valueOrDie(),
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			appsClient := fake.NewSimpleClientset(baseDeploymentPopulated).AppsV1()
 			os.Setenv("CONTROLLER_IMAGE", test.image)
+			os.Setenv(operatorVersionEnvName, test.operatorVersion)
 			operator := &serviceCAOperator{
 				appsv1Client:             appsClient,
 				eventRecorder:            events.NewInMemoryRecorder("managedeployment_test", clock.RealClock{}),
@@ -197,6 +207,18 @@ func (w *deploymentWrapper) withFeatureGates(featureGates []string) *deploymentW
 	if len(w.Deployment.Spec.Template.Spec.Containers) > 0 {
 		arg := fmt.Sprintf("--feature-gates=%s", strings.Join(featureGates, ","))
 		w.Deployment.Spec.Template.Spec.Containers[0].Args = append(w.Deployment.Spec.Template.Spec.Containers[0].Args, arg)
+	}
+	return w
+}
+
+func (w *deploymentWrapper) withOperatorVersionEnv(value string) *deploymentWrapper {
+	if len(w.Deployment.Spec.Template.Spec.Containers) > 0 {
+		for i := range w.Deployment.Spec.Template.Spec.Containers[0].Env {
+			if w.Deployment.Spec.Template.Spec.Containers[0].Env[i].Name == operatorVersionEnvName {
+				w.Deployment.Spec.Template.Spec.Containers[0].Env[i].Value = value
+				return w
+			}
+		}
 	}
 	return w
 }

@@ -17,6 +17,8 @@ import (
 	configexternalinformers "github.com/openshift/client-go/config/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/controller"
 )
 
@@ -50,8 +52,24 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 
 	configInformers := configexternalinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
 
-	stopChan := ctx.Done()
-	configInformers.Start(stopChan)
+	featureGateAccessor := featuregates.NewFeatureGateAccess(
+		status.VersionForOperatorFromEnv(), "0.0.1-snapshot",
+		configInformers.Config().V1().ClusterVersions(),
+		configInformers.Config().V1().FeatureGates(),
+		controllerContext.EventRecorder,
+	)
+	configInformers.Start(ctx.Done())
+	go featureGateAccessor.Run(ctx)
+
+	var featureGates featuregates.FeatureGate
+	select {
+	case <-featureGateAccessor.InitialFeatureGatesObserved():
+		featureGates, _ = featureGateAccessor.CurrentFeatureGates()
+		klog.Infof("FeatureGates initialized: knownFeatureGates=%v", featureGates.KnownFeatures())
+	case <-time.After(1 * time.Minute):
+		klog.Errorf("timed out waiting for FeatureGate detection")
+		return fmt.Errorf("timed out waiting for FeatureGate detection")
+	}
 
 	minTimeLeftForCert := time.Hour
 	certificateLifetime := 2 * 365 * 24 * time.Hour
@@ -66,6 +84,8 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		kubeInformers.Core().V1().Secrets(),
 		kubeClient.CoreV1(),
 		kubeClient.CoreV1(),
+		configInformers,
+		featureGates,
 		ca,
 		intermediateCACert,
 		// TODO this needs to be configurable
@@ -77,6 +97,8 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		kubeInformers.Core().V1().Services(),
 		kubeInformers.Core().V1().Secrets(),
 		kubeClient.CoreV1(),
+		configInformers,
+		featureGates,
 		ca,
 		intermediateCACert,
 		// TODO this needs to be configurable
@@ -86,8 +108,8 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		certificateLifetime,
 	)
 
-	kubeInformers.Start(stopChan)
-	configInformers.Start(stopChan)
+	kubeInformers.Start(ctx.Done())
+	configInformers.Start(ctx.Done())
 
 	go servingCertController.Run(ctx, 5)
 	go servingCertUpdateController.Run(ctx, 5)
