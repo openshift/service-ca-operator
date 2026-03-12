@@ -5,21 +5,23 @@ import (
 	"fmt"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/informers"
-	appsclientv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
-	coreclientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	rbacclientv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
-
+	"github.com/openshift/api/features"
 	operatorv1 "github.com/openshift/api/operator/v1"
 	_ "github.com/openshift/api/operator/v1/zz_generated.crd-manifests"
 	configv1informers "github.com/openshift/client-go/config/informers/externalversions"
 	configv1listers "github.com/openshift/client-go/config/listers/config/v1"
 	operatorv1listers "github.com/openshift/client-go/operator/listers/operator/v1"
 	"github.com/openshift/library-go/pkg/controller/factory"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
+	"github.com/openshift/library-go/pkg/pki"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
+	appsclientv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
+	coreclientv1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	rbacclientv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 )
@@ -37,7 +39,10 @@ type serviceCAOperator struct {
 
 	minimumTrustDuration       time.Duration
 	signingCertificateLifetime time.Duration
-	shortCertRotationEnabled   bool
+
+	shortCertRotationEnabled bool
+	configurablePKIEnabled   bool
+	pkiProvider              pki.PKIProfileProvider
 }
 
 func NewServiceCAOperator(
@@ -53,6 +58,7 @@ func NewServiceCAOperator(
 	minimumTrustDuration time.Duration,
 	signingCertificateLifetime time.Duration,
 	shortCertRotationEnabled bool,
+	featureGates featuregates.FeatureGate,
 ) factory.Controller {
 	c := &serviceCAOperator{
 		operatorClient:       operatorClient,
@@ -68,18 +74,28 @@ func NewServiceCAOperator(
 		minimumTrustDuration:       minimumTrustDuration,
 		signingCertificateLifetime: signingCertificateLifetime,
 		shortCertRotationEnabled:   shortCertRotationEnabled,
+
+		configurablePKIEnabled: featureGates.Enabled(features.FeatureGateConfigurablePKI),
 	}
 
-	return factory.New().WithInformers(
+	syncInformers := []factory.Informer{
 		namespacedKubeInformers.Core().V1().ConfigMaps().Informer(),
 		namespacedKubeInformers.Core().V1().ServiceAccounts().Informer(),
 		namespacedKubeInformers.Core().V1().Secrets().Informer(),
 		namespacedKubeInformers.Apps().V1().Deployments().Informer(),
 		operatorClient.Informers.Operator().V1().ServiceCAs().Informer(),
 		configInformers.Config().V1().Infrastructures().Informer(),
-	).WithNamespaceInformer(
-		namespacedKubeInformers.Core().V1().Namespaces().Informer(), operatorclient.TargetNamespace,
-	).WithSync(c.Sync).
+	}
+	if c.configurablePKIEnabled {
+		syncInformers = append(syncInformers, configInformers.Config().V1alpha1().PKIs().Informer())
+		c.pkiProvider = pki.NewListerPKIProfileProvider(configInformers.Config().V1alpha1().PKIs().Lister(), "cluster")
+	}
+
+	return factory.New().
+		WithInformers(syncInformers...).
+		WithNamespaceInformer(
+			namespacedKubeInformers.Core().V1().Namespaces().Informer(), operatorclient.TargetNamespace,
+		).WithSync(c.Sync).
 		ToController("ServiceCAOperator", eventRecorder.WithComponentSuffix("service-ca-operator"))
 }
 
