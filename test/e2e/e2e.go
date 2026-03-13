@@ -26,6 +26,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/utils/ptr"
 
+	configv1 "github.com/openshift/api/config/v1"
+	configclient "github.com/openshift/client-go/config/clientset/versioned"
 	routeclient "github.com/openshift/client-go/route/clientset/versioned"
 	"github.com/openshift/library-go/test/library/metrics"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
@@ -1241,6 +1243,19 @@ func testRefreshCA(t testing.TB) {
 		t.Fatalf("error getting kube client: %v", err)
 	}
 
+	confPath := "/tmp/admin.conf"
+	if conf := os.Getenv("KUBECONFIG"); conf != "" {
+		confPath = conf
+	}
+	restConfig, err := clientcmd.BuildConfigFromFlags("", confPath)
+	if err != nil {
+		t.Fatalf("building rest config: %v", err)
+	}
+	cfgClient, err := configclient.NewForConfig(restConfig)
+	if err != nil {
+		t.Fatalf("creating config client: %v", err)
+	}
+
 	ns, cleanup, err := createTestNamespace(t, adminClient, "test-"+randSeq(5))
 	if err != nil {
 		t.Fatalf("could not create test namespace: %v", err)
@@ -1280,7 +1295,7 @@ func testRefreshCA(t testing.TB) {
 		t.Fatalf("error creating annotated configmap: %v", err)
 	}
 
-	configmap, err := pollForCABundleInjectionConfigMapWithReturn(adminClient, testConfigMapName, ns.Name)
+	_, err = pollForCABundleInjectionConfigMapWithReturn(adminClient, testConfigMapName, ns.Name)
 	if err != nil {
 		t.Fatalf("error fetching ca bundle injection configmap: %v", err)
 	}
@@ -1288,8 +1303,12 @@ func testRefreshCA(t testing.TB) {
 	if err != nil {
 		t.Fatalf("error when checking ca bundle injection configmap: %v", err)
 	}
-	// Take the snapshot after injection is verified so the baseline includes
-	// the injected CA bundle data.
+	// Re-fetch after injection is verified so the baseline snapshot includes
+	// the injected CA bundle data, not a pre-injection copy.
+	configmap, err := adminClient.CoreV1().ConfigMaps(ns.Name).Get(context.TODO(), testConfigMapName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error re-fetching ca bundle injection configmap: %v", err)
+	}
 	configmapCopy := configmap.DeepCopy()
 
 	// delete ca secret
@@ -1313,11 +1332,29 @@ func testRefreshCA(t testing.TB) {
 	if err != nil {
 		t.Fatalf("secret cert did not change: %v", err)
 	}
-	if err := pollForSecretChangeGinkgo(t, adminClient, headlessSecretCopy); err != nil {
+	if err := pollForSecretChangeGinkgo(t, adminClient, headlessSecretCopy, v1.TLSCertKey, v1.TLSPrivateKeyKey); err != nil {
 		t.Fatalf("headless secret cert did not change: %v", err)
 	}
 
-	t.Log("CA rotation test passed")
+	// Best-effort wait for the control plane to stabilize after CA rotation.
+	// Deleting the signing key triggers cluster-wide TLS cert regeneration, causing
+	// cascading operator restarts and revision rollouts (kube-apiserver, openshift-apiserver,
+	// kube-controller-manager, kube-scheduler, etc.). Waiting reduces monitor test
+	// failures from expected transient disruption (non-graceful lease releases,
+	// thanos-querier 503s, etc.).
+	//
+	// This is best-effort: static pod revision rollouts (node-by-node) can take
+	// longer than the OTE per-test timeout allows. If operators don't fully
+	// stabilize, the CA rotation test itself still passed — we just log a warning.
+	t.Log("Waiting for control plane to stabilize after CA rotation...")
+	ctx, cancel := context.WithTimeout(context.Background(), clusterOperatorStabilizationTimeout)
+	defer cancel()
+	if err := waitForControlPlaneRolloutAll(ctx, t, cfgClient); err != nil {
+		t.Logf("WARNING: control plane did not fully stabilize within timeout: %v", err)
+		t.Log("CA rotation test passed; monitor tests may report transient disruption failures")
+		return
+	}
+	t.Log("Control plane stabilized successfully")
 }
 
 // pollForCABundleInjectionConfigMapWithReturn polls for a CA bundle injection configmap and returns it.
@@ -1350,4 +1387,122 @@ func pollForCARecreation(client *kubernetes.Clientset) error {
 		}
 		return true, nil
 	})
+}
+
+// clusterOperatorStabilizationTimeout is the time budget for the entire
+// control-plane stabilization wait. The test has [Timeout:20m]; after ~5 min
+// CA rotation completes, this leaves ~15 min for stabilization.
+const clusterOperatorStabilizationTimeout = 15 * time.Minute
+
+// clusterOperatorProgressingWindow is the soft window for phase 1: if no
+// operator reports Progressing=True within this time, we assume the rollout
+// already started and finished before we began watching.
+const clusterOperatorProgressingWindow = 2 * time.Minute
+
+// clusterOperatorStabilizationBuffer is an extra quiet-period after all
+// operators report stable, to let dependent components (thanos, auth) settle.
+const clusterOperatorStabilizationBuffer = 90 * time.Second
+
+// controlPlaneOperators lists the ClusterOperator names for the three
+// control-plane static-pod operators that roll out after a CA rotation.
+var controlPlaneOperators = []string{
+	"kube-apiserver",
+	"kube-controller-manager",
+	"kube-scheduler",
+}
+
+// waitForControlPlaneRolloutAll waits for kube-apiserver, kube-controller-manager,
+// and kube-scheduler to complete their post-CA-rotation rollouts, then holds
+// an extra quiet-period so dependent components settle before the OTE monitor
+// window closes.
+//
+// Three phases:
+//  1. Phase 1 (soft, 2m): poll all operators for Progressing=True. If none
+//     fire within 2m, the rollout already completed before we started watching;
+//     log and proceed. This avoids an indefinite hang when fast operators finish
+//     before phase 1 begins.
+//  2. Phase 2 (hard): wait until every operator is Available=True,
+//     Progressing=False, Degraded=False, using the remaining context deadline.
+//  3. Phase 3 (buffer, 90s): context-aware sleep so thanos, auth-operator, and
+//     other consumers of the new TLS certs have time to reconnect before the
+//     disruptive window closes and monitors start evaluating.
+func waitForControlPlaneRolloutAll(ctx context.Context, t testing.TB, cfgClient configclient.Interface) error {
+	// Phase 1: soft 2-minute window to observe Progressing=True on any operator.
+	// We poll all operators together; the first Progressing=True sighting is
+	// sufficient evidence that the rollout wave has begun.
+	t.Log("Phase 1: watching for rollout start (Progressing=True, up to 2m)...")
+	observed := make(map[string]bool, len(controlPlaneOperators))
+	phase1Ctx, phase1Cancel := context.WithTimeout(ctx, clusterOperatorProgressingWindow)
+	defer phase1Cancel()
+	_ = wait.PollUntilContextTimeout(phase1Ctx, 5*time.Second, clusterOperatorProgressingWindow, true,
+		func(ctx context.Context) (bool, error) {
+			for _, name := range controlPlaneOperators {
+				if observed[name] {
+					continue
+				}
+				co, err := cfgClient.ConfigV1().ClusterOperators().Get(ctx, name, metav1.GetOptions{})
+				if err != nil {
+					t.Logf("[%s] error getting ClusterOperator: %v", name, err)
+					continue
+				}
+				if isConditionTrue(co.Status.Conditions, configv1.OperatorProgressing) {
+					t.Logf("[%s] rollout started (Progressing=True)", name)
+					observed[name] = true
+				}
+			}
+			// Continue polling until all operators are observed or the 2m window expires.
+			return len(observed) == len(controlPlaneOperators), nil
+		})
+
+	if len(observed) == 0 {
+		t.Log("Phase 1: no operator observed Progressing=True within 2m; assuming rollout already completed")
+	} else {
+		t.Logf("Phase 1: observed rollout start on %d/%d operators", len(observed), len(controlPlaneOperators))
+	}
+
+	// Phase 2: wait for every operator to reach stable state.
+	t.Log("Phase 2: waiting for all operators to become stable...")
+	if err := wait.PollUntilContextTimeout(ctx, 10*time.Second, clusterOperatorStabilizationTimeout, true,
+		func(ctx context.Context) (bool, error) {
+			for _, name := range controlPlaneOperators {
+				co, err := cfgClient.ConfigV1().ClusterOperators().Get(ctx, name, metav1.GetOptions{})
+				if err != nil {
+					t.Logf("[%s] error getting ClusterOperator: %v", name, err)
+					return false, nil
+				}
+				available := isConditionTrue(co.Status.Conditions, configv1.OperatorAvailable)
+				progressing := isConditionTrue(co.Status.Conditions, configv1.OperatorProgressing)
+				degraded := isConditionTrue(co.Status.Conditions, configv1.OperatorDegraded)
+				if !available || progressing || degraded {
+					t.Logf("[%s] not yet stable: Available=%v Progressing=%v Degraded=%v",
+						name, available, progressing, degraded)
+					return false, nil
+				}
+			}
+			return true, nil
+		}); err != nil {
+		return fmt.Errorf("operators did not stabilize: %w", err)
+	}
+	t.Log("Phase 2: all operators stable")
+
+	// Phase 3: context-aware buffer to let dependent components (thanos, auth)
+	// reconnect with the new TLS certs before the disruptive window closes.
+	t.Logf("Phase 3: holding %s buffer for dependent components to settle...", clusterOperatorStabilizationBuffer)
+	select {
+	case <-time.After(clusterOperatorStabilizationBuffer):
+		t.Log("Phase 3: buffer complete")
+	case <-ctx.Done():
+		t.Log("Phase 3: context expired during buffer; cluster should still be stable")
+	}
+	return nil
+}
+
+// isConditionTrue returns true if the named condition is present and True.
+func isConditionTrue(conditions []configv1.ClusterOperatorStatusCondition, condType configv1.ClusterStatusConditionType) bool {
+	for _, c := range conditions {
+		if c.Type == condType {
+			return c.Status == configv1.ConditionTrue
+		}
+	}
+	return false
 }
