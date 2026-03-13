@@ -40,20 +40,32 @@ func NewBackupInformer(client versioned.Interface, resyncPeriod time.Duration, i
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredBackupInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
+		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ConfigV1alpha1().Backups().List(context.TODO(), options)
+				return client.ConfigV1alpha1().Backups().List(context.Background(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.ConfigV1alpha1().Backups().Watch(context.TODO(), options)
+				return client.ConfigV1alpha1().Backups().Watch(context.Background(), options)
 			},
-		},
+			ListWithContextFunc: func(ctx context.Context, options v1.ListOptions) (runtime.Object, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.ConfigV1alpha1().Backups().List(ctx, options)
+			},
+			WatchFuncWithContext: func(ctx context.Context, options v1.ListOptions) (watch.Interface, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.ConfigV1alpha1().Backups().Watch(ctx, options)
+			},
+		}, client),
 		&apiconfigv1alpha1.Backup{},
 		resyncPeriod,
 		indexers,

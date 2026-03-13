@@ -40,20 +40,32 @@ func NewKubeControllerManagerInformer(client versioned.Interface, resyncPeriod t
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredKubeControllerManagerInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
+		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.OperatorV1().KubeControllerManagers().List(context.TODO(), options)
+				return client.OperatorV1().KubeControllerManagers().List(context.Background(), options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.OperatorV1().KubeControllerManagers().Watch(context.TODO(), options)
+				return client.OperatorV1().KubeControllerManagers().Watch(context.Background(), options)
 			},
-		},
+			ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.OperatorV1().KubeControllerManagers().List(ctx, options)
+			},
+			WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+				if tweakListOptions != nil {
+					tweakListOptions(&options)
+				}
+				return client.OperatorV1().KubeControllerManagers().Watch(ctx, options)
+			},
+		}, client),
 		&apioperatorv1.KubeControllerManager{},
 		resyncPeriod,
 		indexers,
