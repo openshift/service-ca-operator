@@ -20,7 +20,7 @@ import (
 
 // CheckRotation validates that pre- and post-rotation servers and clients can communicate in a
 // trusted fashion.
-func CheckRotation(t *testing.T, dnsName string, oldCertPEM, oldKeyPEM, oldBundlePEM, newCertPEM, newKeyPEM, newBundlePEM []byte) {
+func CheckRotation(t testing.TB, dnsName string, oldCertPEM, oldKeyPEM, oldBundlePEM, newCertPEM, newKeyPEM, newBundlePEM []byte) {
 	testCases := map[string]struct {
 		certPEM   []byte
 		keyPEM    []byte
@@ -48,15 +48,13 @@ func CheckRotation(t *testing.T, dnsName string, oldCertPEM, oldKeyPEM, oldBundl
 		},
 	}
 	for testName, tc := range testCases {
-		t.Run(testName, func(t *testing.T) {
-			checkClientTrust(t, testName, dnsName, tc.certPEM, tc.keyPEM, tc.bundlePEM)
-		})
+		checkClientTrust(t, testName, dnsName, tc.certPEM, tc.keyPEM, tc.bundlePEM)
 	}
 }
 
 // checkClientTrust verifies that a server configured with the provided cert and key will be
 // trusted by a client with the given bundle.
-func checkClientTrust(t *testing.T, testName, dnsName string, certPEM, keyPEM, bundlePEM []byte) {
+func checkClientTrust(t testing.TB, testName, dnsName string, certPEM, keyPEM, bundlePEM []byte) {
 	// Emulate how a service will consume the serving cert by writing
 	// the cert and key to disk.
 	certFile, err := ioutil.TempFile("", v1.TLSCertKey)

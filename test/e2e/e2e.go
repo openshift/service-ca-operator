@@ -24,13 +24,19 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/clock"
 	"k8s.io/utils/ptr"
 
 	configv1 "github.com/openshift/api/config/v1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
 	routeclient "github.com/openshift/client-go/route/clientset/versioned"
+	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/library-go/pkg/operator/events"
+	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	"github.com/openshift/library-go/test/library/metrics"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/operator"
+	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 	"github.com/openshift/service-ca-operator/test/util"
 )
 
@@ -109,6 +115,12 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 	g.Context("refresh-CA", func() {
 		g.It("[Operator][Serial][Disruptive][Timeout:20m] should regenerate serving certs and configmaps when CA is deleted and recreated", func() {
 			testRefreshCA(g.GinkgoTB())
+		})
+	})
+
+	g.Context("time-based-ca-rotation", func() {
+		g.It("[Operator][Serial][Disruptive][Timeout:20m] should rotate CA based on expiry time", func() {
+			testTimeBasedCARotation(g.GinkgoTB())
 		})
 	})
 })
@@ -445,7 +457,7 @@ func testServingCertSecretDeleteData(t testing.TB) {
 	if err != nil {
 		t.Fatalf("deleting secret %s in namespace %s failed: %v", secretName, operatorNamespace, err)
 	}
-	updatedBytes, _, err := pollForUpdatedServingCertGinkgo(t, adminClient, operatorNamespace, secretName, rotationTimeout, nil, nil)
+	updatedBytes, _, err := pollForUpdatedServingCert(t, adminClient, operatorNamespace, secretName, rotationTimeout, nil, nil)
 	if err != nil {
 		t.Fatalf("error fetching re-created serving cert secret: %v", err)
 	}
@@ -454,44 +466,7 @@ func testServingCertSecretDeleteData(t testing.TB) {
 	checkClientPodRcvdUpdatedServerCertGinkgo(t, adminClient, ns.Name, metricsHost, service.Spec.Ports[0].Port, string(updatedBytes))
 }
 
-// pollForUpdatedServingCertGinkgo returns the cert and key for the targeted secret
-// if the values change from those provided before the polling timeout.
-// This version accepts testing.TB for dual compatibility.
-func pollForUpdatedServingCertGinkgo(t testing.TB, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldCertValue, oldKeyValue []byte) ([]byte, []byte, error) {
-	secret, err := pollForUpdatedSecretGinkgo(t, client, namespace, name, timeout, map[string][]byte{
-		v1.TLSCertKey:       oldCertValue,
-		v1.TLSPrivateKeyKey: oldKeyValue,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	return secret.Data[v1.TLSCertKey], secret.Data[v1.TLSPrivateKeyKey], nil
-}
-
-// pollForUpdatedSecretGinkgo returns the given secret if its data changes from
-// that provided before the polling timeout.
-// This version accepts testing.TB for dual compatibility.
-func pollForUpdatedSecretGinkgo(t testing.TB, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldData map[string][]byte) (*v1.Secret, error) {
-	resourceID := fmt.Sprintf("Secret \"%s/%s\"", namespace, name)
-	obj, err := pollForResourceGinkgo(t, resourceID, timeout, func() (kruntime.Object, error) {
-		secret, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			return nil, err
-		}
-		err = util.CheckData(oldData, secret.Data)
-		if err != nil {
-			return nil, err
-		}
-		return secret, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return obj.(*v1.Secret), nil
-}
-
 // pollForResourceGinkgo polls for a resource using the provided accessor function.
-// This version accepts testing.TB for dual compatibility.
 func pollForResourceGinkgo(t testing.TB, resourceID string, timeout time.Duration, accessor func() (kruntime.Object, error)) (kruntime.Object, error) {
 	var obj kruntime.Object
 	err := wait.PollImmediate(pollInterval, timeout, func() (bool, error) {
@@ -1505,4 +1480,239 @@ func isConditionTrue(conditions []configv1.ClusterOperatorStatusCondition, condT
 		}
 	}
 	return false
+}
+
+// testTimeBasedCARotation tests that the CA is rotated when it expires sooner
+// than the minimum required duration. Uses testing.TB for dual-compatibility.
+func testTimeBasedCARotation(t testing.TB) {
+	adminClient, adminConfig, err := getKubeClientAndConfig()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	confPath := "/tmp/admin.conf"
+	if conf := os.Getenv("KUBECONFIG"); conf != "" {
+		confPath = conf
+	}
+	restConfig, err := clientcmd.BuildConfigFromFlags("", confPath)
+	if err != nil {
+		t.Fatalf("building rest config: %v", err)
+	}
+	cfgClient, err := configclient.NewForConfig(restConfig)
+	if err != nil {
+		t.Fatalf("creating config client: %v", err)
+	}
+
+	checkCARotationTB(t, adminClient, adminConfig, cfgClient, triggerTimeBasedRotationTB)
+}
+
+type triggerRotationFuncTB func(testing.TB, *kubernetes.Clientset, *rest.Config)
+
+func checkCARotationTB(t testing.TB, client *kubernetes.Clientset, config *rest.Config, cfgClient configclient.Interface, triggerRotation triggerRotationFuncTB) {
+	ns, cleanup, err := createTestNamespace(t, client, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+	defer cleanup()
+
+	// Prompt the creation of service cert secrets
+	testServiceName := "test-service-" + randSeq(5)
+	testSecretName := "test-secret-" + randSeq(5)
+	testHeadlessServiceName := "test-headless-service-" + randSeq(5)
+	testHeadlessSecretName := "test-headless-secret-" + randSeq(5)
+
+	err = createServingCertAnnotatedService(client, testSecretName, testServiceName, ns.Name, false)
+	if err != nil {
+		t.Fatalf("error creating annotated service: %v", err)
+	}
+	if err = createServingCertAnnotatedService(client, testHeadlessSecretName, testHeadlessServiceName, ns.Name, true); err != nil {
+		t.Fatalf("error creating annotated headless service: %v", err)
+	}
+
+	// Prompt the injection of the ca bundle into a configmap
+	testConfigMapName := "test-configmap-" + randSeq(5)
+
+	err = createAnnotatedCABundleInjectionConfigMap(client, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error creating annotated configmap: %v", err)
+	}
+
+	// Retrieve the pre-rotation service cert
+	oldCertPEM, oldKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, rotationPollTimeout, nil, nil)
+	if err != nil {
+		t.Fatalf("error retrieving service cert: %v", err)
+	}
+	oldHeadlessCertPEM, oldHeadlessKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testHeadlessSecretName, rotationPollTimeout, nil, nil)
+	if err != nil {
+		t.Fatalf("error retrieving headless service cert: %v", err)
+	}
+
+	// Retrieve the pre-rotation ca bundle
+	oldBundlePEM, err := pollForInjectedCABundleTB(t, client, ns.Name, testConfigMapName, rotationPollTimeout, nil)
+	if err != nil {
+		t.Fatalf("error retrieving ca bundle: %v", err)
+	}
+
+	// Prompt CA rotation
+	triggerRotation(t, client, config)
+
+	// Retrieve the post-rotation service cert
+	newCertPEM, newKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, rotationTimeout, oldCertPEM, oldKeyPEM)
+	if err != nil {
+		t.Fatalf("error retrieving service cert: %v", err)
+	}
+	newHeadlessCertPEM, newHeadlessKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testHeadlessSecretName, rotationTimeout, oldHeadlessCertPEM, oldHeadlessKeyPEM)
+	if err != nil {
+		t.Fatalf("error retrieving headless service cert: %v", err)
+	}
+
+	// Retrieve the post-rotation ca bundle
+	newBundlePEM, err := pollForInjectedCABundleTB(t, client, ns.Name, testConfigMapName, rotationTimeout, oldBundlePEM)
+	if err != nil {
+		t.Fatalf("error retrieving ca bundle: %v", err)
+	}
+
+	// Determine the dns name valid for the serving cert
+	certs, err := util.PemToCerts(newCertPEM)
+	if err != nil {
+		t.Fatalf("error decoding pem to certs: %v", err)
+	}
+	dnsName := certs[0].Subject.CommonName
+
+	util.CheckRotation(t, dnsName, oldCertPEM, oldKeyPEM, oldBundlePEM, newCertPEM, newKeyPEM, newBundlePEM)
+	for i := 0; i < 3; i++ { // 3 is an arbitrary number of hostnames to try
+		dnsName := fmt.Sprintf("some-statefulset-%d.%s.%s.svc", i, testHeadlessServiceName, ns.Name)
+		util.CheckRotation(t, dnsName, oldHeadlessCertPEM, oldHeadlessKeyPEM, oldBundlePEM, newHeadlessCertPEM, newHeadlessKeyPEM, newBundlePEM)
+	}
+
+	// After validating CA rotation behavior, wait for control plane to stabilize.
+	// CA rotation deletes the signing key, triggering cluster-wide TLS cert
+	// regeneration and cascading static-pod revision rollouts across kube-apiserver,
+	// kube-controller-manager, kube-scheduler, etc. Waiting reduces monitor test
+	// failures from expected transient disruption (non-graceful lease releases,
+	// thanos-querier 503s, etc.).
+	//
+	// This is best-effort: if operators don't fully stabilize within the timeout,
+	// the test itself still passed — we just log a warning.
+	t.Log("Waiting for control plane to stabilize after CA rotation...")
+	ctx, cancel := context.WithTimeout(context.Background(), clusterOperatorStabilizationTimeout)
+	defer cancel()
+	if err := waitForControlPlaneRolloutAll(ctx, t, cfgClient); err != nil {
+		t.Logf("WARNING: control plane did not fully stabilize within timeout: %v", err)
+		t.Log("CA rotation test passed; monitor tests may report transient disruption failures")
+		return
+	}
+	t.Log("Control plane stabilized successfully")
+}
+
+// triggerTimeBasedRotationTB replaces the current CA cert with one that
+// is not valid for the minimum required duration and waits for rotation.
+func triggerTimeBasedRotationTB(t testing.TB, client *kubernetes.Clientset, config *rest.Config) {
+	// A rotation-prompting CA cert needs to be a renewed instance
+	// (i.e. share the same public and private keys) of the current
+	// cert to ensure that trust will be maintained for unrefreshed
+	// clients and servers.
+
+	// Retrieve current CA
+	secret, err := client.CoreV1().Secrets(operatorclient.TargetNamespace).Get(context.TODO(), api.ServiceCASecretName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error retrieving signing key secret: %v", err)
+	}
+
+	currentCACerts, err := util.PemToCerts(secret.Data[v1.TLSCertKey])
+	if err != nil {
+		t.Fatalf("error unmarshaling %q: %v", v1.TLSCertKey, err)
+	}
+	currentCAKey, err := util.PemToKey(secret.Data[v1.TLSPrivateKeyKey])
+	if err != nil {
+		t.Fatalf("error unmarshalling %q: %v", v1.TLSPrivateKeyKey, err)
+	}
+	currentCAConfig := &crypto.TLSCertificateConfig{
+		Certs: currentCACerts,
+		Key:   currentCAKey,
+	}
+
+	// Trigger rotation by renewing the current ca with an expiry that
+	// is sooner than the minimum required duration.
+	renewedCAConfig, err := operator.RenewSelfSignedCertificate(currentCAConfig, 1*time.Hour, true)
+	if err != nil {
+		t.Fatalf("error renewing ca to half-expired form: %v", err)
+	}
+	renewedCACertPEM, renewedCAKeyPEM, err := renewedCAConfig.GetPEMBytes()
+	if err != nil {
+		t.Fatalf("error encoding renewed ca to pem: %v", err)
+	}
+
+	// Write the renewed CA
+	secret = &v1.Secret{
+		Type: v1.SecretTypeTLS,
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      api.ServiceCASecretName,
+			Namespace: operatorclient.TargetNamespace,
+		},
+		Data: map[string][]byte{
+			v1.TLSCertKey:       renewedCACertPEM,
+			v1.TLSPrivateKeyKey: renewedCAKeyPEM,
+		},
+	}
+	_, _, err = resourceapply.ApplySecret(context.Background(), client.CoreV1(), events.NewInMemoryRecorder("test", clock.RealClock{}), secret)
+	if err != nil {
+		t.Fatalf("error updating secret with test CA: %v", err)
+	}
+
+	_ = pollForCARotationTB(t, client, renewedCACertPEM, renewedCAKeyPEM)
+}
+
+// pollForCARotationTB polls for the signing secret to be changed in response to CA rotation.
+func pollForCARotationTB(t testing.TB, client *kubernetes.Clientset, caCertPEM, caKeyPEM []byte) *v1.Secret {
+	resourceID := fmt.Sprintf("Secret \"%s/%s\"", operatorclient.TargetNamespace, api.ServiceCASecretName)
+	obj, err := pollForResourceGinkgo(t, resourceID, rotationPollTimeout, func() (kruntime.Object, error) {
+		secret, err := client.CoreV1().Secrets(operatorclient.TargetNamespace).Get(context.TODO(), api.ServiceCASecretName, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		// Check if both cert and key are still the same as the old values
+		if bytes.Equal(secret.Data[v1.TLSCertKey], caCertPEM) && bytes.Equal(secret.Data[v1.TLSPrivateKeyKey], caKeyPEM) {
+			return nil, fmt.Errorf("cert and key have not changed yet")
+		}
+		return secret, nil
+	})
+	if err != nil {
+		t.Fatalf("error waiting for CA rotation: %v", err)
+	}
+	return obj.(*v1.Secret)
+}
+
+// pollForInjectedCABundleTB returns the bytes for the injection key in
+// the targeted configmap if the value of the key changes from that
+// provided before the polling timeout.
+func pollForInjectedCABundleTB(t testing.TB, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldValue []byte) ([]byte, error) {
+	return pollForUpdatedConfigMapTB(t, client, namespace, name, api.InjectionDataKey, timeout, oldValue)
+}
+
+// pollForUpdatedConfigMapTB returns the given configmap if its data changes from
+// that provided before the polling timeout.
+func pollForUpdatedConfigMapTB(t testing.TB, client *kubernetes.Clientset, namespace, name, key string, timeout time.Duration, oldValue []byte) ([]byte, error) {
+	resourceID := fmt.Sprintf("ConfigMap \"%s/%s\"", namespace, name)
+	obj, err := pollForResourceGinkgo(t, resourceID, timeout, func() (kruntime.Object, error) {
+		configMap, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		if len(configMap.Data) == 0 {
+			return nil, fmt.Errorf("configmap has no data")
+		}
+		value, ok := configMap.Data[key]
+		if !ok {
+			return nil, fmt.Errorf("key %q is missing", key)
+		}
+		if oldValue != nil && value == string(oldValue) {
+			return nil, fmt.Errorf("value for key %q has not changed", key)
+		}
+		return configMap, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return []byte(obj.(*v1.ConfigMap).Data[key]), nil
 }
