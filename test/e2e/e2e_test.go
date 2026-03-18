@@ -43,8 +43,6 @@ const (
 	// A label used to attach StatefulSet pods to a headless service created by
 	// createServingCertAnnotatedService
 	owningHeadlessServiceLabelName = "owning-headless-service"
-
-	signingCertificateLifetime = 790 * 24 * time.Hour
 )
 
 // checkComponents verifies that the components of the operator are running.
@@ -646,8 +644,11 @@ func TestE2E(t *testing.T) {
 	// configuration to force rotation and then validates that both
 	// refreshed and unrefreshed clients and servers can continue to
 	// communicate in a trusted fashion.
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("forced-ca-rotation", func(t *testing.T) {
-		checkCARotation(t, adminClient, adminConfig, triggerForcedRotation)
+		testForcedCARotation(t)
 	})
 
 	t.Run("apiservice-ca-bundle-injection", func(t *testing.T) {
