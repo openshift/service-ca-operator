@@ -9,4 +9,7 @@ const (
 
 	// rotationTimeout is the maximum time to wait for certificate rotation
 	rotationTimeout = 5 * time.Minute
+
+	// signingCertificateLifetime is the default lifetime for the signing CA certificate
+	signingCertificateLifetime = 790 * 24 * time.Hour
 )

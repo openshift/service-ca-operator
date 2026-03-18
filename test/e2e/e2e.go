@@ -24,11 +24,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/clock"
 	"k8s.io/utils/ptr"
 
 	configv1 "github.com/openshift/api/config/v1"
 	configclient "github.com/openshift/client-go/config/clientset/versioned"
+	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
 	routeclient "github.com/openshift/client-go/route/clientset/versioned"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -121,6 +123,12 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 	g.Context("time-based-ca-rotation", func() {
 		g.It("[Operator][Serial][Disruptive][Timeout:20m] should rotate CA based on expiry time", func() {
 			testTimeBasedCARotation(g.GinkgoTB())
+		})
+	})
+
+	g.Context("forced-ca-rotation", func() {
+		g.It("[Operator][Serial][Disruptive][Timeout:20m] should rotate CA when forced via operator config", func() {
+			testForcedCARotation(g.GinkgoTB())
 		})
 	})
 })
@@ -1482,9 +1490,8 @@ func isConditionTrue(conditions []configv1.ClusterOperatorStatusCondition, condT
 	return false
 }
 
-// testTimeBasedCARotation tests that the CA is rotated when it expires sooner
-// than the minimum required duration. Uses testing.TB for dual-compatibility.
-func testTimeBasedCARotation(t testing.TB) {
+// getCARotationClients returns the clients needed for CA rotation tests.
+func getCARotationClients(t testing.TB) (*kubernetes.Clientset, *rest.Config, configclient.Interface) {
 	adminClient, adminConfig, err := getKubeClientAndConfig()
 	if err != nil {
 		t.Fatalf("error getting kube client: %v", err)
@@ -1503,6 +1510,13 @@ func testTimeBasedCARotation(t testing.TB) {
 		t.Fatalf("creating config client: %v", err)
 	}
 
+	return adminClient, adminConfig, cfgClient
+}
+
+// testTimeBasedCARotation tests that the CA is rotated when it expires sooner
+// than the minimum required duration. Uses testing.TB for dual-compatibility.
+func testTimeBasedCARotation(t testing.TB) {
+	adminClient, adminConfig, cfgClient := getCARotationClients(t)
 	checkCARotationTB(t, adminClient, adminConfig, cfgClient, triggerTimeBasedRotationTB)
 }
 
@@ -1681,6 +1695,84 @@ func pollForCARotationTB(t testing.TB, client *kubernetes.Clientset, caCertPEM, 
 		t.Fatalf("error waiting for CA rotation: %v", err)
 	}
 	return obj.(*v1.Secret)
+}
+
+// testForcedCARotation tests that the CA is rotated when forced via operator config.
+// Uses testing.TB for dual-compatibility.
+func testForcedCARotation(t testing.TB) {
+	adminClient, adminConfig, cfgClient := getCARotationClients(t)
+	checkCARotationTB(t, adminClient, adminConfig, cfgClient, triggerForcedRotationTB)
+}
+
+// triggerForcedRotationTB forces the rotation of the current CA via the
+// operator config.
+func triggerForcedRotationTB(t testing.TB, client *kubernetes.Clientset, config *rest.Config) {
+	// Retrieve the cert and key PEM of the current CA to be able to
+	// detect when rotation has completed.
+	secret, err := client.CoreV1().Secrets(operatorclient.TargetNamespace).Get(context.TODO(), api.ServiceCASecretName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error retrieving signing key secret: %v", err)
+	}
+	caCertPEM := secret.Data[v1.TLSCertKey]
+	caKeyPEM := secret.Data[v1.TLSPrivateKeyKey]
+
+	// Set a custom validity duration longer than the default to
+	// validate that a custom expiry on rotation is possible.
+	defaultDuration := signingCertificateLifetime
+	customDuration := defaultDuration + 1*time.Hour
+
+	// Trigger a forced rotation by updating the operator config
+	// with a reason.
+	forceUnsupportedServiceCAConfigRotationTB(t, config, secret, customDuration)
+
+	signingSecret := pollForCARotationTB(t, client, caCertPEM, caKeyPEM)
+
+	// Check that the expiry of the new CA is longer than the default
+	rawCert := signingSecret.Data[v1.TLSCertKey]
+	certs, err := util.PemToCerts(rawCert)
+	if err != nil {
+		t.Fatalf("Failed to parse signing secret cert: %v", err)
+	}
+	if !certs[0].NotAfter.After(time.Now().Add(defaultDuration)) {
+		t.Fatalf("Custom validity duration was not used to generate the new CA")
+	}
+}
+
+// forceUnsupportedServiceCAConfigRotationTB updates the operator config to force CA rotation.
+func forceUnsupportedServiceCAConfigRotationTB(t testing.TB, config *rest.Config, currentSigningKeySecret *v1.Secret, validityDuration time.Duration) {
+	operatorClient, err := operatorv1client.NewForConfig(config)
+	if err != nil {
+		t.Fatalf("error creating operator client: %v", err)
+	}
+
+	// Generate a unique force rotation reason
+	var forceRotationReason string
+	for i := 0; ; i++ {
+		forceRotationReason = fmt.Sprintf("service-ca-e2e-force-rotation-reason-%d", i)
+		if currentSigningKeySecret.Annotations[api.ForcedRotationReasonAnnotationName] != forceRotationReason {
+			break
+		}
+	}
+
+	// Retry the update on conflict to handle concurrent modifications
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		operatorConfig, err := operatorClient.OperatorV1().ServiceCAs().Get(context.TODO(), api.OperatorConfigInstanceName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(forceRotationReason, validityDuration)
+		if err != nil {
+			return err
+		}
+
+		operatorConfig.Spec.UnsupportedConfigOverrides.Raw = rawUnsupportedServiceCAConfig
+		_, err = operatorClient.OperatorV1().ServiceCAs().Update(context.TODO(), operatorConfig, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("error updating operator config: %v", err)
+	}
 }
 
 // pollForInjectedCABundleTB returns the bytes for the injection key in
