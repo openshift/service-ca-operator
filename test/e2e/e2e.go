@@ -17,6 +17,9 @@ import (
 	"github.com/prometheus/common/model"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apiextclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apiextclientv1 "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
@@ -138,6 +141,12 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 	g.Context("apiservice-ca-bundle-injection", func() {
 		g.It("[Operator][Serial] should inject and restore CA bundle for APIService", func() {
 			testAPIServiceCABundleInjection(g.GinkgoTB())
+		})
+	})
+
+	g.Context("crd-ca-bundle-injection", func() {
+		g.It("[Operator][Serial] should inject and restore CA bundle for CRD conversion webhook", func() {
+			testCRDCABundleInjection(g.GinkgoTB())
 		})
 	})
 })
@@ -1939,6 +1948,143 @@ func testAPIServiceCABundleInjection(t testing.TB) {
 	}
 
 	_, err = pollForAPIServiceTB(t, client, createdObj.Name, expectedCABundle)
+	if err != nil {
+		t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
+	}
+}
+
+// pollForCRDTB returns the specified CustomResourceDefinition if the CA bundle
+// for its conversion webhook config matches the provided value before the
+// polling timeout. It uses testing.TB for dual-compatibility with both standard
+// Go tests and Ginkgo tests.
+func pollForCRDTB(t testing.TB, client apiextclientv1.CustomResourceDefinitionInterface, name string, expectedCABundle []byte) (*apiext.CustomResourceDefinition, error) {
+	resourceID := fmt.Sprintf("CustomResourceDefinition %q", name)
+	obj, err := pollForResourceGinkgo(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
+		crd, err := client.Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		if crd.Spec.Conversion == nil || crd.Spec.Conversion.Webhook == nil || crd.Spec.Conversion.Webhook.ClientConfig == nil {
+			return nil, fmt.Errorf("spec.conversion.webhook.clientConfig not set")
+		}
+		actualCABundle := crd.Spec.Conversion.Webhook.ClientConfig.CABundle
+		if len(actualCABundle) == 0 {
+			return nil, fmt.Errorf("ca bundle not injected")
+		}
+		if !bytes.Equal(actualCABundle, expectedCABundle) {
+			return nil, fmt.Errorf("ca bundle does not match the expected value")
+		}
+		return crd, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*apiext.CustomResourceDefinition), nil
+}
+
+// testCRDCABundleInjection verifies that the CA bundle is injected into the
+// conversion webhook of an annotated CRD and restored after manual modification.
+//
+// This test uses testing.TB interface for dual-compatibility with both
+// standard Go tests and Ginkgo tests.
+//
+// This situation is temporary until we test the new e2e jobs with OTE.
+// Eventually all tests will be run only as part of the OTE framework.
+func testCRDCABundleInjection(t testing.TB) {
+	adminClient, adminConfig, err := getKubeClientAndConfig()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	apiExtClient, err := apiextclient.NewForConfig(adminConfig)
+	if err != nil {
+		t.Fatalf("error creating CRD client: %v", err)
+	}
+	client := apiExtClient.ApiextensionsV1().CustomResourceDefinitions()
+
+	randomGroup := fmt.Sprintf("e2e-%s.example.com", randSeq(10))
+	pluralName := "cabundleinjectiontargets"
+	version := "v1beta1"
+	obj := &apiext.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("%s.%s", pluralName, randomGroup),
+		},
+		Spec: apiext.CustomResourceDefinitionSpec{
+			Group: randomGroup,
+			Scope: apiext.ClusterScoped,
+			Names: apiext.CustomResourceDefinitionNames{
+				Plural: pluralName,
+				Kind:   "CABundleInjectionTarget",
+			},
+			Conversion: &apiext.CustomResourceConversion{
+				// CA bundle will only be injected for a webhook converter
+				Strategy: apiext.WebhookConverter,
+				Webhook: &apiext.WebhookConversion{
+					// CA bundle will be set on the following struct
+					ClientConfig: &apiext.WebhookClientConfig{
+						Service: &apiext.ServiceReference{
+							Namespace: "foo",
+							Name:      "foo",
+						},
+					},
+					ConversionReviewVersions: []string{
+						version,
+					},
+				},
+			},
+			// At least one version must be defined for a v1 crd to be valid
+			Versions: []apiext.CustomResourceDefinitionVersion{
+				{
+					Name:    version,
+					Storage: true,
+					Schema: &apiext.CustomResourceValidation{
+						OpenAPIV3Schema: &apiext.JSONSchemaProps{
+							Type: "object",
+						},
+					},
+				},
+			},
+		},
+	}
+	setInjectionAnnotation(&obj.ObjectMeta)
+	createdObj, err := client.Create(context.TODO(), obj, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("error creating crd: %v", err)
+	}
+	defer func() {
+		if err := client.Delete(context.TODO(), obj.Name, metav1.DeleteOptions{}); err != nil {
+			t.Errorf("failed to cleanup crd: %v", err)
+		}
+	}()
+
+	expectedCABundle, err := pollForSigningCABundleTB(t, adminClient)
+	if err != nil {
+		t.Fatalf("error retrieving the signing ca bundle: %v", err)
+	}
+
+	_, err = pollForCRDTB(t, client, createdObj.Name, expectedCABundle)
+	if err != nil {
+		t.Fatalf("error waiting for ca bundle to be injected: %v", err)
+	}
+
+	// Set an invalid ca bundle and verify it is restored.
+	// Wrap the mutate+update in RetryOnConflict to handle concurrent
+	// reconciliation that may bump the resourceVersion.
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest, err := client.Get(context.TODO(), createdObj.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		latest.Spec.Conversion.Webhook.ClientConfig.CABundle = append(
+			latest.Spec.Conversion.Webhook.ClientConfig.CABundle, []byte("garbage")...)
+		_, err = client.Update(context.TODO(), latest, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("error updating crd: %v", err)
+	}
+
+	_, err = pollForCRDTB(t, client, createdObj.Name, expectedCABundle)
 	if err != nil {
 		t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
 	}
