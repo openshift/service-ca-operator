@@ -1722,8 +1722,9 @@ func triggerForcedRotationTB(t testing.TB, client *kubernetes.Clientset, config 
 	customDuration := defaultDuration + 1*time.Hour
 
 	// Trigger a forced rotation by updating the operator config
-	// with a reason.
-	forceUnsupportedServiceCAConfigRotationTB(t, config, secret, customDuration)
+	// with a reason. The cleanup function must be called after rotation completes.
+	cleanup := forceUnsupportedServiceCAConfigRotationTB(t, config, secret, customDuration)
+	defer cleanup()
 
 	signingSecret := pollForCARotationTB(t, client, caCertPEM, caKeyPEM)
 
@@ -1738,12 +1739,21 @@ func triggerForcedRotationTB(t testing.TB, client *kubernetes.Clientset, config 
 	}
 }
 
-// forceUnsupportedServiceCAConfigRotationTB updates the operator config to force CA rotation.
-func forceUnsupportedServiceCAConfigRotationTB(t testing.TB, config *rest.Config, currentSigningKeySecret *v1.Secret, validityDuration time.Duration) {
+// forceUnsupportedServiceCAConfigRotationTB updates the operator config to force CA rotation
+// and returns a cleanup function to restore the original configuration.
+// The caller MUST defer the returned cleanup function after rotation completes to prevent test contamination.
+func forceUnsupportedServiceCAConfigRotationTB(t testing.TB, config *rest.Config, currentSigningKeySecret *v1.Secret, validityDuration time.Duration) func() {
 	operatorClient, err := operatorv1client.NewForConfig(config)
 	if err != nil {
 		t.Fatalf("error creating operator client: %v", err)
 	}
+
+	// Save the original UnsupportedConfigOverrides.Raw to restore later
+	originalConfig, err := operatorClient.OperatorV1().ServiceCAs().Get(context.TODO(), api.OperatorConfigInstanceName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error retrieving operator config for backup: %v", err)
+	}
+	oldRaw := originalConfig.Spec.UnsupportedConfigOverrides.Raw
 
 	// Generate a unique force rotation reason
 	var forceRotationReason string
@@ -1772,6 +1782,22 @@ func forceUnsupportedServiceCAConfigRotationTB(t testing.TB, config *rest.Config
 	})
 	if err != nil {
 		t.Fatalf("error updating operator config: %v", err)
+	}
+
+	// Return a cleanup function that restores the original config
+	return func() {
+		restoreErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			operatorConfig, err := operatorClient.OperatorV1().ServiceCAs().Get(context.TODO(), api.OperatorConfigInstanceName, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			operatorConfig.Spec.UnsupportedConfigOverrides.Raw = oldRaw
+			_, err = operatorClient.OperatorV1().ServiceCAs().Update(context.TODO(), operatorConfig, metav1.UpdateOptions{})
+			return err
+		})
+		if restoreErr != nil {
+			t.Logf("WARNING: failed to restore original operator config: %v", restoreErr)
+		}
 	}
 }
 
