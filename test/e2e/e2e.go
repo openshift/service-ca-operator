@@ -25,6 +25,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/retry"
+	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
+	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
+	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
 	"k8s.io/utils/clock"
 	"k8s.io/utils/ptr"
 
@@ -129,6 +132,12 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 	g.Context("forced-ca-rotation", func() {
 		g.It("[Operator][Serial][Disruptive][Timeout:20m] should rotate CA when forced via operator config", func() {
 			testForcedCARotation(g.GinkgoTB())
+		})
+	})
+
+	g.Context("apiservice-ca-bundle-injection", func() {
+		g.It("[Operator][Serial] should inject and restore CA bundle for APIService", func() {
+			testAPIServiceCABundleInjection(g.GinkgoTB())
 		})
 	})
 })
@@ -1806,6 +1815,133 @@ func forceUnsupportedServiceCAConfigRotationTB(t testing.TB, config *rest.Config
 // provided before the polling timeout.
 func pollForInjectedCABundleTB(t testing.TB, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldValue []byte) ([]byte, error) {
 	return pollForUpdatedConfigMapTB(t, client, namespace, name, api.InjectionDataKey, timeout, oldValue)
+}
+
+// pollForSigningCABundleTB retrieves the current signing CA bundle, compatible with testing.TB.
+func pollForSigningCABundleTB(t testing.TB, client *kubernetes.Clientset) ([]byte, error) {
+	resourceID := fmt.Sprintf("ConfigMap \"%s/%s\"", operatorclient.TargetNamespace, api.SigningCABundleConfigMapName)
+	obj, err := pollForResourceGinkgo(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
+		configMap, err := client.CoreV1().ConfigMaps(operatorclient.TargetNamespace).Get(context.TODO(), api.SigningCABundleConfigMapName, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		if len(configMap.Data) == 0 {
+			return nil, fmt.Errorf("configmap has no data")
+		}
+		if _, ok := configMap.Data[api.BundleDataKey]; !ok {
+			return nil, fmt.Errorf("key %q is missing", api.BundleDataKey)
+		}
+		return configMap, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return []byte(obj.(*v1.ConfigMap).Data[api.BundleDataKey]), nil
+}
+
+// pollForAPIServiceTB returns the specified APIService if its CA bundle matches
+// the provided value before the polling timeout. Compatible with testing.TB.
+func pollForAPIServiceTB(t testing.TB, client apiserviceclientv1.APIServiceInterface, name string, expectedCABundle []byte) (*apiregv1.APIService, error) {
+	resourceID := fmt.Sprintf("APIService %q", name)
+	obj, err := pollForResourceGinkgo(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
+		apiService, err := client.Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		actualCABundle := apiService.Spec.CABundle
+		if len(actualCABundle) == 0 {
+			return nil, fmt.Errorf("ca bundle not injected")
+		}
+		if !bytes.Equal(actualCABundle, expectedCABundle) {
+			return nil, fmt.Errorf("ca bundle does not match the expected value")
+		}
+		return apiService, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*apiregv1.APIService), nil
+}
+
+// testAPIServiceCABundleInjection verifies that the CA bundle is injected into
+// an annotated APIService and restored after manual modification.
+//
+// This test uses testing.TB interface for dual-compatibility with both
+// standard Go tests and Ginkgo tests.
+//
+// This situation is temporary until we test the new e2e jobs with OTE.
+// Eventually all tests will be run only as part of the OTE framework.
+func testAPIServiceCABundleInjection(t testing.TB) {
+	adminClient, adminConfig, err := getKubeClientAndConfig()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	apiServiceClient, err := apiserviceclient.NewForConfig(adminConfig)
+	if err != nil {
+		t.Fatalf("error creating APIService client: %v", err)
+	}
+	client := apiServiceClient.ApiregistrationV1().APIServices()
+
+	randomGroup := fmt.Sprintf("e2e-%s", randSeq(10))
+	version := "v1alpha1"
+	obj := &apiregv1.APIService{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("%s.%s", version, randomGroup),
+		},
+		Spec: apiregv1.APIServiceSpec{
+			Group:                randomGroup,
+			Version:              version,
+			GroupPriorityMinimum: 1,
+			VersionPriority:      1,
+			// A service must be specified for validation to accept a cabundle.
+			Service: &apiregv1.ServiceReference{
+				Namespace: "foo",
+				Name:      "foo",
+			},
+		},
+	}
+	setInjectionAnnotation(&obj.ObjectMeta)
+	createdObj, err := client.Create(context.TODO(), obj, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("error creating api service: %v", err)
+	}
+	defer func() {
+		if err := client.Delete(context.TODO(), obj.Name, metav1.DeleteOptions{}); err != nil {
+			t.Errorf("failed to cleanup api service: %v", err)
+		}
+	}()
+
+	expectedCABundle, err := pollForSigningCABundleTB(t, adminClient)
+	if err != nil {
+		t.Fatalf("error retrieving the signing ca bundle: %v", err)
+	}
+
+	_, err = pollForAPIServiceTB(t, client, createdObj.Name, expectedCABundle)
+	if err != nil {
+		t.Fatalf("error waiting for ca bundle to be injected: %v", err)
+	}
+
+	// Set an invalid ca bundle and verify it is restored.
+	// Wrap the mutate+update in RetryOnConflict to handle concurrent
+	// kube-aggregator reconciliation that may bump the resourceVersion.
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest, err := client.Get(context.TODO(), createdObj.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		latest.Spec.CABundle = append(latest.Spec.CABundle, []byte("garbage")...)
+		_, err = client.Update(context.TODO(), latest, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("error updating api service: %v", err)
+	}
+
+	_, err = pollForAPIServiceTB(t, client, createdObj.Name, expectedCABundle)
+	if err != nil {
+		t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
+	}
 }
 
 // pollForUpdatedConfigMapTB returns the given configmap if its data changes from
