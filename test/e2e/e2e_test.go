@@ -9,6 +9,11 @@ import (
 	"testing"
 	"time"
 
+	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
+	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/operator"
+	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
+	"github.com/openshift/service-ca-operator/test/util"
 	admissionreg "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -22,15 +27,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/cert"
-	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
-	apiserviceclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset"
-	apiserviceclientv1 "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
-
-	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
-	"github.com/openshift/service-ca-operator/pkg/controller/api"
-	"github.com/openshift/service-ca-operator/pkg/operator"
-	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
-	"github.com/openshift/service-ca-operator/test/util"
 )
 
 const (
@@ -330,30 +326,6 @@ func pollForUpdatedConfigMap(t *testing.T, client *kubernetes.Clientset, namespa
 	return []byte(configMap.Data[key]), nil
 }
 
-// pollForAPIService returns the specified APIService if its ca bundle
-// matches the provided value before the polling timeout.
-func pollForAPIService(t *testing.T, client apiserviceclientv1.APIServiceInterface, name string, expectedCABundle []byte) (*apiregv1.APIService, error) {
-	resourceID := fmt.Sprintf("APIService %q", name)
-	obj, err := pollForResource(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
-		apiService, err := client.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			return nil, err
-		}
-		actualCABundle := apiService.Spec.CABundle
-		if len(actualCABundle) == 0 {
-			return nil, fmt.Errorf("ca bundle not injected")
-		}
-		if !bytes.Equal(actualCABundle, expectedCABundle) {
-			return nil, fmt.Errorf("ca bundle does not match the expected value")
-		}
-		return apiService, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return obj.(*apiregv1.APIService), nil
-}
-
 // pollForCRD returns the specified CustomResourceDefinition if the ca
 // bundle for its conversion webhook config matches the provided value
 // before the polling timeout.
@@ -651,65 +623,11 @@ func TestE2E(t *testing.T) {
 		testForcedCARotation(t)
 	})
 
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
 	t.Run("apiservice-ca-bundle-injection", func(t *testing.T) {
-		client := apiserviceclient.NewForConfigOrDie(adminConfig).ApiregistrationV1().APIServices()
-
-		// Create an api service with the injection annotation
-		randomGroup := fmt.Sprintf("e2e-%s", randSeq(10))
-		version := "v1alpha1"
-		obj := &apiregv1.APIService{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("%s.%s", version, randomGroup),
-			},
-			Spec: apiregv1.APIServiceSpec{
-				Group:                randomGroup,
-				Version:              version,
-				GroupPriorityMinimum: 1,
-				VersionPriority:      1,
-				// A service must be specified for validation to
-				// accept a cabundle.
-				Service: &apiregv1.ServiceReference{
-					Namespace: "foo",
-					Name:      "foo",
-				},
-			},
-		}
-		setInjectionAnnotation(&obj.ObjectMeta)
-		createdObj, err := client.Create(context.TODO(), obj, metav1.CreateOptions{})
-		if err != nil {
-			t.Fatalf("error creating api service: %v", err)
-		}
-		defer func() {
-			err := client.Delete(context.TODO(), obj.Name, metav1.DeleteOptions{})
-			if err != nil {
-				t.Errorf("Failed to cleanup api service: %v", err)
-			}
-		}()
-
-		// Retrieve the expected CA bundle
-		expectedCABundle, err := pollForSigningCABundle(t, adminClient)
-		if err != nil {
-			t.Fatalf("error retrieving the signing ca bundle: %v", err)
-		}
-
-		// Wait for the expected bundle to be injected
-		injectedObj, err := pollForAPIService(t, client, createdObj.Name, expectedCABundle)
-		if err != nil {
-			t.Fatalf("error waiting for ca bundle to be injected: %v", err)
-		}
-
-		// Set an invalid ca bundle
-		injectedObj.Spec.CABundle = append(injectedObj.Spec.CABundle, []byte("garbage")...)
-		_, err = client.Update(context.TODO(), injectedObj, metav1.UpdateOptions{})
-		if err != nil {
-			t.Fatalf("error updated api service: %v", err)
-		}
-
-		// Check that the expected ca bundle is restored
-		_, err = pollForAPIService(t, client, createdObj.Name, expectedCABundle)
-		if err != nil {
-			t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
-		}
+		testAPIServiceCABundleInjection(t)
 	})
 
 	t.Run("crd-ca-bundle-injection", func(t *testing.T) {
