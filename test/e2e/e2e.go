@@ -157,6 +157,12 @@ var _ = g.Describe("[sig-service-ca] service-ca-operator", func() {
 			testMutatingWebhookCABundleInjection(g.GinkgoTB())
 		})
 	})
+
+	g.Context("validatingwebhook-ca-bundle-injection", func() {
+		g.It("[Operator][Serial] should inject and restore CA bundle for ValidatingWebhookConfiguration", func() {
+			testValidatingWebhookCABundleInjection(g.GinkgoTB())
+		})
+	})
 })
 
 // testServingCertAnnotation checks that services with the serving-cert annotation
@@ -2247,6 +2253,148 @@ func testMutatingWebhookCABundleInjection(t testing.TB) {
 	}
 
 	_, err = pollForMutatingWebhookConfigurationTB(t, client, createdObj.Name, expectedCABundle)
+	if err != nil {
+		t.Fatalf("error waiting for ca bundle to be injected for all webhooks: %v", err)
+	}
+}
+
+// pollForValidatingWebhookConfigurationTB returns the specified
+// ValidatingWebhookConfiguration if the CA bundle for all its webhooks match
+// the provided value before the polling timeout. It uses testing.TB for
+// dual-compatibility with both standard Go tests and Ginkgo tests.
+func pollForValidatingWebhookConfigurationTB(t testing.TB, client admissionregclient.ValidatingWebhookConfigurationInterface, name string, expectedCABundle []byte) (*admissionreg.ValidatingWebhookConfiguration, error) {
+	resourceID := fmt.Sprintf("ValidatingWebhookConfiguration %q", name)
+	obj, err := pollForResourceGinkgo(t, resourceID, pollTimeout, func() (kruntime.Object, error) {
+		webhookConfig, err := client.Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		for _, webhook := range webhookConfig.Webhooks {
+			if err := checkWebhookCABundleTB(webhook.Name, expectedCABundle, webhook.ClientConfig.CABundle); err != nil {
+				return nil, err
+			}
+		}
+		return webhookConfig, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*admissionreg.ValidatingWebhookConfiguration), nil
+}
+
+// testValidatingWebhookCABundleInjection verifies that the CA bundle is injected
+// into all webhooks of an annotated ValidatingWebhookConfiguration and restored
+// after manual modification. It also verifies injection into newly added webhooks.
+//
+// This test uses testing.TB interface for dual-compatibility with both
+// standard Go tests and Ginkgo tests.
+//
+// This situation is temporary until we test the new e2e jobs with OTE.
+// Eventually all tests will be run only as part of the OTE framework.
+func testValidatingWebhookCABundleInjection(t testing.TB) {
+	adminClient, _, err := getKubeClientAndConfig()
+	if err != nil {
+		t.Fatalf("error getting kube client: %v", err)
+	}
+
+	client := adminClient.AdmissionregistrationV1().ValidatingWebhookConfigurations()
+
+	webhookClientConfig := admissionreg.WebhookClientConfig{
+		// A service must be specified for validation to accept a cabundle.
+		Service: &admissionreg.ServiceReference{
+			Namespace: "foo",
+			Name:      "foo",
+		},
+	}
+	sideEffectNone := admissionreg.SideEffectClassNone
+
+	obj := &admissionreg.ValidatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: "e2e-",
+		},
+		Webhooks: []admissionreg.ValidatingWebhook{
+			// Specify 2 webhooks to ensure more than 1 webhook will be updated
+			{
+				Name:                    "e2e-1.example.com",
+				ClientConfig:            webhookClientConfig,
+				SideEffects:             &sideEffectNone,
+				AdmissionReviewVersions: []string{"v1beta1"},
+			},
+			{
+				Name:                    "e2e-2.example.com",
+				ClientConfig:            webhookClientConfig,
+				SideEffects:             &sideEffectNone,
+				AdmissionReviewVersions: []string{"v1beta1"},
+			},
+		},
+	}
+	// webhooksToAdd will be appended after initial injection to ensure
+	// updates work for more than the original number of webhooks.
+	webhooksToAdd := []admissionreg.ValidatingWebhook{
+		{
+			Name:                    "e2e-3.example.com",
+			ClientConfig:            webhookClientConfig,
+			SideEffects:             &sideEffectNone,
+			AdmissionReviewVersions: []string{"v1"},
+		},
+	}
+	setInjectionAnnotation(&obj.ObjectMeta)
+	createdObj, err := client.Create(context.TODO(), obj, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("error creating validating webhook configuration: %v", err)
+	}
+	defer func() {
+		if err := client.Delete(context.TODO(), createdObj.Name, metav1.DeleteOptions{}); err != nil {
+			t.Errorf("failed to cleanup validating webhook configuration: %v", err)
+		}
+	}()
+
+	expectedCABundle, err := pollForSigningCABundleTB(t, adminClient)
+	if err != nil {
+		t.Fatalf("error retrieving the expected ca bundle: %v", err)
+	}
+
+	_, err = pollForValidatingWebhookConfigurationTB(t, client, createdObj.Name, expectedCABundle)
+	if err != nil {
+		t.Fatalf("error waiting for ca bundle to be injected: %v", err)
+	}
+
+	// Set an invalid ca bundle and verify it is restored.
+	// Wrap the mutate+update in RetryOnConflict to handle concurrent
+	// reconciliation that may bump the resourceVersion.
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest, err := client.Get(context.TODO(), createdObj.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		latest.Webhooks[0].ClientConfig.CABundle = append(latest.Webhooks[0].ClientConfig.CABundle, []byte("garbage")...)
+		_, err = client.Update(context.TODO(), latest, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("error updating validating webhook configuration: %v", err)
+	}
+
+	_, err = pollForValidatingWebhookConfigurationTB(t, client, createdObj.Name, expectedCABundle)
+	if err != nil {
+		t.Fatalf("error waiting for ca bundle to be re-injected: %v", err)
+	}
+
+	// Add an additional webhook and verify CA bundle is injected for all.
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		latest, err := client.Get(context.TODO(), createdObj.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		latest.Webhooks = append(latest.Webhooks, webhooksToAdd...)
+		_, err = client.Update(context.TODO(), latest, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("error updating validating webhook configuration: %v", err)
+	}
+
+	_, err = pollForValidatingWebhookConfigurationTB(t, client, createdObj.Name, expectedCABundle)
 	if err != nil {
 		t.Fatalf("error waiting for ca bundle to be injected for all webhooks: %v", err)
 	}
