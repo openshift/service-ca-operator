@@ -1,11 +1,9 @@
 reviewers:
   - p0lyn0mial
   - bertinatto
-  - wangke19
   - xingxingxia
 approvers:
   - p0lyn0mial
   - bertinatto
-  - wangke19
   - xingxingxia
 component: service-ca-tests
