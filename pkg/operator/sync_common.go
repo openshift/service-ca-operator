@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/openshift/library-go/pkg/pki"
 	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
 
 	corev1 "k8s.io/api/core/v1"
@@ -107,11 +108,11 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 	if existingCert == nil {
 		// Secret does not exist or lacks the expected cert.
 		validityDuration := serviceCAConfig.CAConfig.ValidityDurationForTesting
-		if err := initializeSigningSecret(secret, validityDuration, c.signingCertificateLifetime); err != nil {
+		if err := c.initializeSigningSecret(secret, validityDuration, c.signingCertificateLifetime); err != nil {
 			return false, err
 		}
 	} else {
-		rotationMsg, err = maybeRotateSigningSecret(existing, existingCert, serviceCAConfig, c.minimumTrustDuration, c.signingCertificateLifetime)
+		rotationMsg, err = c.maybeRotateSigningSecret(existing, existingCert, serviceCAConfig, c.minimumTrustDuration, c.signingCertificateLifetime)
 		if err != nil {
 			return false, fmt.Errorf("failed to rotate signing CA: %v", err)
 		}
@@ -142,11 +143,21 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 // PEM-encoded certificate and private key of a new self-signed
 // CA. The duration, if non-zero, will be used to set the
 // expiry of the CA.
-func initializeSigningSecret(secret *corev1.Secret, duration time.Duration, lifetime time.Duration) error {
+func (c *serviceCAOperator) initializeSigningSecret(secret *corev1.Secret, duration time.Duration, lifetime time.Duration) error {
 	name := serviceServingCertSignerName()
 	klog.V(4).Infof("generating signing CA: %s", name)
 
-	ca, err := crypto.MakeSelfSignedCAConfig(name, lifetime)
+	var ca *crypto.TLSCertificateConfig
+	var err error
+	if c.configurablePKIEnabled {
+		certificateCfg, err := pki.ResolveCertificateConfig(c.pkiProvider, pki.CertificateTypeSigner, "service-ca.service-serving-signer")
+		if err != nil {
+			return fmt.Errorf("failed to resolve PKI certificate config: %w", err)
+		}
+		ca, err = crypto.NewSigningCertificate(name, certificateCfg.Key, crypto.WithLifetime(lifetime))
+	} else {
+		ca, err = crypto.MakeSelfSignedCAConfig(name, lifetime)
+	}
 	if err != nil {
 		return err
 	}

@@ -9,6 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openshift/api/features"
+	configinformers "github.com/openshift/client-go/config/informers/externalversions"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
+	"github.com/openshift/library-go/pkg/pki"
 	corev1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,27 +27,22 @@ import (
 	"k8s.io/klog/v2"
 
 	apiannotations "github.com/openshift/api/annotations"
-	"github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
-	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/cryptoextensions"
 )
 
 type serviceServingCertController struct {
+	servingCertIssuer
+
 	serviceClient kcoreclient.ServicesGetter
 	secretClient  kcoreclient.SecretsGetter
 
 	serviceLister listers.ServiceLister
 	secretLister  listers.SecretLister
 
-	ca                 *crypto.CA
-	intermediateCACert *x509.Certificate
-	dnsSuffix          string
-	maxRetries         int
-
-	certificateLifetime time.Duration
+	maxRetries int
 }
 
 func NewServiceServingCertController(
@@ -51,6 +50,8 @@ func NewServiceServingCertController(
 	secrets informers.SecretInformer,
 	serviceClient kcoreclient.ServicesGetter,
 	secretClient kcoreclient.SecretsGetter,
+	configInformers configinformers.SharedInformerFactory,
+	featureGates featuregates.FeatureGate,
 	ca *crypto.CA,
 	intermediateCACert *x509.Certificate,
 	dnsSuffix string,
@@ -59,24 +60,34 @@ func NewServiceServingCertController(
 ) factory.Controller {
 
 	sc := &serviceServingCertController{
+		servingCertIssuer: servingCertIssuer{
+			ca:                     ca,
+			intermediateCACert:     intermediateCACert,
+			dnsSuffix:              dnsSuffix,
+			certificateLifetime:    certificateLifetime,
+			configurablePKIEnabled: featureGates.Enabled(features.FeatureGateConfigurablePKI),
+		},
+
 		serviceClient: serviceClient,
 		secretClient:  secretClient,
 
 		serviceLister: services.Lister(),
 		secretLister:  secrets.Lister(),
 
-		ca:                  ca,
-		intermediateCACert:  intermediateCACert,
-		dnsSuffix:           dnsSuffix,
-		maxRetries:          10,
-		certificateLifetime: certificateLifetime,
+		maxRetries: 10,
 	}
 
-	return factory.New().
+	f := factory.New().
 		WithInformersQueueKeyFunc(namespacedObjToQueueKey, services.Informer()).
 		WithFilteredEventsInformersQueueKeyFunc(serviceFromSecretQueueFunc, secretsQueueFilter, secrets.Informer()).
-		WithSync(sc.Sync).
-		ToController("ServiceServingCertController", recorder.WithComponentSuffix("service-serving-cert-controller"))
+		WithSync(sc.Sync)
+
+	if sc.configurablePKIEnabled {
+		sc.pkiProvider = pki.NewListerPKIProfileProvider(configInformers.Config().V1alpha1().PKIs().Lister(), "cluster")
+		f.WithBareInformers(configInformers.Config().V1alpha1().PKIs().Informer())
+	}
+
+	return f.ToController("ServiceServingCertController", recorder.WithComponentSuffix("service-serving-cert-controller"))
 }
 
 func namespacedObjToQueueKey(obj runtime.Object) string {
@@ -150,7 +161,7 @@ func (sc *serviceServingCertController) generateCert(ctx context.Context, servic
 	}
 
 	secret := toBaseSecret(serviceCopy)
-	if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, serviceCopy, secret, sc.certificateLifetime); err != nil {
+	if err := sc.toRequiredSecret(serviceCopy, secret); err != nil {
 		return err
 	}
 	setSecretOwnerDescription(secret, serviceCopy)
@@ -377,53 +388,6 @@ func certSubjectsForService(service *corev1.Service, dnsSuffix string) sets.Set[
 		)
 	}
 	return res
-}
-
-func MakeServingCert(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, lifetime time.Duration) (*crypto.TLSCertificateConfig, error) {
-	subjects := certSubjectsForService(service, dnsSuffix)
-	servingCert, err := ca.MakeServerCert(
-		subjects,
-		lifetime,
-		cryptoextensions.ServiceServerCertificateExtensionV1(service.UID),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// Including the intermediate cert will ensure that clients with a
-	// stale ca bundle (containing the previous CA but not the current
-	// one) will be able to trust the serving cert.
-	if intermediateCACert != nil {
-		servingCert.Certs = append(servingCert.Certs, intermediateCACert)
-	}
-
-	return servingCert, nil
-}
-
-func toRequiredSecret(dnsSuffix string, ca *crypto.CA, intermediateCACert *x509.Certificate, service *corev1.Service, secretCopy *corev1.Secret, lifetime time.Duration) error {
-	servingCert, err := MakeServingCert(dnsSuffix, ca, intermediateCACert, service, lifetime)
-	if err != nil {
-		return err
-	}
-	certBytes, keyBytes, err := servingCert.GetPEMBytes()
-	if err != nil {
-		return err
-	}
-	if secretCopy.Annotations == nil {
-		secretCopy.Annotations = map[string]string{}
-	}
-	// let garbage collector cleanup map allocation, for simplicity
-	secretCopy.Data = map[string][]byte{
-		corev1.TLSCertKey:       certBytes,
-		corev1.TLSPrivateKeyKey: keyBytes,
-	}
-
-	secretCopy.Annotations[api.AlphaServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
-	secretCopy.Annotations[api.ServingCertExpiryAnnotation] = servingCert.Certs[0].NotAfter.Format(time.RFC3339)
-
-	controller.EnsureOwnerRef(secretCopy, ownerRef(service))
-
-	return nil
 }
 
 func setErrAnnotation(service *corev1.Service, err error) {

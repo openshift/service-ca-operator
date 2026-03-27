@@ -45,7 +45,8 @@ func TestInitializeSigningSecret(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			now := time.Now()
 			secret := &corev1.Secret{}
-			initializeSigningSecret(secret, 0, tc.duration)
+			operator := &serviceCAOperator{}
+			operator.initializeSigningSecret(secret, 0, tc.duration)
 
 			// Check that the initialized key pair is valid
 			rawCert := secret.Data[corev1.TLSCertKey]

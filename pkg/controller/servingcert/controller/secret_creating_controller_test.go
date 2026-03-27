@@ -96,16 +96,19 @@ func controllerSetup(t *testing.T, ca *crypto.CA, service *corev1.Service, secre
 
 	// setup the controller
 	controller := &serviceServingCertController{
+		servingCertIssuer: servingCertIssuer{
+			ca:                 ca,
+			intermediateCACert: nil,
+			dnsSuffix:          "cluster.local",
+		},
+
 		serviceClient: kubeclient.CoreV1(),
 		secretClient:  kubeclient.CoreV1(),
 
 		serviceLister: svcLister,
 		secretLister:  secretLister,
 
-		ca:                 ca,
-		intermediateCACert: nil,
-		dnsSuffix:          "cluster.local",
-		maxRetries:         10,
+		maxRetries: 10,
 	}
 	return kubeclient, controller, svcIndexer
 }
