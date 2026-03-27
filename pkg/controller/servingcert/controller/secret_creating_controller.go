@@ -144,7 +144,7 @@ func (sc *serviceServingCertController) Sync(ctx context.Context, syncContext fa
 }
 
 func (sc *serviceServingCertController) generateCert(ctx context.Context, serviceCopy *corev1.Service) error {
-	klog.V(4).Infof("generating new cert for %s/%s", serviceCopy.GetNamespace(), serviceCopy.GetName())
+	klog.V(2).Infof("generating new cert for %s/%s", serviceCopy.GetNamespace(), serviceCopy.GetName())
 	if serviceCopy.Annotations == nil {
 		serviceCopy.Annotations = map[string]string{}
 	}
@@ -169,7 +169,7 @@ func (sc *serviceServingCertController) generateCert(ctx context.Context, servic
 			uidErr := fmt.Errorf("secret %s/%s does not have corresponding service UID %v", actualSecret.GetNamespace(), actualSecret.GetName(), serviceCopy.UID)
 			return sc.updateServiceFailure(ctx, serviceCopy, uidErr)
 		}
-		klog.V(4).Infof("renewing cert in existing secret %s/%s", secret.GetNamespace(), secret.GetName())
+		klog.V(2).Infof("renewing cert in existing secret %s/%s", secret.GetNamespace(), secret.GetName())
 		// Actually update the secret in the regeneration case (the secret already exists but we want to update to a new cert).
 		_, updateErr := sc.secretClient.Secrets(secret.GetNamespace()).Update(ctx, secret, metav1.UpdateOptions{})
 		if updateErr != nil {
@@ -239,12 +239,12 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 func (sc *serviceServingCertController) secretRequiresCertGeneration(service *corev1.Service, secret *corev1.Secret) bool {
 	certs, err := cert.ParseCertsPEM(secret.Data[corev1.TLSCertKey])
 	if err != nil {
-		klog.V(4).Infof("warning: error parsing certificate data in %s/%s during regeneration check: %v",
+		klog.V(2).Infof("warning: error parsing certificate data in %s/%s during regeneration check: %v",
 			secret.Namespace, secret.Name, err)
 		return true
 	}
 	if len(certs) == 0 || certs[0] == nil {
-		klog.V(4).Infof("warning: no certs returned from ParseCertsPEM during regeneration check")
+		klog.V(2).Infof("warning: no certs returned from ParseCertsPEM during regeneration check")
 		return true
 	}
 	cert := certs[0]
@@ -303,7 +303,7 @@ func (sc *serviceServingCertController) updateServiceFailure(ctx context.Context
 	incrementFailureNumAnnotation(service)
 	_, updateErr := sc.serviceClient.Services(service.Namespace).Update(ctx, service, metav1.UpdateOptions{})
 	if updateErr != nil {
-		klog.V(4).Infof("warning: failed to update failure annotations on service %s: %v", service.Name, updateErr)
+		klog.V(2).Infof("warning: failed to update failure annotations on service %s: %v", service.Name, updateErr)
 	}
 	// Past the max retries means we've handled this failure enough, so forget it from the queue.
 	if updateErr == nil && getNumFailures(service) >= sc.maxRetries {
