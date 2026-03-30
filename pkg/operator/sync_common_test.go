@@ -24,7 +24,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resource/resourcemerge"
 	"github.com/openshift/library-go/pkg/operator/resource/resourceread"
 
-	"github.com/openshift/service-ca-operator/pkg/operator/v4_00_assets"
+	"github.com/openshift/service-ca-operator/bindata"
 )
 
 func TestInitializeSigningSecret(t *testing.T) {
@@ -78,7 +78,7 @@ func TestInitializeSigningSecret(t *testing.T) {
 }
 
 func TestManageDeployment(t *testing.T) {
-	baseDeployment := resourceread.ReadDeploymentV1OrDie(v4_00_assets.MustAsset(resourcePath + "deployment.yaml"))
+	baseDeployment := resourceread.ReadDeploymentV1OrDie(bindata.MustAsset("assets/deployment.yaml"))
 	baseDeploymentPopulated := deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).valueOrDie()
 	tests := []struct {
 		name                     string

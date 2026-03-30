@@ -3,7 +3,6 @@ module github.com/openshift/service-ca-operator
 go 1.25.0
 
 require (
-	github.com/go-bindata/go-bindata v3.1.2+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/openshift-eng/openshift-tests-extension v0.0.0-20250804142706-7b3ab438a292
