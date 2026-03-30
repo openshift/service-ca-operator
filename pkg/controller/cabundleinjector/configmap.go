@@ -2,6 +2,7 @@ package cabundleinjector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -19,7 +20,7 @@ import (
 type configMapCABundleInjector struct {
 	client   kcoreclient.ConfigMapsGetter
 	lister   listers.ConfigMapLister
-	caBundle string
+	caBundle *bundleCache
 
 	filterFn func(configMap *corev1.ConfigMap) bool
 }
@@ -30,7 +31,7 @@ func newConfigMapInjectorConfig(config *caBundleInjectorConfig) controllerConfig
 	syncer := &configMapCABundleInjector{
 		client:   config.kubeClient.CoreV1(),
 		lister:   informer.Lister(),
-		caBundle: string(config.caBundle),
+		caBundle: config.caBundle,
 	}
 
 	return controllerConfig{
@@ -53,7 +54,7 @@ func newVulnerableLegacyConfigMapInjectorConfig(config *caBundleInjectorConfig) 
 	syncer := &configMapCABundleInjector{
 		client:   config.kubeClient.CoreV1(),
 		lister:   informer.Lister(),
-		caBundle: string(config.legacyVulnerableCABundle),
+		caBundle: config.legacyVulnerableCABundle,
 
 		// only set content for the one configmap that we are required to for backward compatibility.  This limits the
 		// future potential for abuse.
@@ -88,6 +89,12 @@ func newVulnerableLegacyConfigMapInjectorConfig(config *caBundleInjectorConfig) 
 func (bi *configMapCABundleInjector) Sync(ctx context.Context, syncCtx factory.SyncContext) error {
 	namespace, name := namespacedObjectFromQueueKey(syncCtx.QueueKey())
 
+	caBundleBytes := bi.caBundle.Load()
+	if caBundleBytes == nil {
+		return errors.New("CA bundle is not available")
+	}
+	caBundle := string(caBundleBytes)
+
 	configMap, err := bi.lister.ConfigMaps(namespace).Get(name)
 	if apierrors.IsNotFound(err) {
 		return nil
@@ -101,7 +108,7 @@ func (bi *configMapCABundleInjector) Sync(ctx context.Context, syncCtx factory.S
 
 	// skip updating when the CA bundle is already there
 	if data, ok := configMap.Data[api.InjectionDataKey]; ok &&
-		data == bi.caBundle && len(configMap.Data) == 1 {
+		data == caBundle && len(configMap.Data) == 1 {
 
 		return nil
 	}
@@ -110,7 +117,7 @@ func (bi *configMapCABundleInjector) Sync(ctx context.Context, syncCtx factory.S
 
 	// make a copy to avoid mutating cache state
 	configMapCopy := configMap.DeepCopy()
-	configMapCopy.Data = map[string]string{api.InjectionDataKey: bi.caBundle}
+	configMapCopy.Data = map[string]string{api.InjectionDataKey: caBundle}
 	// set the owning-component unless someone else has claimed it.
 	if len(configMapCopy.Annotations[apiannotations.OpenShiftComponent]) == 0 {
 		configMapCopy.Annotations[apiannotations.OpenShiftComponent] = api.OwningJiraComponent
