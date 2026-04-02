@@ -23,7 +23,6 @@ import (
 	"github.com/openshift/library-go/pkg/operator/resourcesynccontroller"
 	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
-
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 )
@@ -171,6 +170,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		minimumTrustDuration,
 		signingCertificateLifetime,
 		shortCertRotationEnabled,
+		featureGates,
 	)
 
 	for _, informerStarter := range []func(<-chan struct{}){

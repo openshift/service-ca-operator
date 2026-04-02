@@ -87,16 +87,17 @@ func TestWebhookCABundleInjectorSync(t *testing.T) {
 			defer cancel()
 
 			webhookClient := fake.NewSimpleClientset(testWebhook)
-			webhookInformer := informers.NewSharedInformerFactory(webhookClient, 1*time.Hour)
-			go webhookInformer.Start(testCtx.Done())
-			waitSuccess := cache.WaitForCacheSync(testCtx.Done(), webhookInformer.Admissionregistration().V1().ValidatingWebhookConfigurations().Informer().HasSynced)
+			kubeInformers := informers.NewSharedInformerFactory(webhookClient, 1*time.Hour)
+			hasSynced := kubeInformers.Admissionregistration().V1().ValidatingWebhookConfigurations().Informer().HasSynced
+			go kubeInformers.Start(testCtx.Done())
+			waitSuccess := cache.WaitForCacheSync(testCtx.Done(), hasSynced)
 			require.True(t, waitSuccess)
 
 			injector := webhookCABundleInjector[admissionregv1.ValidatingWebhookConfiguration]{
 				webhookConfigType:        "testwebhook",
 				newWebhookConfigAccessor: newValidatingWebhookAccessor,
 				client:                   webhookClient.AdmissionregistrationV1().ValidatingWebhookConfigurations(),
-				lister:                   webhookInformer.Admissionregistration().V1().ValidatingWebhookConfigurations().Lister(),
+				lister:                   kubeInformers.Admissionregistration().V1().ValidatingWebhookConfigurations().Lister(),
 				caBundle:                 testCABundle,
 			}
 
