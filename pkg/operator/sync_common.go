@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/openshift/library-go/pkg/pki"
 	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
 
 	corev1 "k8s.io/api/core/v1"
@@ -103,11 +104,11 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 	if existingCert == nil {
 		// Secret does not exist or lacks the expected cert.
 		validityDuration := serviceCAConfig.CAConfig.ValidityDurationForTesting
-		if err := initializeSigningSecret(secret, validityDuration, c.signingCertificateLifetime); err != nil {
+		if err := c.initializeSigningSecret(secret, validityDuration, c.signingCertificateLifetime); err != nil {
 			return false, err
 		}
 	} else {
-		rotationMsg, err = maybeRotateSigningSecret(existing, existingCert, serviceCAConfig, c.minimumTrustDuration, c.signingCertificateLifetime)
+		rotationMsg, err = c.maybeRotateSigningSecret(existing, existingCert, serviceCAConfig, c.minimumTrustDuration, c.signingCertificateLifetime)
 		if err != nil {
 			return false, fmt.Errorf("failed to rotate signing CA: %v", err)
 		}
@@ -138,11 +139,43 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 // PEM-encoded certificate and private key of a new self-signed
 // CA. The duration, if non-zero, will be used to set the
 // expiry of the CA.
-func initializeSigningSecret(secret *corev1.Secret, duration time.Duration, lifetime time.Duration) error {
+func (c *serviceCAOperator) initializeSigningSecret(secret *corev1.Secret, duration time.Duration, lifetime time.Duration) error {
 	name := serviceServingCertSignerName()
 	klog.V(4).Infof("generating signing CA: %s", name)
 
-	ca, err := crypto.MakeSelfSignedCAConfig(name, lifetime)
+	var ca *crypto.TLSCertificateConfig
+	var err error
+	// When configurable PKI is enabled, attempt to resolve a certificate
+	// config from the PKI profile. A nil config (Unmanaged mode) means
+	// no custom key configuration is active, so fall through to the
+	// legacy code path.
+	if c.configurablePKIEnabled {
+		var certificateCfg *pki.CertificateConfig
+		certificateCfg, err = pki.ResolveCertificateConfig(c.pkiProvider, pki.CertificateTypeSigner, "service-ca.service-serving-signer")
+		// TODO: This NotFound fallback may be temporary while ConfigurablePKI
+		// is in tech preview. Once the installer provides the initial "cluster"
+		// PKI resource, this fallback may no longer be needed.
+		if apierrors.IsNotFound(err) {
+			klog.V(2).Infof("PKI resource not found, using default PKI profile")
+			defaultProfile := pki.DefaultPKIProfile()
+			defaultProvider := pki.NewStaticPKIProfileProvider(&defaultProfile)
+			certificateCfg, err = pki.ResolveCertificateConfig(defaultProvider, pki.CertificateTypeSigner, "service-ca.service-serving-signer")
+		}
+		if err != nil {
+			return fmt.Errorf("failed to resolve PKI certificate config: %w", err)
+		}
+		if certificateCfg != nil {
+			ca, err = crypto.NewSigningCertificate(name, certificateCfg.Key, crypto.WithLifetime(lifetime))
+			if err != nil {
+				return err
+			}
+		}
+	}
+	// Fall back to legacy cert generation when configurable PKI is
+	// disabled or the PKI profile is Unmanaged (nil config).
+	if ca == nil {
+		ca, err = crypto.MakeSelfSignedCAConfig(name, lifetime)
+	}
 	if err != nil {
 		return err
 	}
@@ -199,6 +232,12 @@ func (c *serviceCAOperator) manageDeployment(ctx context.Context, options *opera
 	required := resourceread.ReadDeploymentV1OrDie(bindata.MustAsset("assets/deployment.yaml"))
 	required.Spec.Template.Spec.Containers[0].Image = os.Getenv("CONTROLLER_IMAGE")
 	required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, fmt.Sprintf("-v=%d", loglevel.LogLevelToVerbosity(options.Spec.LogLevel)))
+	for i := range required.Spec.Template.Spec.Containers[0].Env {
+		if required.Spec.Template.Spec.Containers[0].Env[i].Name == operatorVersionEnvName {
+			required.Spec.Template.Spec.Containers[0].Env[i].Value = os.Getenv(operatorVersionEnvName)
+			break
+		}
+	}
 
 	if c.shortCertRotationEnabled {
 		required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, "--feature-gates=ShortCertRotation=true")

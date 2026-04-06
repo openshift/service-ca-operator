@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/openshift/api/features"
+	configinformers "github.com/openshift/client-go/config/informers/externalversions"
+	"github.com/openshift/library-go/pkg/pki"
 	v1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,28 +22,29 @@ import (
 	ocontroller "github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
 
 type serviceServingCertUpdateController struct {
+	servingCertIssuer
+
 	secretClient kcoreclient.SecretsGetter
 
 	serviceLister listers.ServiceLister
 	secretLister  listers.SecretLister
 
-	ca                 *crypto.CA
-	intermediateCACert *x509.Certificate
-	dnsSuffix          string
 	// minTimeLeftForCert is how much time is remaining for the serving cert before regenerating it.
-	minTimeLeftForCert  time.Duration
-	certificateLifetime time.Duration
+	minTimeLeftForCert time.Duration
 }
 
 func NewServiceServingCertUpdateController(
 	services informers.ServiceInformer,
 	secrets informers.SecretInformer,
 	secretClient kcoreclient.SecretsGetter,
+	configInformers configinformers.SharedInformerFactory,
+	featureGates featuregates.FeatureGate,
 	ca *crypto.CA,
 	intermediateCACert *x509.Certificate,
 	dnsSuffix string,
@@ -50,22 +54,32 @@ func NewServiceServingCertUpdateController(
 ) factory.Controller {
 
 	sc := &serviceServingCertUpdateController{
+		servingCertIssuer: servingCertIssuer{
+			ca:                     ca,
+			intermediateCACert:     intermediateCACert,
+			dnsSuffix:              dnsSuffix,
+			certificateLifetime:    certificateLifetime,
+			configurablePKIEnabled: featureGates.Enabled(features.FeatureGateConfigurablePKI),
+		},
+
 		secretClient:  secretClient,
 		serviceLister: services.Lister(),
 		secretLister:  secrets.Lister(),
 
-		ca:                  ca,
-		intermediateCACert:  intermediateCACert,
-		dnsSuffix:           dnsSuffix,
-		minTimeLeftForCert:  minTimeLeftForCert,
-		certificateLifetime: certificateLifetime,
+		minTimeLeftForCert: minTimeLeftForCert,
 	}
 
-	return factory.New().
+	f := factory.New().
 		WithFilteredEventsInformersQueueKeyFunc(namespacedObjToQueueKey, secretsQueueFilter, secrets.Informer()).
 		WithBareInformers(services.Informer()).
-		WithSync(sc.Sync).
-		ToController("ServiceServingCertUpdateController", recorder.WithComponentSuffix("service-serving-cert-update-controller"))
+		WithSync(sc.Sync)
+
+	if sc.configurablePKIEnabled {
+		sc.pkiProvider = pki.NewListerPKIProfileProvider(configInformers.Config().V1alpha1().PKIs().Lister(), "cluster")
+		f.WithBareInformers(configInformers.Config().V1alpha1().PKIs().Informer())
+	}
+
+	return f.ToController("ServiceServingCertUpdateController", recorder.WithComponentSuffix("service-serving-cert-update-controller"))
 }
 
 func (sc *serviceServingCertUpdateController) Sync(ctx context.Context, syncCtx factory.SyncContext) error {
@@ -92,10 +106,10 @@ func (sc *serviceServingCertUpdateController) Sync(ctx context.Context, syncCtx 
 
 	if sc.requiresRegeneration(service, sharedSecret, sc.minTimeLeftForCert) {
 		// Regenerate the secret
-		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy, sc.certificateLifetime); err != nil {
+		if err := sc.toRequiredSecret(service, secretCopy); err != nil {
 			return err
 		}
-		_, err := sc.secretClient.Secrets(secretCopy.Namespace).Update(ctx, secretCopy, metav1.UpdateOptions{})
+		_, err = sc.secretClient.Secrets(secretCopy.Namespace).Update(ctx, secretCopy, metav1.UpdateOptions{})
 		return err
 	}
 	// If not regenerating, perform checks here to
@@ -185,7 +199,7 @@ func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Servi
 	} else {
 		// if required tlscertkey,tlsprivatekey fields missing, replace with valid secret
 		// Regenerate the secret
-		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy, sc.certificateLifetime); err != nil {
+		if err := sc.toRequiredSecret(service, secretCopy); err != nil {
 			return update, err
 		}
 		return true, nil
@@ -197,7 +211,7 @@ func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Servi
 		// Regenerate the secret
 		klog.Infof("Error decoding cert bytes %s from secret: %s namespace: %s, replacing cert", v1.TLSCertKey, secretCopy.Name, secretCopy.Namespace)
 		// Regenerate the secret
-		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy, sc.certificateLifetime); err != nil {
+		if err := sc.toRequiredSecret(service, secretCopy); err != nil {
 			return update, err
 		}
 		return true, nil
@@ -206,7 +220,7 @@ func (sc *serviceServingCertUpdateController) ensureSecretData(service *v1.Servi
 	if err != nil {
 		klog.Infof("Error parsing %s from secret: %s namespace: %s, replacing cert", v1.TLSCertKey, secretCopy.Name, secretCopy.Namespace)
 		// Regenerate the secret
-		if err := toRequiredSecret(sc.dnsSuffix, sc.ca, sc.intermediateCACert, service, secretCopy, sc.certificateLifetime); err != nil {
+		if err := sc.toRequiredSecret(service, secretCopy); err != nil {
 			return update, err
 		}
 		return true, nil

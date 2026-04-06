@@ -2,7 +2,7 @@ package operator
 
 import (
 	"bytes"
-	"crypto/rsa"
+	gocrypto "crypto"
 	"crypto/x509"
 	"reflect"
 	"testing"
@@ -105,7 +105,8 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 				},
 			}
 			secret := tc.secret.DeepCopy()
-			rotationMessage, err := maybeRotateSigningSecret(secret, tc.caCert, serviceCAConfig, minimumTrustDuration, signingCertificateLifetime)
+			operator := &serviceCAOperator{}
+			rotationMessage, err := operator.maybeRotateSigningSecret(secret, tc.caCert, serviceCAConfig, minimumTrustDuration, signingCertificateLifetime)
 			if err != nil {
 				t.Fatalf("error rotating signing secret: %v", err)
 			}
@@ -219,7 +220,8 @@ func TestRotateSigningCA(t *testing.T) {
 	}
 
 	// Rotate the CA
-	newSigningCA, err := rotateSigningCA(renewedCAConfig.Certs[0], renewedCAConfig.Key.(*rsa.PrivateKey), minimumTrustDuration, signingCertificateLifetime)
+	operator := &serviceCAOperator{}
+	newSigningCA, err := operator.rotateSigningCA(renewedCAConfig.Certs[0], renewedCAConfig.Key.(gocrypto.Signer), minimumTrustDuration, signingCertificateLifetime)
 	if err != nil {
 		t.Fatalf("Error rotating signing ca: %v", err)
 	}
@@ -277,7 +279,7 @@ func TestCreateIntermediateCACert(t *testing.T) {
 	}
 	targetCACert := targetCAConfig.Certs[0]
 
-	intermediateCACert, err := createIntermediateCACert(targetCACert, signingCACert, signingCAConfig.Key.(*rsa.PrivateKey), nil)
+	intermediateCACert, err := createIntermediateCACert(targetCACert, signingCACert, signingCAConfig.Key.(gocrypto.Signer), nil)
 	if err != nil {
 		t.Fatalf("Failed to create intermediate CA cert: %v", err)
 	}
