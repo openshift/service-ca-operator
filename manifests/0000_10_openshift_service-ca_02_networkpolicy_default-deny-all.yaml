@@ -1,0 +1,14 @@
+# Deny all ingress and egress traffic for all pods in the namespace by default.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: openshift-service-ca
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
