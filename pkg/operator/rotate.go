@@ -121,7 +121,7 @@ func (c *serviceCAOperator) rotateSigningCA(currentCACert *x509.Certificate, cur
 	// legacy code path.
 	var newCAConfig *crypto.TLSCertificateConfig
 	var err error
-	if c.configurablePKIEnabled {
+	if c.enabledFeatureGates["ConfigurablePKI"] {
 		var certificateCfg *pki.CertificateConfig
 		certificateCfg, err = pki.ResolveCertificateConfig(c.pkiProvider, pki.CertificateTypeSigner, "service-ca.service-serving-signer")
 		// TODO: This NotFound fallback may be temporary while ConfigurablePKI

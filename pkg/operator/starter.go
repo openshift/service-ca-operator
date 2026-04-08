@@ -149,12 +149,15 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	// trusted) should be valid for at least this long.
 	minimumTrustDuration := 395 * 24 * time.Hour
 
-	shortCertRotationEnabled := false
+	enabledFeatureGates := map[string]bool{}
 
 	if featureGates.Enabled(features.FeatureShortCertRotation) {
 		minimumTrustDuration = time.Hour + 15*time.Minute
 		signingCertificateLifetime = time.Hour*2 + 30*time.Minute
-		shortCertRotationEnabled = true
+		enabledFeatureGates["ShortCertRotation"] = true
+	}
+	if featureGates.Enabled(features.FeatureGateConfigurablePKI) {
+		enabledFeatureGates["ConfigurablePKI"] = true
 	}
 	klog.Infof("Setting signing certificate lifetime to %v, minimum trust duration to %v", signingCertificateLifetime, minimumTrustDuration)
 
@@ -169,8 +172,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		controllerContext.EventRecorder,
 		minimumTrustDuration,
 		signingCertificateLifetime,
-		shortCertRotationEnabled,
-		featureGates,
+		enabledFeatureGates,
 	)
 
 	for _, informerStarter := range []func(<-chan struct{}){
