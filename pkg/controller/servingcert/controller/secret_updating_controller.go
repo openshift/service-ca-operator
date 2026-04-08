@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openshift/api/features"
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
 	"github.com/openshift/library-go/pkg/pki"
 	v1 "k8s.io/api/core/v1"
@@ -22,7 +21,6 @@ import (
 	ocontroller "github.com/openshift/library-go/pkg/controller"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/crypto"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 )
@@ -44,7 +42,7 @@ func NewServiceServingCertUpdateController(
 	secrets informers.SecretInformer,
 	secretClient kcoreclient.SecretsGetter,
 	configInformers configinformers.SharedInformerFactory,
-	featureGates featuregates.FeatureGate,
+	configurablePKIEnabled bool,
 	ca *crypto.CA,
 	intermediateCACert *x509.Certificate,
 	dnsSuffix string,
@@ -59,7 +57,7 @@ func NewServiceServingCertUpdateController(
 			intermediateCACert:     intermediateCACert,
 			dnsSuffix:              dnsSuffix,
 			certificateLifetime:    certificateLifetime,
-			configurablePKIEnabled: featureGates.Enabled(features.FeatureGateConfigurablePKI),
+			configurablePKIEnabled: configurablePKIEnabled,
 		},
 
 		secretClient:  secretClient,
