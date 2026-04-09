@@ -6,6 +6,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/openshift/library-go/pkg/pki"
@@ -149,7 +151,7 @@ func (c *serviceCAOperator) initializeSigningSecret(secret *corev1.Secret, durat
 	// config from the PKI profile. A nil config (Unmanaged mode) means
 	// no custom key configuration is active, so fall through to the
 	// legacy code path.
-	if c.configurablePKIEnabled {
+	if c.enabledFeatureGates["ConfigurablePKI"] {
 		var certificateCfg *pki.CertificateConfig
 		certificateCfg, err = pki.ResolveCertificateConfig(c.pkiProvider, pki.CertificateTypeSigner, "service-ca.service-serving-signer")
 		// TODO: This NotFound fallback may be temporary while ConfigurablePKI
@@ -239,8 +241,8 @@ func (c *serviceCAOperator) manageDeployment(ctx context.Context, options *opera
 		}
 	}
 
-	if c.shortCertRotationEnabled {
-		required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, "--feature-gates=ShortCertRotation=true")
+	if featureGateArgs := featureGateArg(c.enabledFeatureGates); len(featureGateArgs) > 0 {
+		required.Spec.Template.Spec.Containers[0].Args = append(required.Spec.Template.Spec.Containers[0].Args, featureGateArgs)
 	}
 
 	if runOnWorkers {
@@ -258,6 +260,20 @@ func (c *serviceCAOperator) manageDeployment(ctx context.Context, options *opera
 	resourcemerge.SetDeploymentGeneration(&options.Status.Generations, deployment)
 
 	return mod, nil
+}
+
+func featureGateArg(enabledFeatureGates map[string]bool) string {
+	var gates []string
+	for name, enabled := range enabledFeatureGates {
+		if enabled {
+			gates = append(gates, fmt.Sprintf("%s=true", name))
+		}
+	}
+	if len(gates) == 0 {
+		return ""
+	}
+	sort.Strings(gates)
+	return fmt.Sprintf("--feature-gates=%s", strings.Join(gates, ","))
 }
 
 func serviceServingCertSignerName() string {

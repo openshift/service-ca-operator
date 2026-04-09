@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/openshift/api/features"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	appsclientv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
@@ -18,7 +17,6 @@ import (
 	configv1listers "github.com/openshift/client-go/config/listers/config/v1"
 	operatorv1listers "github.com/openshift/client-go/operator/listers/operator/v1"
 	"github.com/openshift/library-go/pkg/controller/factory"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
@@ -41,9 +39,8 @@ type serviceCAOperator struct {
 	minimumTrustDuration       time.Duration
 	signingCertificateLifetime time.Duration
 
-	shortCertRotationEnabled bool
-	configurablePKIEnabled   bool
-	pkiProvider              pki.PKIProfileProvider
+	enabledFeatureGates map[string]bool
+	pkiProvider         pki.PKIProfileProvider
 }
 
 func NewServiceCAOperator(
@@ -58,8 +55,7 @@ func NewServiceCAOperator(
 	eventRecorder events.Recorder,
 	minimumTrustDuration time.Duration,
 	signingCertificateLifetime time.Duration,
-	shortCertRotationEnabled bool,
-	featureGates featuregates.FeatureGate,
+	enabledFeatureGates map[string]bool,
 ) factory.Controller {
 	c := &serviceCAOperator{
 		operatorClient:       operatorClient,
@@ -74,9 +70,7 @@ func NewServiceCAOperator(
 
 		minimumTrustDuration:       minimumTrustDuration,
 		signingCertificateLifetime: signingCertificateLifetime,
-		shortCertRotationEnabled:   shortCertRotationEnabled,
-
-		configurablePKIEnabled: featureGates.Enabled(features.FeatureGateConfigurablePKI),
+		enabledFeatureGates:        enabledFeatureGates,
 	}
 
 	syncInformers := []factory.Informer{
@@ -87,7 +81,7 @@ func NewServiceCAOperator(
 		operatorClient.Informers.Operator().V1().ServiceCAs().Informer(),
 		configInformers.Config().V1().Infrastructures().Informer(),
 	}
-	if c.configurablePKIEnabled {
+	if c.enabledFeatureGates["ConfigurablePKI"] {
 		syncInformers = append(syncInformers, configInformers.Config().V1alpha1().PKIs().Informer())
 		c.pkiProvider = pki.NewListerPKIProfileProvider(configInformers.Config().V1alpha1().PKIs().Lister(), "cluster")
 	}

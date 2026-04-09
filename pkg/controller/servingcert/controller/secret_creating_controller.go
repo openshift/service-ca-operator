@@ -9,9 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openshift/api/features"
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/pki"
 	corev1 "k8s.io/api/core/v1"
 	kapierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -51,7 +49,7 @@ func NewServiceServingCertController(
 	serviceClient kcoreclient.ServicesGetter,
 	secretClient kcoreclient.SecretsGetter,
 	configInformers configinformers.SharedInformerFactory,
-	featureGates featuregates.FeatureGate,
+	configurablePKIEnabled bool,
 	ca *crypto.CA,
 	intermediateCACert *x509.Certificate,
 	dnsSuffix string,
@@ -65,7 +63,7 @@ func NewServiceServingCertController(
 			intermediateCACert:     intermediateCACert,
 			dnsSuffix:              dnsSuffix,
 			certificateLifetime:    certificateLifetime,
-			configurablePKIEnabled: featureGates.Enabled(features.FeatureGateConfigurablePKI),
+			configurablePKIEnabled: configurablePKIEnabled,
 		},
 
 		serviceClient: serviceClient,

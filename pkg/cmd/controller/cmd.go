@@ -14,11 +14,16 @@ import (
 )
 
 func NewController() *cobra.Command {
+	// Feature gates are supplied via CLI args by the operator process
+	// rather than detected at runtime. This avoids a dependency on the
+	// ClusterVersion and FeatureGate CRDs, which do not exist on
+	// MicroShift. See manageDeployment in pkg/operator/sync_common.go
+	// for where these args are injected.
 	var featureGates map[string]bool
 
 	cmd := controllercmd.
 		NewControllerCommandConfig("service-ca-controller", version.Get(), func(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
-			return controller.StartServiceCAControllers(ctx, controllerContext, featureGates["ShortCertRotation"])
+			return controller.StartServiceCAControllers(ctx, controllerContext, featureGates)
 		}, clock.RealClock{}).
 		NewCommand()
 	cmd.Use = "controller"

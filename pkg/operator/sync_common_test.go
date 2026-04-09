@@ -82,13 +82,13 @@ func TestManageDeployment(t *testing.T) {
 	baseDeployment := resourceread.ReadDeploymentV1OrDie(bindata.MustAsset("assets/deployment.yaml"))
 	baseDeploymentPopulated := deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).valueOrDie()
 	tests := []struct {
-		name                     string
-		runOnWorkers             bool
-		loglevel                 operatorv1.LogLevel
-		image                    string
-		operatorVersion          string
-		shortCertRotationEnabled bool
-		expectedDeployment       *appsv1.Deployment
+		name                string
+		runOnWorkers        bool
+		loglevel            operatorv1.LogLevel
+		image               string
+		operatorVersion     string
+		enabledFeatureGates map[string]bool
+		expectedDeployment  *appsv1.Deployment
 	}{
 		{
 			name:               "base deployment",
@@ -112,12 +112,12 @@ func TestManageDeployment(t *testing.T) {
 			expectedDeployment: deployment(baseDeployment).withImage("barbaz").withLogLevel(operatorv1.Normal).withNodeSelector(map[string]string{}).valueOrDie(),
 		},
 		{
-			name:                     "feature gates",
-			image:                    "foobar",
-			runOnWorkers:             false,
-			loglevel:                 operatorv1.Normal,
-			shortCertRotationEnabled: true,
-			expectedDeployment:       deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).withFeatureGates([]string{"ShortCertRotation=true"}).valueOrDie(),
+			name:                "feature gates",
+			image:               "foobar",
+			runOnWorkers:        false,
+			loglevel:            operatorv1.Normal,
+			enabledFeatureGates: map[string]bool{"ShortCertRotation": true},
+			expectedDeployment:  deployment(baseDeployment).withImage("foobar").withLogLevel(operatorv1.Normal).withFeatureGates([]string{"ShortCertRotation=true"}).valueOrDie(),
 		},
 		{
 			name:               "operator version propagated to controller",
@@ -134,9 +134,9 @@ func TestManageDeployment(t *testing.T) {
 			os.Setenv("CONTROLLER_IMAGE", test.image)
 			os.Setenv(operatorVersionEnvName, test.operatorVersion)
 			operator := &serviceCAOperator{
-				appsv1Client:             appsClient,
-				eventRecorder:            events.NewInMemoryRecorder("managedeployment_test", clock.RealClock{}),
-				shortCertRotationEnabled: test.shortCertRotationEnabled,
+				appsv1Client:        appsClient,
+				eventRecorder:       events.NewInMemoryRecorder("managedeployment_test", clock.RealClock{}),
+				enabledFeatureGates: test.enabledFeatureGates,
 			}
 			serviceCA := &operatorv1.ServiceCA{
 				Spec: operatorv1.ServiceCASpec{

@@ -17,12 +17,10 @@ import (
 	configexternalinformers "github.com/openshift/client-go/config/informers/externalversions"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 	"github.com/openshift/library-go/pkg/crypto"
-	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
-	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/controller"
 )
 
-func StartServiceServingCertSigner(ctx context.Context, controllerContext *controllercmd.ControllerContext, shortCertRotationEnabled bool) error {
+func StartServiceServingCertSigner(ctx context.Context, controllerContext *controllercmd.ControllerContext, enabledFeatureGates map[string]bool) error {
 	// TODO(marun) Allow the following values to be supplied via argument
 	certFile := "/var/run/secrets/signing-key/tls.crt"
 	keyFile := "/var/run/secrets/signing-key/tls.key"
@@ -45,35 +43,27 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	}
 	kubeInformers := informers.NewSharedInformerFactory(kubeClient, 20*time.Minute)
 
-	configClient, err := configeversionedclient.NewForConfig(controllerContext.KubeConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create config client: %w", err)
-	}
+	// Feature gates are passed to the controller via CLI args from the
+	// operator process, rather than being detected at runtime via
+	// FeatureGate/ClusterVersion informers. This is necessary because
+	// MicroShift does not have the ClusterVersion and FeatureGate CRDs,
+	// and runtime detection would cause the controller to crash.
+	configurablePKIEnabled := enabledFeatureGates["ConfigurablePKI"]
 
-	configInformers := configexternalinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
-
-	featureGateAccessor := featuregates.NewFeatureGateAccess(
-		status.VersionForOperatorFromEnv(), "0.0.1-snapshot",
-		configInformers.Config().V1().ClusterVersions(),
-		configInformers.Config().V1().FeatureGates(),
-		controllerContext.EventRecorder,
-	)
-	configInformers.Start(ctx.Done())
-	go featureGateAccessor.Run(ctx)
-
-	var featureGates featuregates.FeatureGate
-	select {
-	case <-featureGateAccessor.InitialFeatureGatesObserved():
-		featureGates, _ = featureGateAccessor.CurrentFeatureGates()
-		klog.Infof("FeatureGates initialized: knownFeatureGates=%v", featureGates.KnownFeatures())
-	case <-time.After(1 * time.Minute):
-		klog.Errorf("timed out waiting for FeatureGate detection")
-		return fmt.Errorf("timed out waiting for FeatureGate detection")
+	// Only create config informers when ConfigurablePKI is enabled, since
+	// MicroShift may not have the required config CRDs.
+	var configInformers configexternalinformers.SharedInformerFactory
+	if configurablePKIEnabled {
+		configClient, err := configeversionedclient.NewForConfig(controllerContext.KubeConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create config client: %w", err)
+		}
+		configInformers = configexternalinformers.NewSharedInformerFactory(configClient, 10*time.Minute)
 	}
 
 	minTimeLeftForCert := time.Hour
 	certificateLifetime := 2 * 365 * 24 * time.Hour
-	if shortCertRotationEnabled {
+	if enabledFeatureGates["ShortCertRotation"] {
 		minTimeLeftForCert = time.Hour
 		certificateLifetime = time.Hour * 2
 	}
@@ -85,7 +75,7 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		kubeClient.CoreV1(),
 		kubeClient.CoreV1(),
 		configInformers,
-		featureGates,
+		configurablePKIEnabled,
 		ca,
 		intermediateCACert,
 		// TODO this needs to be configurable
@@ -98,7 +88,7 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 		kubeInformers.Core().V1().Secrets(),
 		kubeClient.CoreV1(),
 		configInformers,
-		featureGates,
+		configurablePKIEnabled,
 		ca,
 		intermediateCACert,
 		// TODO this needs to be configurable
@@ -109,7 +99,9 @@ func StartServiceServingCertSigner(ctx context.Context, controllerContext *contr
 	)
 
 	kubeInformers.Start(ctx.Done())
-	configInformers.Start(ctx.Done())
+	if configInformers != nil {
+		configInformers.Start(ctx.Done())
+	}
 
 	go servingCertController.Run(ctx, 5)
 	go servingCertUpdateController.Run(ctx, 5)

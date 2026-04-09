@@ -8,12 +8,12 @@ import (
 	certstart "github.com/openshift/service-ca-operator/pkg/controller/servingcert/starter"
 )
 
-func StartServiceCAControllers(ctx context.Context, controllerContext *controllercmd.ControllerContext, shortCertRotationEnabled bool) error {
+func StartServiceCAControllers(ctx context.Context, controllerContext *controllercmd.ControllerContext, enabledFeatureGates map[string]bool) error {
 	err := cabundleinjector.StartCABundleInjector(ctx, controllerContext)
 	if err != nil {
 		return err
 	}
-	err = certstart.StartServiceServingCertSigner(ctx, controllerContext, shortCertRotationEnabled)
+	err = certstart.StartServiceServingCertSigner(ctx, controllerContext, enabledFeatureGates)
 	if err != nil {
 		return err
 	}

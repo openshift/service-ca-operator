@@ -64,6 +64,12 @@ Legacy `service.alpha.openshift.io` equivalents of both annotations are also sup
   - **Cannot be enabled on new clusters.** Validation introduced in 4.8 prevents changing the `KubeControllerManager` cluster config's `useMoreSecureServiceCA` from `"true"` to `"false"`. The only way to reproduce the legacy annotation is to start with a 4.7 install and upgrade.
   - **Deprecated but not removed.** The annotation is fully supported for upgraded clusters that already have it, but it is a known vulnerability and customers are advised to migrate their workloads off of it. It may be removed in a future release.
 
+### Feature Gates
+
+Feature gates must **not** be detected at runtime in the controller process. MicroShift does not have the `ClusterVersion` or `FeatureGate` CRDs, so creating informers for them causes the controller to crash (see OCPBUGS-82110).
+
+Instead, the **operator** detects feature gates via the standard `FeatureGateAccess` mechanism and forwards enabled gates to the controller Deployment as `--feature-gates=Key=true` CLI args (`pkg/operator/sync_common.go`). The controller receives them as a `map[string]bool` via `pkg/cmd/controller/cmd.go` and threads the map through the call chain. This means adding a new feature gate does **not** require changing function signatures — just check the map key where needed.
+
 ### Key Namespaces
 - `openshift-service-ca-operator`: Where the operator runs
 - `openshift-service-ca`: Where the controller Deployment runs
