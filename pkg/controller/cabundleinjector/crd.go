@@ -3,6 +3,7 @@ package cabundleinjector
 import (
 	"bytes"
 	"context"
+	"errors"
 
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -20,7 +21,7 @@ import (
 type crdCABundleInjector struct {
 	client   apiextclientv1.CustomResourceDefinitionInterface
 	lister   apiextlister.CustomResourceDefinitionLister
-	caBundle []byte
+	caBundle *bundleCache
 }
 
 func newCRDInjectorConfig(config *caBundleInjectorConfig) controllerConfig {
@@ -46,6 +47,11 @@ func newCRDInjectorConfig(config *caBundleInjectorConfig) controllerConfig {
 }
 
 func (bi *crdCABundleInjector) Sync(ctx context.Context, syncCtx factory.SyncContext) error {
+	caBundle := bi.caBundle.Load()
+	if caBundle == nil {
+		return errors.New("CA bundle is not available")
+	}
+
 	crd, err := bi.lister.Get(syncCtx.QueueKey())
 	if apierrors.IsNotFound(err) {
 		return nil
@@ -61,7 +67,7 @@ func (bi *crdCABundleInjector) Sync(ctx context.Context, syncCtx factory.SyncCon
 		klog.Warningf("customresourcedefinition %s is annotated for ca bundle injection but does not use strategy %q", crd.Name, apiext.WebhookConverter)
 		return nil
 	}
-	if bytes.Equal(crd.Spec.Conversion.Webhook.ClientConfig.CABundle, bi.caBundle) {
+	if bytes.Equal(crd.Spec.Conversion.Webhook.ClientConfig.CABundle, caBundle) {
 		// up-to-date
 		return nil
 	}
@@ -70,7 +76,7 @@ func (bi *crdCABundleInjector) Sync(ctx context.Context, syncCtx factory.SyncCon
 
 	// make a copy to avoid mutating cache state
 	crdCopy := crd.DeepCopy()
-	crdCopy.Spec.Conversion.Webhook.ClientConfig.CABundle = bi.caBundle
+	crdCopy.Spec.Conversion.Webhook.ClientConfig.CABundle = caBundle
 	_, err = bi.client.Update(ctx, crdCopy, metav1.UpdateOptions{})
 	return err
 }

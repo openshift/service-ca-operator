@@ -3,14 +3,12 @@ package cabundleinjector
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"os"
 	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -20,10 +18,15 @@ import (
 	"github.com/openshift/library-go/pkg/controller/factory"
 )
 
+const (
+	caBundlePath        = "/var/run/configmaps/signing-cabundle/ca-bundle.crt"
+	saTokenCABundlePath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+)
+
 type caBundleInjectorConfig struct {
 	config        *rest.Config
 	defaultResync time.Duration
-	caBundle      []byte
+	caBundle      *bundleCache
 	kubeClient    *kubernetes.Clientset
 	kubeInformers kubeinformers.SharedInformerFactory
 
@@ -32,7 +35,7 @@ type caBundleInjectorConfig struct {
 	// content inside of their bound tokens for the service-ca.crt.
 	// This CA bundle should only be used for specifically named configmaps which explicitly indicate their desire.
 	// This makes it impossible for customers to use and being to rely upon.
-	legacyVulnerableCABundle []byte
+	legacyVulnerableCABundle *bundleCache
 }
 
 type startInformersFunc func(stopChan <-chan struct{})
@@ -49,27 +52,13 @@ type controllerConfig struct {
 type configBuilderFunc func(config *caBundleInjectorConfig) controllerConfig
 
 func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
-	// TODO(marun) Detect and respond to changes in this path rather than
-	// depending on the operator for redeployment
-	caBundleFile := "/var/run/configmaps/signing-cabundle/ca-bundle.crt"
-	caBundleContent, err := ioutil.ReadFile(caBundleFile)
-	if err != nil {
+	w := newBundlesWatcher(caBundlePath, saTokenCABundlePath, 10*time.Second, 10*time.Minute, 3)
+	w.OnReadFailed = func(_ context.Context, err error) error {
+		controllerContext.EventRecorder.Warningf("CABundleReloadFailed", "Failed to reload CA bundles: %v", err)
 		return err
 	}
-
-	// this construction matches what the old kube controller manager did. It added the entire ca.crt to the service-ca.crt.
-	vulnerableLegacyCABundleContent, err := ioutil.ReadFile(caBundleFile)
-	if err != nil {
-		return err
-	}
-	saTokenCAFile := "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-	saTokenCABundleContent, err := ioutil.ReadFile(saTokenCAFile)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if len(saTokenCABundleContent) > 0 {
-		vulnerableLegacyCABundleContent = append(vulnerableLegacyCABundleContent, saTokenCABundleContent...)
-		vulnerableLegacyCABundleContent = append(vulnerableLegacyCABundleContent, []byte("\n")...)
+	if err := w.Start(ctx); err != nil {
+		return fmt.Errorf("unable to start bundles watcher: %w", err)
 	}
 
 	client := kubernetes.NewForConfigOrDie(controllerContext.ProtoKubeConfig)
@@ -78,8 +67,8 @@ func StartCABundleInjector(ctx context.Context, controllerContext *controllercmd
 	injectorConfig := &caBundleInjectorConfig{
 		config:                   controllerContext.ProtoKubeConfig,
 		defaultResync:            defaultResync,
-		caBundle:                 caBundleContent,
-		legacyVulnerableCABundle: vulnerableLegacyCABundleContent,
+		caBundle:                 w.CABundle,
+		legacyVulnerableCABundle: w.CABundleLegacy,
 		kubeClient:               client,
 		kubeInformers:            informers,
 	}
