@@ -131,6 +131,58 @@ func TestIsDeploymentStatusAvailableAndUpdated(t *testing.T) {
 	}
 }
 
+func TestIsDeploymentUpToDate(t *testing.T) {
+	tests := []struct {
+		name   string
+		deploy appsv1.Deployment
+		expect bool
+	}{
+		{
+			name:   "fully up-to-date with available replicas",
+			deploy: makeDeployment("test", 1, 1, 1, 1, 1),
+			expect: true,
+		},
+		{
+			name:   "up-to-date but not available (node reboot)",
+			deploy: makeDeployment("test", 1, 1, 1, 1, 0),
+			expect: true,
+		},
+		{
+			name:   "generation not yet observed",
+			deploy: makeDeployment("test", 2, 1, 1, 1, 0),
+			expect: false,
+		},
+		{
+			name:   "updated replicas mismatch",
+			deploy: makeDeployment("test", 1, 1, 1, 0, 0),
+			expect: false,
+		},
+		{
+			name:   "replicas scaled down (recreate rollout mid-scale-down)",
+			deploy: makeDeployment("test", 1, 1, 0, 0, 0),
+			expect: false,
+		},
+		{
+			name: "nil spec replicas defaults to 1",
+			deploy: func() appsv1.Deployment {
+				d := makeDeployment("test", 1, 1, 1, 1, 0)
+				d.Spec.Replicas = nil
+				return d
+			}(),
+			expect: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isDeploymentUpToDate(tt.deploy)
+			if got != tt.expect {
+				t.Errorf("isDeploymentUpToDate() = %v, want %v", got, tt.expect)
+			}
+		})
+	}
+}
+
 func TestIsDeploymentStatusComplete(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -217,14 +269,12 @@ func TestSyncStatus(t *testing.T) {
 			expectReason:      "ManagedDeploymentsCompleteAndUpdated",
 		},
 		{
-			name:              "no available replicas",
+			name:              "node reboot - unavailable but up-to-date",
 			deployments:       []appsv1.Deployment{makeDeployment("service-ca", 1, 1, 1, 1, 0)},
-			expectProgressing: operatorv1.ConditionTrue,
-			// TODO: Available should be False when no replicas are available.
-			// The fallthrough in syncStatus overwrites the earlier setAvailableFalse.
-			expectAvailable:  operatorv1.ConditionTrue,
-			expectVersionSet: false,
-			expectReason:     "ManagedDeploymentsAvailable",
+			expectProgressing: operatorv1.ConditionFalse,
+			expectAvailable:   operatorv1.ConditionTrue,
+			expectVersionSet:  true,
+			expectReason:      "ManagedDeploymentsUpToDateButUnavailable",
 		},
 		{
 			name:              "generation mismatch - not yet observed",
@@ -238,10 +288,9 @@ func TestSyncStatus(t *testing.T) {
 			name:              "recreate rollout - replicas scaled down",
 			deployments:       []appsv1.Deployment{makeDeployment("service-ca", 1, 1, 0, 0, 0)},
 			expectProgressing: operatorv1.ConditionTrue,
-			// TODO: Available should be False when all replicas are scaled down.
-			expectAvailable:  operatorv1.ConditionTrue,
-			expectVersionSet: false,
-			expectReason:     "ManagedDeploymentsAvailable",
+			expectAvailable:   operatorv1.ConditionTrue,
+			expectVersionSet:  false,
+			expectReason:      "ManagedDeploymentsAvailable",
 		},
 		{
 			name:              "missing deployment",
@@ -262,13 +311,12 @@ func TestSyncStatus(t *testing.T) {
 				}(),
 			},
 			expectProgressing: operatorv1.ConditionTrue,
-			// TODO: Available should be False when the deployment is being deleted.
-			expectAvailable:  operatorv1.ConditionTrue,
-			expectVersionSet: false,
-			expectReason:     "ManagedDeploymentsAvailable",
+			expectAvailable:   operatorv1.ConditionTrue,
+			expectVersionSet:  false,
+			expectReason:      "ManagedDeploymentsAvailable",
 		},
 		{
-			name:              "available and updated but not all replicas available yet",
+			name:              "available and updated but extra replicas still terminating",
 			deployments:       []appsv1.Deployment{makeDeployment("service-ca", 1, 1, 2, 2, 1)},
 			expectProgressing: operatorv1.ConditionTrue,
 			expectAvailable:   operatorv1.ConditionTrue,
@@ -324,17 +372,16 @@ func TestSyncStatus(t *testing.T) {
 			expectReason:      "ManagedDeploymentsCompleteAndUpdated",
 		},
 		{
-			name:    "two targets, one complete and one unavailable",
+			name:    "two targets, one complete and one unavailable but up-to-date",
 			targets: sets.New("deploy-a", "deploy-b"),
 			deployments: []appsv1.Deployment{
 				makeDeployment("deploy-a", 1, 1, 1, 1, 1),
 				makeDeployment("deploy-b", 1, 1, 1, 1, 0),
 			},
-			expectProgressing: operatorv1.ConditionTrue,
-			// TODO: Available should be False when a deployment has no available replicas.
-			expectAvailable:  operatorv1.ConditionTrue,
-			expectVersionSet: false,
-			expectReason:     "ManagedDeploymentsAvailable",
+			expectProgressing: operatorv1.ConditionFalse,
+			expectAvailable:   operatorv1.ConditionTrue,
+			expectVersionSet:  true,
+			expectReason:      "ManagedDeploymentsUpToDateButUnavailable",
 		},
 		{
 			name:    "two targets, one complete and one updating",
@@ -342,6 +389,18 @@ func TestSyncStatus(t *testing.T) {
 			deployments: []appsv1.Deployment{
 				makeDeployment("deploy-a", 1, 1, 1, 1, 1),
 				makeDeployment("deploy-b", 2, 1, 1, 1, 1),
+			},
+			expectProgressing: operatorv1.ConditionTrue,
+			expectAvailable:   operatorv1.ConditionTrue,
+			expectVersionSet:  false,
+			expectReason:      "ManagedDeploymentsAvailable",
+		},
+		{
+			name:    "two targets, one up-to-date but unavailable and one mid-rollout",
+			targets: sets.New("deploy-a", "deploy-b"),
+			deployments: []appsv1.Deployment{
+				makeDeployment("deploy-a", 1, 1, 1, 1, 0),
+				makeDeployment("deploy-b", 2, 1, 0, 0, 0),
 			},
 			expectProgressing: operatorv1.ConditionTrue,
 			expectAvailable:   operatorv1.ConditionTrue,
