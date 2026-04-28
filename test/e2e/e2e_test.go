@@ -26,7 +26,6 @@ import (
 )
 
 const (
-	serviceCAOperatorNamespace   = operatorclient.OperatorNamespace
 	serviceCAOperatorPodPrefix   = operatorclient.OperatorName
 	serviceCAControllerNamespace = operatorclient.TargetNamespace
 	serviceCAPodPrefix           = api.ServiceCADeploymentName
