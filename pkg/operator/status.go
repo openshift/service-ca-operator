@@ -96,11 +96,11 @@ func isDeploymentStatusComplete(deploy appsv1.Deployment) bool {
 		deploy.Status.ObservedGeneration >= deploy.Generation
 }
 
-func (c *serviceCAOperator) syncStatus(operatorConfigCopy *operatorv1.ServiceCA, existingDeployments *appsv1.DeploymentList, targetDeploymentNames sets.String) {
+func (c *serviceCAOperator) syncStatus(operatorConfigCopy *operatorv1.ServiceCA, existingDeployments *appsv1.DeploymentList, targetDeploymentNames sets.Set[string]) {
 	versionUpdatable := true
 	versionUpdatableAndDeploymentsComplete := true
 	statusMsg := ""
-	existingDeploymentNames := sets.String{}
+	existingDeploymentNames := sets.New[string]()
 	for _, dep := range existingDeployments.Items {
 		existingDeploymentNames.Insert(dep.Name)
 		// If there isn't at least one replica from each deployment, Available=False

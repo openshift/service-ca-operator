@@ -197,11 +197,11 @@ func TestIsDeploymentStatusComplete(t *testing.T) {
 }
 
 func TestSyncStatus(t *testing.T) {
-	defaultTargets := sets.NewString("service-ca")
+	defaultTargets := sets.New("service-ca")
 
 	tests := []struct {
 		name              string
-		targets           sets.String
+		targets           sets.Set[string]
 		deployments       []appsv1.Deployment
 		expectProgressing operatorv1.ConditionStatus
 		expectAvailable   operatorv1.ConditionStatus
@@ -313,7 +313,7 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			name:    "two targets, both complete",
-			targets: sets.NewString("deploy-a", "deploy-b"),
+			targets: sets.New("deploy-a", "deploy-b"),
 			deployments: []appsv1.Deployment{
 				makeDeployment("deploy-a", 1, 1, 1, 1, 1),
 				makeDeployment("deploy-b", 1, 1, 1, 1, 1),
@@ -325,7 +325,7 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			name:    "two targets, one complete and one unavailable",
-			targets: sets.NewString("deploy-a", "deploy-b"),
+			targets: sets.New("deploy-a", "deploy-b"),
 			deployments: []appsv1.Deployment{
 				makeDeployment("deploy-a", 1, 1, 1, 1, 1),
 				makeDeployment("deploy-b", 1, 1, 1, 1, 0),
@@ -338,7 +338,7 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			name:    "two targets, one complete and one updating",
-			targets: sets.NewString("deploy-a", "deploy-b"),
+			targets: sets.New("deploy-a", "deploy-b"),
 			deployments: []appsv1.Deployment{
 				makeDeployment("deploy-a", 1, 1, 1, 1, 1),
 				makeDeployment("deploy-b", 2, 1, 1, 1, 1),
@@ -350,7 +350,7 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			name:    "two targets, one missing",
-			targets: sets.NewString("deploy-a", "deploy-b"),
+			targets: sets.New("deploy-a", "deploy-b"),
 			deployments: []appsv1.Deployment{
 				makeDeployment("deploy-a", 1, 1, 1, 1, 1),
 			},
