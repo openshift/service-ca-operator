@@ -33,7 +33,7 @@ const (
 	operatorVersionEnvName = "OPERATOR_IMAGE_VERSION"
 )
 
-var targetDeploymentNames = sets.NewString(api.ServiceCADeploymentName)
+var targetDeploymentNames = sets.New(api.ServiceCADeploymentName)
 
 func RunOperator(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
 
