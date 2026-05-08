@@ -3,6 +3,7 @@ package cabundleinjector
 import (
 	"bytes"
 	"context"
+	"errors"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -90,10 +91,15 @@ type webhookCABundleInjector[T admissionregv1.MutatingWebhookConfiguration | adm
 	client                   webhookConfigUpdater[T]
 	lister                   cachedWebhookConfigGetter[T]
 	newWebhookConfigAccessor func(*T) webhookConfigAccessor[T]
-	caBundle                 []byte
+	caBundle                 *bundleCache
 }
 
 func (bi *webhookCABundleInjector[T]) Sync(ctx context.Context, syncCtx factory.SyncContext) error {
+	caBundle := bi.caBundle.Load()
+	if caBundle == nil {
+		return errors.New("CA bundle is not available")
+	}
+
 	webhookConfig, err := bi.lister.Get(syncCtx.QueueKey())
 	if apierrors.IsNotFound(err) {
 		return nil
@@ -105,7 +111,7 @@ func (bi *webhookCABundleInjector[T]) Sync(ctx context.Context, syncCtx factory.
 	webhooksNeedingUpdate := []int{}
 	for i := 0; i < webhookConfigAccessor.WebhooksLen(); i++ {
 		webhookClientConfig := webhookConfigAccessor.GetWebhookClientCA(i)
-		if !bytes.Equal(webhookClientConfig.CABundle, bi.caBundle) {
+		if !bytes.Equal(webhookClientConfig.CABundle, caBundle) {
 			webhooksNeedingUpdate = append(webhooksNeedingUpdate, i)
 		}
 	}
@@ -118,7 +124,7 @@ func (bi *webhookCABundleInjector[T]) Sync(ctx context.Context, syncCtx factory.
 	// make a copy to avoid mutating cache state
 	webhookConfigCopy := webhookConfigAccessor.DeepCopy()
 	for _, i := range webhooksNeedingUpdate {
-		webhookConfigCopy.GetWebhookClientCA(i).CABundle = bi.caBundle
+		webhookConfigCopy.GetWebhookClientCA(i).CABundle = caBundle
 	}
 	_, err = bi.client.Update(ctx, webhookConfigCopy.GetObject(), metav1.UpdateOptions{})
 	return err

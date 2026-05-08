@@ -93,12 +93,15 @@ func TestWebhookCABundleInjectorSync(t *testing.T) {
 			waitSuccess := cache.WaitForCacheSync(testCtx.Done(), hasSynced)
 			require.True(t, waitSuccess)
 
+			cache := &bundleCache{}
+			cache.Store(testCABundle)
+
 			injector := webhookCABundleInjector[admissionregv1.ValidatingWebhookConfiguration]{
 				webhookConfigType:        "testwebhook",
 				newWebhookConfigAccessor: newValidatingWebhookAccessor,
 				client:                   webhookClient.AdmissionregistrationV1().ValidatingWebhookConfigurations(),
 				lister:                   kubeInformers.Admissionregistration().V1().ValidatingWebhookConfigurations().Lister(),
-				caBundle:                 testCABundle,
+				caBundle:                 cache,
 			}
 
 			if gotErr := injector.Sync(testCtx, testContext{"test-webhook"}); (gotErr != nil) != tt.wantErr {
