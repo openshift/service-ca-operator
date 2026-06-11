@@ -3,6 +3,7 @@ package cabundleinjector
 import (
 	"bytes"
 	"context"
+	"errors"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,7 +20,7 @@ import (
 type apiServiceCABundleInjector struct {
 	client   apiserviceclientv1.APIServiceInterface
 	lister   apiservicelister.APIServiceLister
-	caBundle []byte
+	caBundle *bundleCache
 }
 
 func newAPIServiceInjectorConfig(config *caBundleInjectorConfig) controllerConfig {
@@ -48,6 +49,11 @@ func newAPIServiceInjectorConfig(config *caBundleInjectorConfig) controllerConfi
 }
 
 func (bi *apiServiceCABundleInjector) Sync(ctx context.Context, syncCtx factory.SyncContext) error {
+	caBundle := bi.caBundle.Load()
+	if caBundle == nil {
+		return errors.New("CA bundle is not available")
+	}
+
 	apiService, err := bi.lister.Get(syncCtx.QueueKey())
 	if apierrors.IsNotFound(err) {
 		return nil
@@ -55,7 +61,7 @@ func (bi *apiServiceCABundleInjector) Sync(ctx context.Context, syncCtx factory.
 		return err
 	}
 
-	if bytes.Equal(apiService.Spec.CABundle, bi.caBundle) {
+	if bytes.Equal(apiService.Spec.CABundle, caBundle) {
 		return nil
 	}
 
@@ -63,7 +69,7 @@ func (bi *apiServiceCABundleInjector) Sync(ctx context.Context, syncCtx factory.
 
 	// avoid mutating our cache
 	apiServiceCopy := apiService.DeepCopy()
-	apiServiceCopy.Spec.CABundle = bi.caBundle
+	apiServiceCopy.Spec.CABundle = caBundle
 	_, err = bi.client.Update(ctx, apiServiceCopy, v1.UpdateOptions{})
 	return err
 }
