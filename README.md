@@ -52,8 +52,9 @@ This repository uses the [OpenShift Tests Extension (OTE)](https://github.com/op
 
 ## Documentation
 
-- [AGENTS.md](AGENTS.md) — AI agent instructions and architecture overview
+- [ARCHITECTURE.md](ARCHITECTURE.md) — Design decisions and component architecture
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to submit changes
+- [AGENTS.md](AGENTS.md) — AI agent instructions
 - [OWNERS](OWNERS) — Reviewers and approvers
 
 ## Related Repositories
