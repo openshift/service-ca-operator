@@ -28,7 +28,7 @@ There will be some overlap. If any conventions are at odds with one another, pre
 
 - Follow the [shell styleguide](https://google.github.io/styleguide/shellguide.html).
 - Use [`shellcheck`](https://github.com/koalaman/shellcheck) to identify common mistakes or caveats.
-- Ensure that all scripts run consistently across Linux and MacOS.
+- Ensure that all scripts run consistently across Linux and macOS.
 
 ### Golang (Go)
 
@@ -51,6 +51,7 @@ There will be some overlap. If any conventions are at odds with one another, pre
     - Wrap errors with meaningful context before returning or logging them.
 - When logging, follow the [Kubernetes Logging Conventions](https://github.com/kubernetes/community/blob/main/contributors/devel/sig-instrumentation/logging.md).
 - When patching OpenShift-maintained forks of "upstream" repositories, patches should be as small as reasonably possible and should minimize touch points with code that is likely to change and impact the rebasing process.
+- Dependencies must be vendored. When making changes to dependencies, ensure you've run `go mod tidy` and `go mod vendor`.
 
 ### General
 
@@ -77,7 +78,7 @@ additional testing guidelines to follow when making contributions.
 - All changes must include unit test additions/changes.
     - Exceptions are at reviewer/approver discretion.
 - Table-driven unit tests are preferred for testing multiple scenarios/inputs. For an example, see https://github.com/openshift/cluster-authentication-operator/blob/a493799952e9b6838021ccc7d15d3d37d7ad3508/pkg/controllers/externaloidc/externaloidc_controller_test.go#L108 .
-- Unit tests must pass on all platforms (at the very least, Linux + MacOS).
+- Unit tests must pass on all platforms (at the very least, Linux + macOS).
 - Significant features should come with integration and/or end-to-end (e2e) tests where appropriate.
     - End-to-end tests _may_ be scoped as a separate work item when the end-to-end tests for the component must be added to the openshift/origin repository instead of the component repository. Adding e2e tests to the component repository is preferred where possible. It is up to reviewer/approver discretion whether a contribution can be merged without end-to-end tests being implemented.
 - Do not expect an asynchronous thing to happen immediately. Do not wait for one second and expect a pod to be running. Wait and retry instead.
