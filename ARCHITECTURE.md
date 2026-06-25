@@ -1,67 +1,55 @@
 # Architecture: service-ca-operator
 
-## Overview
+## Scope
 
-The service-ca-operator is an OpenShift ClusterOperator that automates the management of TLS certificates for internal cluster services. It provides two main capabilities:
+Manages the **service-serving certificate authority** for OpenShift clusters. Owns the signing CA keypair, its rotation lifecycle, and controllers that sign serving certs and inject CA bundles. Does **not** manage the platform trust bundle, ingress certificates, or any other cluster CA.
 
-1. **Automatic TLS certificate provisioning** — Services annotated with `service.beta.openshift.io/serving-cert-secret-name` automatically receive TLS certificates signed by a cluster-internal CA.
-2. **CA bundle injection** — ConfigMaps and webhook resources annotated with `service.beta.openshift.io/inject-cabundle=true` automatically receive the cluster's service CA bundle for client-side certificate verification.
+## Namespace Map
 
-The operator runs as a two-process architecture from a single binary (`service-ca-operator`): an **operator** process that manages lifecycle and CA rotation, and a **controller** process that signs certificates and injects CA bundles.
+| Namespace | Purpose |
+|-----------|---------|
+| `openshift-service-ca-operator` | Operator process runs here |
+| `openshift-service-ca` | Controller Deployment (the operand) runs here |
+| `openshift-config` | User-specified config (read-only) |
+| `openshift-config-managed` | Machine-specified config; CA bundle is synced here |
 
-## Component Architecture
+## Component Overview
+
+Single binary, two processes:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Operator Process (openshift-service-ca-operator namespace)  │
-│                                                             │
-│  ┌────────────────────────────────────────────────────┐     │
-│  │ pkg/operator/                                      │     │
-│  │                                                    │     │
-│  │  • Manages controller Deployment lifecycle         │     │
-│  │  • Creates/rotates signing CA keypair (Secret)     │     │
-│  │  • Maintains CA bundle ConfigMap                   │     │
-│  │  • Reports ClusterOperator status                  │     │
-│  │  • Detects feature gates → forwards to controller  │     │
-│  └────────────────────────────────────────────────────┘     │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          │ Deploys & manages
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Controller Process (openshift-service-ca namespace)         │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ pkg/controller/servingcert/                         │    │
-│  │   Serving Cert Signer                               │    │
-│  │   • Watches Services with serving-cert annotation   │    │
-│  │   • Generates TLS cert/key signed by service CA     │    │
-│  │   • Creates Secret with tls.crt and tls.key         │    │
-│  │   • Supports headless services (SAN wildcards)      │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ pkg/controller/cabundleinjector/                    │    │
-│  │   CA Bundle Injector                                │    │
-│  │   • ConfigMap injector (service-ca.crt data key)    │    │
-│  │   • APIService injector (spec.caBundle field)       │    │
-│  │   • CRD injector (conversion webhook caBundle)      │    │
-│  │   • MutatingWebhookConfiguration injector           │    │
-│  │   • ValidatingWebhookConfiguration injector         │    │
-│  │   • Legacy vulnerable injection (4.7 upgrade path)  │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          │ Uses
-                          ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Signing CA Secret (openshift-service-ca namespace)          │
-│   signing-key                                               │
-│   • tls.crt — Current signing CA certificate                │
-│   • tls.key — Current signing CA private key                │
-│   • ca-bundle.crt — Full CA bundle (current + old CAs)      │
-│   • intermediate-ca.crt — Post-rotation bridge cert         │
-└─────────────────────────────────────────────────────────────┘
+service-ca-operator operator    → pkg/operator/    → manages CA + controller Deployment
+service-ca-operator controller  → pkg/controller/  → signs certs, injects bundles
+```
+
+The operator creates the signing CA Secret, maintains the CA bundle ConfigMap, syncs static resources from embedded assets, and manages the controller Deployment. The controller reads the CA from mounted Secrets/ConfigMaps and runs independent controllers.
+
+## Controllers
+
+| Controller | Package | Watches | Reconciles |
+|-----------|---------|---------|------------|
+| Serving Cert Signer | `servingcert/controller/` | Services, Secrets | Creates TLS Secrets for annotated Services |
+| Serving Cert Updater | `servingcert/controller/` | Services, Secrets | Refreshes certs approaching expiry |
+| ConfigMap CA Injector | `cabundleinjector/configmap.go` | ConfigMaps | Injects CA bundle into annotated ConfigMaps |
+| APIService CA Injector | `cabundleinjector/apiservice.go` | APIServices | Sets `spec.caBundle` on annotated APIServices |
+| Webhook CA Injectors | `cabundleinjector/admissionwebhook.go` | Mutating/ValidatingWebhookConfigs | Sets `caBundle` on annotated webhooks |
+| CRD CA Injector | `cabundleinjector/crd.go` | CRDs | Sets conversion webhook `caBundle` |
+| Legacy Vulnerable Injector | `cabundleinjector/configmap.go` | ConfigMaps named `openshift-service-ca.crt` | Injects legacy bundle for pre-4.7 upgraded clusters |
+
+## Reconciliation Flow
+
+```
+Operator process:
+  1. Sync namespace, SA, RBAC from embedded assets  (manageControllerNS, manageControllerResources)
+  2. Create or rotate signing CA Secret              (manageSignerCA)
+  3. Update CA bundle ConfigMap                       (manageSignerCABundle)
+  4. Apply controller Deployment with feature gate    (manageDeployment)
+     args and image overrides
+
+Controller process (started by operator as a Deployment):
+  1. CA bundle watcher loads caBundlePath, watches for file changes
+  2. Serving cert signer: Service annotated → create Secret with signed cert
+  3. CA bundle injectors: resource annotated → inject CA bundle bytes
 ```
 
 ## Data Flow
@@ -94,53 +82,35 @@ The operator runs as a two-process architecture from a single binary (`service-c
    - **ValidatingWebhookConfiguration**: `webhooks[].clientConfig.caBundle`
 5. Client workloads use the injected bundle to verify TLS connections to services with generated certificates.
 
-### CA Rotation
+## CA Rotation
 
-CA rotation is triggered by one of:
-- **Time-based**: CA approaching expiry (rotates when validity < 1 year remaining)
-- **Forced**: Manual trigger via ServiceCA CR (`spec.forceRotation` with reason)
-- **Deletion**: Signing secret deleted (operator recreates with new CA)
+The signing CA has a 26-month lifetime, designed around the 12-month maximum upgrade interval:
 
-**Rotation process:**
-1. Operator generates a new CA keypair.
-2. Operator updates the signing secret:
-   - `tls.crt` ← new CA
-   - `tls.key` ← new private key
-   - `ca-bundle.crt` ← new CA + old CA (trust-bridging bundle)
-   - `intermediate-ca.crt` ← post-rotation bridge cert (if needed)
-3. Operator updates the CA bundle ConfigMap in each namespace.
-4. Controller observes the CA change (watches signing secret).
-5. Controller regenerates all serving certificates signed by the old CA.
-6. Controller re-injects the updated CA bundle into all annotated resources.
-7. After a grace period (old certificates naturally expire), the old CA can be removed from the bundle.
+```
+T+0m   CA-1 created (or rotated)
+T+12m  Cluster upgraded, all pods restarted
+T+13m  Automated rotation: CA-1 remaining < 13m → CA-2 created
+T+24m  Cluster upgraded again, all pods restarted
+T+26m  CA-1 expires (no impact — pods already restarted)
+```
 
-## Deployment
+Rotation creates two intermediate certificates for trust bridging:
+- **New CA signed by old key**: lets pre-rotation clients trust post-rotation serving certs
+- **Old CA signed by new key**: included in the new bundle so post-rotation clients trust pre-rotation serving certs
 
-### Operator Process
-- **Namespace**: `openshift-service-ca-operator`
-- **Deployment**: Managed by cluster-version-operator
-- **Runs on**: Control plane nodes (tolerates master taints)
-- **Command**: `service-ca-operator operator`
+Forced rotation is supported via `unsupportedConfigOverrides` with a reason annotation to prevent re-rotation.
 
-### Controller Process
-- **Namespace**: `openshift-service-ca`
-- **Deployment**: Managed by the operator process
-- **Runs on**: Control plane nodes (tolerates master taints)
-- **Command**: `service-ca-operator controller`
-- **Replicas**: 1 (uses leader election for HA readiness)
+## Manifest and Resource Management
 
-### Static Assets
-The operator syncs static resources from embedded YAML manifests:
-- **Location**: `bindata/assets/*.yaml`
-- **Embed**: Go native `//go:embed` directive (no code generation)
-- **Resources**:
-  - `ns.yaml` — openshift-service-ca namespace
-  - `sa.yaml` — controller service account
-  - `role.yaml`, `rolebinding.yaml` — namespace-scoped RBAC
-  - `clusterrole.yaml`, `clusterrolebinding.yaml` — cluster-scoped RBAC
-  - `deployment.yaml` — controller Deployment
-  - `signing-secret.yaml` — signing CA Secret template
-  - `signing-cabundle.yaml` — CA bundle ConfigMap template
+- **CVO-managed** (`manifests/`): Operator Deployment, RBAC, monitoring, network policies — applied by the Cluster Version Operator during install/upgrade
+- **Operator-applied** (`bindata/assets/`): Controller namespace, SA, RBAC, Deployment, signing Secret/ConfigMap templates — embedded via Go `embed.FS` and applied at runtime by the operator
+
+## Platform/Topology Behavior
+
+- **Default**: Controller and operator both run on control plane nodes.
+- **HyperShift** (`ExternalTopologyMode`): Controller Deployment is scheduled on worker nodes instead of control plane (`shouldScheduleOnWorkers`)
+- **IBM Cloud Managed**: Custom Deployment manifest with profile patches (`profile-patches/ibm-cloud-managed/`)
+- **MicroShift**: No `ClusterVersion` or `FeatureGate` CRDs. Feature gates are forwarded via CLI args — never detected at runtime in the controller
 
 ## User-Facing Annotations
 
@@ -161,63 +131,25 @@ The operator syncs static resources from embedded YAML manifests:
 
 All annotations have legacy `service.alpha.openshift.io/*` equivalents that are still supported for backward compatibility.
 
-## Feature Gates
+## Dependencies
 
-Feature gates are detected by the **operator** process using the standard `FeatureGateAccess` mechanism from `openshift/library-go`. The operator forwards enabled gates to the controller Deployment as CLI arguments:
-
-```
---feature-gates=FeatureName=true,OtherFeature=false
-```
-
-The controller receives these as a `map[string]bool` and threads the map through the call chain. This design avoids:
-- Creating informers for `ClusterVersion` or `FeatureGate` CRDs in the controller (which would crash on MicroShift, where these CRDs don't exist — see OCPBUGS-82110)
-- Requiring function signature changes when adding new feature gates
-
-## Key Namespaces
-- `openshift-service-ca-operator` — Operator process runs here
-- `openshift-service-ca` — Controller process runs here; signing CA Secret lives here
+| Dependency | Role |
+|-----------|------|
+| `openshift/library-go` | Controller framework (`controllercmd`), crypto primitives, resource apply, feature gate access, PKI profiles |
+| `openshift/api` | Operator API types (`operatorv1.ServiceCA`), feature gate definitions, PKI API types |
+| `openshift/client-go` | Typed clients and informers for OpenShift APIs |
+| `k8s.io/client-go` | Core Kubernetes clients, informers, workqueue |
 
 ## Design Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| Two-process architecture | Separation of concerns: operator manages lifecycle and CA rotation (requires cluster-scoped permissions), controller signs certificates and injects bundles (can run with narrower permissions). |
-| Embedded assets via `//go:embed` | No code generation step; assets embedded at compile time. Simplifies build and vendoring. |
-| Annotation-driven API | No CRDs to install; works on any Kubernetes cluster. Easy for users to adopt (just add an annotation). |
-| CA bundle includes old CAs after rotation | Trust-bridging: old certificates remain valid during rotation, preventing downtime. Clients using the bundle can verify both old and new certificates. |
-| Feature gate forwarding via CLI args | Avoids creating informers for `FeatureGate` CRD in the controller, which crashes on MicroShift (OCPBUGS-82110). |
-| Headless service SAN wildcards | Enables StatefulSet pods to serve TLS on their individual DNS names (`pod-0.service.ns.svc`, `pod-1.service.ns.svc`, etc.) using a single shared certificate. |
-| Legacy vulnerable injection scoped to exact name | Limits blast radius of the deprecated trust bundle. Only ConfigMaps named `openshift-service-ca.crt` receive the wide bundle, and only on upgraded clusters. |
-| Single binary, two subcommands | Simplifies distribution and versioning. Both processes use the same codebase and version. |
+1. **Two-process architecture from one binary.** The operator and controller run as separate processes (separate Deployments) but are built from a single binary with subcommands. This keeps the operator's cluster-scoped concerns (CA lifecycle, ClusterOperator status) isolated from the controller's high-volume work (cert signing, bundle injection).
 
-## Dependencies
+2. **Feature gate forwarding via CLI args.** The operator detects feature gates using `FeatureGateAccess` (which requires `ClusterVersion`/`FeatureGate` CRDs) and injects them as `--feature-gates=Key=true` args on the controller Deployment. This avoids a hard dependency on CRDs that don't exist on MicroShift. The constraint was discovered via OCPBUGS-82110 when the controller crashed on MicroShift.
 
-- **openshift/library-go**: Controller framework (`controllercmd`), RBAC utilities, event recording, resource application (`resourceapply`)
-- **openshift/client-go**: OpenShift API clients (config, operator)
-- **k8s.io/client-go**: Kubernetes API clients, informers, listers
-- **k8s.io/apiextensions-apiserver**: CRD client for CA bundle injection
-- **k8s.io/kube-aggregator**: APIService client for CA bundle injection
-- **openshift/library-go/pkg/crypto**: Certificate generation and signing utilities
+3. **Hand-written rotation with bidirectional trust bridging.** Service-CA does **not** use library-go's `certrotation` package. Instead, `pkg/operator/rotate.go` implements its own rotation that creates two intermediate CA certificates — one signing the old CA's public key with the new CA's key, and vice versa. This ensures both pre- and post-rotation serving certs are trusted by both pre- and post-rotation clients *without waiting for cert re-signing*. This is more sophisticated than library-go's approach of simple bundle concatenation with an overlap window.
 
-## Testing
+4. **26-month CA lifetime avoids 10-year expiry problems.** CKAO's 10-year signers cause trust propagation failures at ~8 years when downstream components fail to reload updated CA bundles (OCPBUGS-60241). Service-CA's shorter 26-month lifetime ensures rotation aligns with the upgrade cycle, sidestepping this class of bug entirely.
 
-- **Unit tests**: Colocated with source in `pkg/`. Run with `make test-unit`.
-- **E2E tests**: In `test/e2e/`, using the OpenShift Tests Extension (OTE) framework.
-  - Tests are defined in `test/e2e/e2e.go` (OTE format, preferred).
-  - Legacy tests in `test/e2e/e2e_test.go` are being phased out.
-  - Binary: `service-ca-operator-tests-ext`
-  - Run with: `make test-e2e` (requires `KUBECONFIG` pointing to a running OpenShift cluster)
+5. **CA bundle file watcher.** The CA bundle injectors watch the bundle file on disk for changes rather than only loading it at startup. This ensures bundle updates from CA rotation propagate without requiring a controller restart (PR #329), addressing the trust propagation failures seen across the platform.
 
-**Example OTE test suites:**
-- `serving-cert-annotation` — Certificate provisioning for annotated services
-- `ca-bundle-injection-configmap` — CA bundle injection into ConfigMaps
-- `apiservice-ca-bundle-injection` — CA bundle injection for APIServices
-- `crd-ca-bundle-injection` — CA bundle injection for CRD conversion webhooks
-- `mutatingwebhook-ca-bundle-injection` — CA bundle injection for MutatingWebhookConfigurations
-- `validatingwebhook-ca-bundle-injection` — CA bundle injection for ValidatingWebhookConfigurations
-- `refresh-CA` — CA regeneration after signing secret deletion
-- `time-based-ca-rotation` — Time-based CA rotation when approaching expiry
-- `forced-ca-rotation` — Forced CA rotation via ServiceCA CR
-- `metrics` — Metrics collection and service CA expiry metrics
-
-For full testing documentation, see [CONTRIBUTING.md](CONTRIBUTING.md).
+6. **Configurable PKI (TechPreview).** Service-CA was the first operator integrated with the configurable PKI initiative (OCPSTRAT-2271, PR #327). The rotation code was widened from RSA-only (`*rsa.PrivateKey`) to algorithm-agnostic (`crypto.Signer`) to support ECDSA key types. PKI profile resolution uses `library-go/pkg/pki.ResolveCertificateConfig` with certificate name `service-ca.service-serving-signer` for the CA and `service-ca.service-serving` for leaf certs.
