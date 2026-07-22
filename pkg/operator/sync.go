@@ -33,8 +33,14 @@ func (c *serviceCAOperator) syncControllers(ctx context.Context, operatorConfig 
 		return err
 	}
 
+	// Sync the controller config with TLS settings
+	configModified, err := c.manageControllerConfig(ctx, operatorConfig)
+	if err != nil {
+		return err
+	}
+
 	// Sync the controller.
-	_, err = c.manageDeployment(ctx, operatorConfig, needsDeploy || caModified, shouldScheduleOnWorkers(infrastructure))
+	_, err = c.manageDeployment(ctx, operatorConfig, needsDeploy || caModified || configModified, shouldScheduleOnWorkers(infrastructure))
 	if err != nil {
 		return err
 	}
