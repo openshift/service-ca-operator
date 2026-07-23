@@ -135,7 +135,7 @@ func (c *serviceCAOperator) manageSignerCA(ctx context.Context, rawUnsupportedSe
 	_, mod, err := resourceapply.ApplySecret(ctx, c.corev1Client, c.eventRecorder, secret)
 
 	if err == nil && len(rotationMsg) > 0 {
-		c.eventRecorder.Eventf("ServiceCARotated", rotationMsg)
+		c.eventRecorder.Eventf("ServiceCARotated", "%s", rotationMsg)
 	}
 
 	return mod, err
