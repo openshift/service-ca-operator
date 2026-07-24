@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
 	"time"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/yaml"
 
 	"github.com/openshift/library-go/pkg/pki"
 	"github.com/openshift/service-ca-operator/pkg/operator/metrics"
@@ -227,6 +231,44 @@ func (c *serviceCAOperator) manageSignerCABundle(ctx context.Context, forceUpdat
 	configMap.Data[api.BundleDataKey] = string(bundle)
 
 	_, mod, err := resourceapply.ApplyConfigMap(ctx, c.corev1Client, c.eventRecorder, configMap)
+	return mod, err
+}
+
+func (c *serviceCAOperator) manageControllerConfig(ctx context.Context, operatorConfig *operatorv1.ServiceCA) (bool, error) {
+	required := resourceread.ReadConfigMapV1OrDie(bindata.MustAsset("assets/controller-config.yaml"))
+
+	var observedConfig map[string]interface{}
+	if len(operatorConfig.Spec.ObservedConfig.Raw) > 0 {
+		if err := json.Unmarshal(operatorConfig.Spec.ObservedConfig.Raw, &observedConfig); err != nil {
+			return false, fmt.Errorf("failed to unmarshal observedConfig: %w", err)
+		}
+	}
+
+	config := map[string]interface{}{
+		"apiVersion": "operator.openshift.io/v1alpha1",
+		"kind":       "GenericOperatorConfig",
+	}
+
+	servingInfo := map[string]interface{}{}
+	if minTLSVersion, found, err := unstructured.NestedString(observedConfig, "servingInfo", "minTLSVersion"); err == nil && found && minTLSVersion != "" {
+		servingInfo["minTLSVersion"] = minTLSVersion
+	}
+	if cipherSuites, found, err := unstructured.NestedStringSlice(observedConfig, "servingInfo", "cipherSuites"); err == nil && found && len(cipherSuites) > 0 {
+		servingInfo["cipherSuites"] = cipherSuites
+	}
+
+	if len(servingInfo) > 0 {
+		config["servingInfo"] = servingInfo
+	}
+
+	configYAML, err := yaml.Marshal(config)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal controller config: %w", err)
+	}
+
+	required.Data["controller-config.yaml"] = string(configYAML)
+
+	_, mod, err := resourceapply.ApplyConfigMap(ctx, c.corev1Client, c.eventRecorder, required)
 	return mod, err
 }
 

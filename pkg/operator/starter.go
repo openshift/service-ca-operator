@@ -24,6 +24,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/status"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/operator/configobservation"
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
 )
 
@@ -104,6 +105,13 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 
 	operatorLogLevelController := loglevel.NewClusterOperatorLoggingController(
 		operatorClient,
+		controllerContext.EventRecorder,
+	)
+
+	configObserver := configobservation.NewConfigObserverController(
+		operatorClient,
+		configInformers,
+		resourceSyncController,
 		controllerContext.EventRecorder,
 	)
 
@@ -189,6 +197,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		operatorLogLevelController.Run,
 		clusterOperatorStatus.Run,
 		resourceSyncController.Run,
+		configObserver.Run,
 	} {
 		go controllerRunner(ctx, 1)
 	}
