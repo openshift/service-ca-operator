@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"k8s.io/apiserver/pkg/util/filesystem"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/util/filesystem"
 
 	"github.com/openshift/library-go/pkg/operator/events"
 )
