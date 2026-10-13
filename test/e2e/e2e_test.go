@@ -1,0 +1,560 @@
+package e2e
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	operatorv1client "github.com/openshift/client-go/operator/clientset/versioned"
+	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/operator"
+	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
+	"github.com/openshift/service-ca-operator/test/util"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/cert"
+)
+
+const (
+	serviceCAOperatorPodPrefix   = operatorclient.OperatorName
+	serviceCAControllerNamespace = operatorclient.TargetNamespace
+	serviceCAPodPrefix           = api.ServiceCADeploymentName
+	signingKeySecretName         = api.ServiceCASecretName
+
+	// A label used to attach StatefulSet pods to a headless service created by
+	// createServingCertAnnotatedService
+	owningHeadlessServiceLabelName = "owning-headless-service"
+)
+
+// checkComponents verifies that the components of the operator are running.
+func checkComponents(t *testing.T, client *kubernetes.Clientset) {
+	componentConfigs := []struct {
+		namespace string
+		podPrefix string
+	}{
+		{serviceCAOperatorNamespace, serviceCAOperatorPodPrefix},
+		{serviceCAControllerNamespace, serviceCAPodPrefix},
+	}
+	for _, cfg := range componentConfigs {
+		pods, err := client.CoreV1().Pods(cfg.namespace).List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			t.Fatalf("Failed to list pods in namespace %q: %v", cfg.namespace, err)
+		}
+		podFound := false
+		for _, pod := range pods.Items {
+			if strings.HasPrefix(pod.GetName(), cfg.podPrefix) {
+				podFound = true
+				break
+			}
+		}
+		if !podFound {
+			t.Fatalf("No pods with prefix %q found running in namespace %q", cfg.podPrefix, cfg.namespace)
+		}
+	}
+}
+
+func editServingSecretData(t *testing.T, client *kubernetes.Clientset, secretName, namespace, keyName string) error {
+	sss, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	scopy := sss.DeepCopy()
+	scopy.Data[keyName] = []byte("blah")
+	_, err = client.CoreV1().Secrets(namespace).Update(context.TODO(), scopy, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+
+	return pollForSecretChange(t, client, scopy, keyName)
+}
+
+func pollForSecretChange(t *testing.T, client *kubernetes.Clientset, secret *v1.Secret, keysToChange ...string) error {
+	return wait.PollImmediate(pollInterval, rotationPollTimeout, func() (bool, error) {
+		s, err := client.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
+		if err != nil {
+			tlogf(t, "failed to get secret: %v", err)
+			return false, nil
+		}
+		for _, key := range keysToChange {
+			if bytes.Equal(s.Data[key], secret.Data[key]) {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+}
+
+type triggerRotationFunc func(*testing.T, *kubernetes.Clientset, *rest.Config)
+
+func checkCARotation(t *testing.T, client *kubernetes.Clientset, config *rest.Config, triggerRotation triggerRotationFunc) {
+	ns, cleanup, err := createTestNamespace(t, client, "test-"+randSeq(5))
+	if err != nil {
+		t.Fatalf("could not create test namespace: %v", err)
+	}
+	defer cleanup()
+
+	// Prompt the creation of service cert secrets
+	testServiceName := "test-service-" + randSeq(5)
+	testSecretName := "test-secret-" + randSeq(5)
+	testHeadlessServiceName := "test-headless-service-" + randSeq(5)
+	testHeadlessSecretName := "test-headless-secret-" + randSeq(5)
+
+	err = createServingCertAnnotatedService(client, testSecretName, testServiceName, ns.Name, false)
+	if err != nil {
+		t.Fatalf("error creating annotated service: %v", err)
+	}
+	if err = createServingCertAnnotatedService(client, testHeadlessSecretName, testHeadlessServiceName, ns.Name, true); err != nil {
+		t.Fatalf("error creating annotated headless service: %v", err)
+	}
+
+	// Prompt the injection of the ca bundle into a configmap
+	testConfigMapName := "test-configmap-" + randSeq(5)
+
+	err = createAnnotatedCABundleInjectionConfigMap(client, testConfigMapName, ns.Name)
+	if err != nil {
+		t.Fatalf("error creating annotated configmap: %v", err)
+	}
+
+	// Retrieve the pre-rotation service cert
+	oldCertPEM, oldKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, rotationPollTimeout, nil, nil)
+	if err != nil {
+		t.Fatalf("error retrieving service cert: %v", err)
+	}
+	oldHeadlessCertPEM, oldHeadlessKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testHeadlessSecretName, rotationPollTimeout, nil, nil)
+	if err != nil {
+		t.Fatalf("error retrieving headless service cert: %v", err)
+	}
+
+	// Retrieve the pre-rotation ca bundle
+	oldBundlePEM, err := pollForInjectedCABundle(t, client, ns.Name, testConfigMapName, rotationPollTimeout, nil)
+	if err != nil {
+		t.Fatalf("error retrieving ca bundle: %v", err)
+	}
+
+	// Prompt CA rotation
+	triggerRotation(t, client, config)
+
+	// Retrieve the post-rotation service cert
+	newCertPEM, newKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testSecretName, rotationTimeout, oldCertPEM, oldKeyPEM)
+	if err != nil {
+		t.Fatalf("error retrieving service cert: %v", err)
+	}
+	newHeadlessCertPEM, newHeadlessKeyPEM, err := pollForUpdatedServingCert(t, client, ns.Name, testHeadlessSecretName, rotationTimeout, oldHeadlessCertPEM, oldHeadlessKeyPEM)
+	if err != nil {
+		t.Fatalf("error retrieving headless service cert: %v", err)
+	}
+
+	// Retrieve the post-rotation ca bundle
+	newBundlePEM, err := pollForInjectedCABundle(t, client, ns.Name, testConfigMapName, rotationTimeout, oldBundlePEM)
+	if err != nil {
+		t.Fatalf("error retrieving ca bundle: %v", err)
+	}
+
+	// Determine the dns name valid for the serving cert
+	certs, err := util.PemToCerts(newCertPEM)
+	if err != nil {
+		t.Fatalf("error decoding pem to certs: %v", err)
+	}
+	dnsName := certs[0].Subject.CommonName
+
+	util.CheckRotation(t, dnsName, oldCertPEM, oldKeyPEM, oldBundlePEM, newCertPEM, newKeyPEM, newBundlePEM)
+
+	for i := 0; i < 3; i++ { // 3 is an arbitrary number of hostnames to try
+		dnsName := fmt.Sprintf("some-statefulset-%d.%s.%s.svc", i, testHeadlessServiceName, ns.Name)
+		util.CheckRotation(t, dnsName, oldHeadlessCertPEM, oldHeadlessKeyPEM, oldBundlePEM, newHeadlessCertPEM, newHeadlessKeyPEM, newBundlePEM)
+	}
+}
+
+// triggerForcedRotation forces the rotation of the current CA via the
+// operator config.
+func triggerForcedRotation(t *testing.T, client *kubernetes.Clientset, config *rest.Config) {
+	// Retrieve the cert and key PEM of the current CA to be able to
+	// detect when rotation has completed.
+	secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error retrieving signing key secret: %v", err)
+	}
+	caCertPEM := secret.Data[v1.TLSCertKey]
+	caKeyPEM := secret.Data[v1.TLSPrivateKeyKey]
+
+	// Set a custom validity duration longer than the default to
+	// validate that a custom expiry on rotation is possible.
+	defaultDuration := signingCertificateLifetime
+	customDuration := defaultDuration + 1*time.Hour
+
+	// Trigger a forced rotation by updating the operator config
+	// with a reason.
+	forceUnsupportedServiceCAConfigRotation(t, config, secret, customDuration)
+
+	signingSecret := pollForCARotation(t, client, caCertPEM, caKeyPEM)
+
+	// Check that the expiry of the new CA is longer than the default
+	rawCert := signingSecret.Data[v1.TLSCertKey]
+	certs, err := cert.ParseCertsPEM(rawCert)
+	if err != nil {
+		t.Fatalf("Failed to parse signing secret cert: %v", err)
+	}
+	if !certs[0].NotAfter.After(time.Now().Add(defaultDuration)) {
+		t.Fatalf("Custom validity duration was not used to generate the new CA")
+	}
+}
+
+func forceUnsupportedServiceCAConfigRotation(t *testing.T, config *rest.Config, currentSigningKeySecret *v1.Secret, validityDuration time.Duration) {
+	operatorClient, err := operatorv1client.NewForConfig(config)
+	if err != nil {
+		t.Fatalf("error creating operator client: %v", err)
+	}
+	operatorConfig, err := operatorClient.OperatorV1().ServiceCAs().Get(context.TODO(), api.OperatorConfigInstanceName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error retrieving operator config: %v", err)
+	}
+	var forceRotationReason string
+	for i := 0; ; i++ {
+		forceRotationReason = fmt.Sprintf("service-ca-e2e-force-rotation-reason-%d", i)
+		if currentSigningKeySecret.Annotations[api.ForcedRotationReasonAnnotationName] != forceRotationReason {
+			break
+		}
+	}
+	rawUnsupportedServiceCAConfig, err := operator.RawUnsupportedServiceCAConfig(forceRotationReason, validityDuration)
+	if err != nil {
+		t.Fatalf("failed to create raw unsupported config overrides: %v", err)
+	}
+	operatorConfig.Spec.UnsupportedConfigOverrides.Raw = rawUnsupportedServiceCAConfig
+	_, err = operatorClient.OperatorV1().ServiceCAs().Update(context.TODO(), operatorConfig, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("error updating operator config: %v", err)
+	}
+}
+
+// pollForCARotation polls for the signing secret to be changed in
+// response to CA rotation.
+func pollForCARotation(t *testing.T, client *kubernetes.Clientset, caCertPEM, caKeyPEM []byte) *v1.Secret {
+	resourceID := fmt.Sprintf("Secret \"%s/%s\"", serviceCAControllerNamespace, signingKeySecretName)
+	obj, err := pollForResource(t, resourceID, rotationPollTimeout, func() (kruntime.Object, error) {
+		secret, err := client.CoreV1().Secrets(serviceCAControllerNamespace).Get(context.TODO(), signingKeySecretName, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		// Check if both cert and key are still the same as the old values
+		if bytes.Equal(secret.Data[v1.TLSCertKey], caCertPEM) && bytes.Equal(secret.Data[v1.TLSPrivateKeyKey], caKeyPEM) {
+			return nil, fmt.Errorf("cert and key have not changed yet")
+		}
+		return secret, nil
+	})
+	if err != nil {
+		t.Fatalf("error waiting for CA rotation: %v", err)
+	}
+	return obj.(*v1.Secret)
+}
+
+// pollForUpdatedSecret returns the given secret if its data changes from
+// that provided before the polling timeout.
+func pollForUpdatedSecret(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldData map[string][]byte) (*v1.Secret, error) {
+	resourceID := fmt.Sprintf("Secret \"%s/%s\"", namespace, name)
+	obj, err := pollForResource(t, resourceID, timeout, func() (kruntime.Object, error) {
+		secret, err := client.CoreV1().Secrets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		err = util.CheckData(oldData, secret.Data)
+		if err != nil {
+			return nil, err
+		}
+		return secret, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*v1.Secret), nil
+}
+
+// pollForInjectedCABundle returns the bytes for the injection key in
+// the targeted configmap if the value of the key changes from that
+// provided before the polling timeout.
+func pollForInjectedCABundle(t *testing.T, client *kubernetes.Clientset, namespace, name string, timeout time.Duration, oldValue []byte) ([]byte, error) {
+	return pollForUpdatedConfigMap(t, client, namespace, name, api.InjectionDataKey, timeout, oldValue)
+}
+
+// pollForSigningCABundle returns the bytes for the bundle key of the
+// signing ca bundle configmap if the value is non-empty before the
+// polling timeout.
+func pollForSigningCABundle(t *testing.T, client *kubernetes.Clientset) ([]byte, error) {
+	return pollForUpdatedConfigMap(t, client, serviceCAControllerNamespace, api.SigningCABundleConfigMapName, api.BundleDataKey, pollTimeout, nil)
+}
+
+// pollForUpdatedConfigMap returns the given configmap if its data changes from
+// that provided before the polling timeout.
+func pollForUpdatedConfigMap(t *testing.T, client *kubernetes.Clientset, namespace, name, key string, timeout time.Duration, oldValue []byte) ([]byte, error) {
+	resourceID := fmt.Sprintf("ConfigMap \"%s/%s\"", namespace, name)
+	obj, err := pollForResource(t, resourceID, timeout, func() (kruntime.Object, error) {
+		configMap, err := client.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		// For rotation tests, we need to be more flexible about data size
+		if len(configMap.Data) == 0 {
+			return nil, fmt.Errorf("configmap has no data")
+		}
+		value, ok := configMap.Data[key]
+		if !ok {
+			return nil, fmt.Errorf("key %q is missing", key)
+		}
+		if oldValue != nil && value == string(oldValue) {
+			return nil, fmt.Errorf("value for key %q has not changed", key)
+		}
+		return configMap, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	configMap := obj.(*v1.ConfigMap)
+	return []byte(configMap.Data[key]), nil
+}
+
+// setInjectionAnnotation sets the annotation that will trigger the
+// injection of a ca bundle.
+// pollForResource returns a kruntime.Object if the accessor returns without error before the timeout.
+func pollForResource(t *testing.T, resourceID string, timeout time.Duration, accessor func() (kruntime.Object, error)) (kruntime.Object, error) {
+	var obj kruntime.Object
+	err := wait.PollImmediate(pollInterval, timeout, func() (bool, error) {
+		o, err := accessor()
+		if err != nil && errors.IsNotFound(err) {
+			return false, nil
+		}
+		if err != nil {
+			tlogf(t, "an error occurred while polling for %s: %v", resourceID, err)
+			return false, nil
+		}
+		obj = o
+		return true, nil
+	})
+	return obj, err
+}
+
+func tlogf(t *testing.T, fmt string, args ...interface{}) {
+	argsWithTimestamp := []interface{}{time.Now().Format(time.RFC1123Z)}
+	argsWithTimestamp = append(argsWithTimestamp, args...)
+	t.Logf("%s: "+fmt, argsWithTimestamp...)
+}
+
+func waitForPodPhase(t *testing.T, client *kubernetes.Clientset, name, namespace string, phase v1.PodPhase) error {
+	return wait.PollImmediate(5*time.Second, 5*time.Minute, func() (bool, error) {
+		pod, err := client.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			tlogf(t, "fetching test pod from apiserver failed: %v", err)
+			return false, nil
+		}
+		if pod.Status.Phase == v1.PodFailed {
+			return false, fmt.Errorf("pod %s/%s failed", namespace, name)
+		}
+		return pod.Status.Phase == phase, nil
+	})
+}
+
+func getPodLogs(t *testing.T, client *kubernetes.Clientset, name, namespace string) (string, error) {
+	rc, err := client.CoreV1().Pods(namespace).GetLogs(name, &v1.PodLogOptions{}).Stream(context.TODO())
+	if err != nil {
+		return "", err
+	}
+	defer rc.Close()
+
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(rc)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func deletePod(t *testing.T, client *kubernetes.Clientset, name, namespace string) {
+	err := client.CoreV1().Pods(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if errors.IsNotFound(err) {
+		return
+	}
+	if err != nil {
+		t.Errorf("failed to delete pod: %v", err)
+	}
+}
+
+func TestE2E(t *testing.T) {
+	// use /tmp/admin.conf (placed by ci-operator) or KUBECONFIG env
+	confPath := "/tmp/admin.conf"
+	if conf := os.Getenv("KUBECONFIG"); conf != "" {
+		confPath = conf
+	}
+
+	// load client
+	client, err := clientcmd.LoadFromFile(confPath)
+	if err != nil {
+		t.Fatalf("error loading config: %v", err)
+	}
+	adminConfig, err := clientcmd.NewDefaultClientConfig(*client, &clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		t.Fatalf("error loading admin config: %v", err)
+	}
+	adminClient, err := kubernetes.NewForConfig(adminConfig)
+	if err != nil {
+		t.Fatalf("error getting admin client: %v", err)
+	}
+
+	// the service-serving-cert-operator and controllers should be running as a stock OpenShift component. our first test is to
+	// verify that all of the components are running.
+	checkComponents(t, adminClient)
+
+	// test the main feature. annotate service -> created secret
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("serving-cert-annotation", func(t *testing.T) {
+		for _, headless := range []bool{false, true} {
+			t.Run(fmt.Sprintf("headless=%v", headless), func(t *testing.T) {
+				testServingCertAnnotation(t, headless)
+			})
+		}
+	})
+
+	// test modified data in serving-cert-secret will regenerated
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("serving-cert-secret-modify-bad-tlsCert", func(t *testing.T) {
+		for _, headless := range []bool{false, true} {
+			t.Run(fmt.Sprintf("headless=%v", headless), func(t *testing.T) {
+				testServingCertSecretModifyBadTLSCert(t, headless)
+			})
+		}
+	})
+
+	// test extra data in serving-cert-secret will be removed
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("serving-cert-secret-add-data", func(t *testing.T) {
+		for _, headless := range []bool{false, true} {
+			t.Run(fmt.Sprintf("headless=%v", headless), func(t *testing.T) {
+				testServingCertSecretAddData(t, headless)
+			})
+		}
+	})
+
+	// make sure that deleting service-cert-secret regenerates a secret again,
+	// and that the secret allows successful connections in practice.
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("serving-cert-secret-delete-data", func(t *testing.T) {
+		testServingCertSecretDeleteData(t)
+	})
+
+	// make sure that deleting aservice-cert-secret regenerates a secret again,
+	// and that the secret allows successful connections in practice.
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("headless-stateful-serving-cert-secret-delete-data", func(t *testing.T) {
+		testHeadlessStatefulServingCertSecretDeleteData(t)
+	})
+
+	// test ca bundle injection configmap
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("ca-bundle-injection-configmap", func(t *testing.T) {
+		testCABundleInjectionConfigMap(t)
+	})
+
+	// test updated data in ca bundle injection configmap will be stomped on
+	t.Run("ca-bundle-injection-configmap-update", func(t *testing.T) {
+		testCABundleInjectionConfigMapUpdate(t)
+	})
+
+	// test vulnerable-legacy ca bundle injection configmap
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("vulnerable-legacy-ca-bundle-injection-configmap", func(t *testing.T) {
+		testVulnerableLegacyCABundleInjectionConfigMap(t)
+	})
+
+	// test metrics collection and service CA metrics
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("metrics", func(t *testing.T) {
+		t.Run("collection", func(t *testing.T) {
+			testMetricsCollection(t)
+		})
+
+		t.Run("service-ca-metrics", func(t *testing.T) {
+			testServiceCAMetrics(t)
+		})
+	})
+
+	// test CA refresh - delete and recreate CA secret, verify serving certs and configmaps are updated
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("refresh-CA", func(t *testing.T) {
+		testRefreshCA(t)
+	})
+
+	// This test triggers rotation by updating the CA to have an
+	// expiry that is less than the minimum required duration and then
+	// validates that both refreshed and unrefreshed clients and
+	// servers can continue to communicate in a trusted fashion.
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("time-based-ca-rotation", func(t *testing.T) {
+		testTimeBasedCARotation(t)
+	})
+
+	// This test triggers rotation by updating the operator
+	// configuration to force rotation and then validates that both
+	// refreshed and unrefreshed clients and servers can continue to
+	// communicate in a trusted fashion.
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("forced-ca-rotation", func(t *testing.T) {
+		testForcedCARotation(t)
+	})
+
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("apiservice-ca-bundle-injection", func(t *testing.T) {
+		testAPIServiceCABundleInjection(t)
+	})
+
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("crd-ca-bundle-injection", func(t *testing.T) {
+		testCRDCABundleInjection(t)
+	})
+
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("mutatingwebhook-ca-bundle-injection", func(t *testing.T) {
+		testMutatingWebhookCABundleInjection(t)
+	})
+
+	// NOTE: This test is also available in the OTE framework (test/e2e/e2e.go).
+	// This duplication is temporary until we fully migrate to OTE and validate the new e2e jobs.
+	// Eventually, all tests will run only through the OTE framework.
+	t.Run("validatingwebhook-ca-bundle-injection", func(t *testing.T) {
+		testValidatingWebhookCABundleInjection(t)
+	})
+}

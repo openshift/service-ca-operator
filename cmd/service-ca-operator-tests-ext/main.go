@@ -1,0 +1,112 @@
+/*
+This command is used to run the Service CA Operator tests extension for OpenShift.
+It registers the Service CA Operator tests with the OpenShift Tests Extension framework
+and provides a command-line interface to execute them.
+For further information, please refer to the documentation at:
+https://github.com/openshift-eng/openshift-tests-extension/blob/main/cmd/example-tests/main.go
+*/
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
+	"k8s.io/component-base/cli"
+
+	otecmd "github.com/openshift-eng/openshift-tests-extension/pkg/cmd"
+	oteextension "github.com/openshift-eng/openshift-tests-extension/pkg/extension"
+	oteginkgo "github.com/openshift-eng/openshift-tests-extension/pkg/ginkgo"
+	"github.com/openshift/service-ca-operator/pkg/version"
+
+	"k8s.io/klog/v2"
+)
+
+func main() {
+	command, err := newOperatorTestCommand(context.Background())
+	if err != nil {
+		klog.Fatal(err)
+	}
+	code := cli.Run(command)
+	os.Exit(code)
+}
+
+func newOperatorTestCommand(ctx context.Context) (*cobra.Command, error) {
+	registry, err := prepareOperatorTestsRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare operator tests registry: %w", err)
+	}
+
+	cmd := &cobra.Command{
+		Use:   "service-ca-operator-tests-ext",
+		Short: "A binary used to run service-ca-operator tests as part of OTE.",
+		Run: func(cmd *cobra.Command, args []string) {
+			// no-op, logic is provided by the OTE framework
+			if err := cmd.Help(); err != nil {
+				klog.Fatal(err)
+			}
+		},
+	}
+
+	if v := version.Get().String(); len(v) == 0 {
+		cmd.Version = "<unknown>"
+	} else {
+		cmd.Version = v
+	}
+
+	cmd.AddCommand(otecmd.DefaultExtensionCommands(registry)...)
+
+	return cmd, nil
+}
+
+// prepareOperatorTestsRegistry creates the OTE registry for this operator.
+//
+// Note:
+//
+// This method must be called before adding the registry to the OTE framework.
+func prepareOperatorTestsRegistry() (*oteextension.Registry, error) {
+	registry := oteextension.NewRegistry()
+	extension := oteextension.NewExtension("openshift", "payload", "service-ca-operator")
+
+	// Parallel tests run concurrently with default (Stable) cluster health monitoring.
+	// Tests that are not tagged with [Serial] and have [Operator] are included in this suite.
+	extension.AddSuite(oteextension.Suite{
+		Name:        "openshift/service-ca-operator/operator/parallel",
+		Parallelism: 4,
+		Qualifiers: []string{
+			`!name.contains("[Serial]") && name.contains("[Operator]") && !name.contains("[Disruptive]")`,
+		},
+	})
+
+	// Serial tests run one at a time with default (Stable) cluster health monitoring.
+	// Tests tagged with [Serial] and [Operator] but not [Disruptive] are included in this suite.
+	extension.AddSuite(oteextension.Suite{
+		Name:        "openshift/service-ca-operator/operator/serial",
+		Parallelism: 1,
+		Qualifiers: []string{
+			`name.contains("[Operator]") && name.contains("[Serial]") && !name.contains("[Disruptive]")`,
+		},
+	})
+
+	// Disruptive tests (e.g. CA rotation) that cause expected cluster-wide TLS disruption.
+	// Monitors will relax thresholds for this suite.
+	// Tests tagged with [Operator], [Serial], and [Disruptive] are included in this suite.
+	extension.AddSuite(oteextension.Suite{
+		Name:             "openshift/service-ca-operator/operator/serial-disruptive",
+		Parallelism:      1,
+		ClusterStability: oteextension.ClusterStabilityDisruptive,
+		Qualifiers: []string{
+			`name.contains("[Operator]") && name.contains("[Serial]") && name.contains("[Disruptive]")`,
+		},
+	})
+
+	specs, err := oteginkgo.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
+	if err != nil {
+		return nil, fmt.Errorf("couldn't build extension test specs from ginkgo: %w", err)
+	}
+
+	extension.AddSpecs(specs)
+	registry.Register(extension)
+	return registry, nil
+}

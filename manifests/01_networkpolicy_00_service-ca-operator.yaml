@@ -1,0 +1,37 @@
+# Allow policy for the service-ca-operator pod in the openshift-service-ca-operator namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: service-ca-operator
+  namespace: openshift-service-ca-operator
+  annotations:
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+spec:
+  podSelector:
+    matchLabels:
+      app: service-ca-operator
+  ingress:
+  # Metrics scraping (TCP 8443) from any source
+  - ports:
+    - protocol: TCP
+      port: 8443
+  egress:
+  # DNS resolution via openshift-dns (TCP/UDP 5353)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: openshift-dns
+      podSelector:
+        matchLabels:
+          dns.operator.openshift.io/daemonset-dns: default
+    ports:
+    - protocol: TCP
+      port: 5353
+    - protocol: UDP
+      port: 5353
+  # Kubernetes API server; no port restriction since it may run on non-standard ports
+  - {}
+  policyTypes:
+  - Ingress
+  - Egress

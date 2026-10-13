@@ -1,0 +1,259 @@
+package operator
+
+import (
+	gocrypto "crypto"
+	"crypto/x509"
+	"fmt"
+	"math/big"
+	"time"
+
+	"github.com/openshift/library-go/pkg/pki"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/util/keyutil"
+	"k8s.io/klog/v2"
+
+	"github.com/openshift/library-go/pkg/crypto"
+	"github.com/openshift/service-ca-operator/pkg/controller/api"
+	"github.com/openshift/service-ca-operator/pkg/operator/util"
+)
+
+type signingCA struct {
+	config             *crypto.TLSCertificateConfig
+	bundle             []*x509.Certificate
+	intermediateCACert *x509.Certificate
+	oldCAExpiry        time.Time
+}
+
+// updateSigningSecret updates the provided secret with the signing artifacts.
+func (ca *signingCA) updateSigningSecret(secret *corev1.Secret) error {
+	caPEM, keyPEM, err := ca.config.GetPEMBytes()
+	if err != nil {
+		return err
+	}
+	bundlePEM, err := crypto.EncodeCertificates(ca.bundle...)
+	if err != nil {
+		return err
+	}
+	intermediatePEM, err := crypto.EncodeCertificates(ca.intermediateCACert)
+	if err != nil {
+		return err
+	}
+
+	d := secret.Data
+	d[corev1.TLSCertKey] = caPEM
+	d[corev1.TLSPrivateKeyKey] = keyPEM
+	d[api.BundleDataKey] = bundlePEM
+	d[api.IntermediateDataKey] = intermediatePEM
+
+	return nil
+}
+
+// maybeRotateSigningSecret rotates the CA of the given signing secret if required.
+//
+// On successful rotation, the secret will be updated with the data of the new CA and a
+// non-empty rotation message will be returned.  Rotation will not be performed if the
+// current CA is not more than half-way expired or if a forced rotation was not
+// requested, and in this case an empty rotation message will be returned.
+func (c *serviceCAOperator) maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certificate, serviceCAConfig unsupportedServiceCAConfig, minimumTrustDuration time.Duration, signingCertificateLifetime time.Duration) (string, error) {
+	reason := serviceCAConfig.ForceRotation.Reason
+	forcedRotation := forcedRotationRequired(secret, reason)
+
+	minimumExpiry := time.Now().Add(minimumTrustDuration)
+	timeBasedRotation := currentCACert.NotAfter.Before(minimumExpiry)
+
+	if !(forcedRotation || timeBasedRotation) {
+		return "", nil
+	}
+
+	var rotationMsg string
+	if forcedRotation {
+		rotationMsg = fmt.Sprintf("Forcing service CA rotation due to reason %q.", reason)
+		recordForcedRotationReason(secret, reason)
+	} else {
+		rotationMsg = "Rotating service CA due to the CA being past the mid-point of its validity."
+	}
+	klog.V(2).Info(rotationMsg)
+
+	keyData := secret.Data[corev1.TLSPrivateKeyKey]
+	if len(keyData) == 0 {
+		return "", fmt.Errorf("signing secret is missing a value for %q", corev1.TLSPrivateKeyKey)
+	}
+	key, err := keyutil.ParsePrivateKeyPEM(keyData)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse private key from PEM: %v", err)
+	}
+
+	signer, ok := key.(gocrypto.Signer)
+	if !ok {
+		return "", fmt.Errorf("expected crypto.Signer private key, got %T", key)
+	}
+
+	signingCA, err := c.rotateSigningCA(currentCACert, signer, minimumTrustDuration, signingCertificateLifetime)
+	if err != nil {
+		return "", err
+	}
+
+	// Set a custom expiry for testing if one was provided
+	signingCA.config, err = maybeUpdateExpiry(signingCA.config, serviceCAConfig.CAConfig.ValidityDurationForTesting)
+	if err != nil {
+		return "", fmt.Errorf("failed to renew ca for custom duration: %v", err)
+	}
+
+	err = signingCA.updateSigningSecret(secret)
+	if err != nil {
+		return "", err
+	}
+
+	oldCAExpiry := signingCA.oldCAExpiry.Format(time.RFC3339)
+	rotationMsg += fmt.Sprintf("\nThe previous CA will be trusted until %s", oldCAExpiry)
+	return rotationMsg, nil
+}
+
+// rotateSigningCA creates a new signing CA, bundle and intermediate CA that together can
+// be used to ensure that serving certs generated both before and after rotation can be
+// trusted by both refreshed and unrefreshed consumers.
+func (c *serviceCAOperator) rotateSigningCA(currentCACert *x509.Certificate, currentKey gocrypto.Signer, minimumTrustDuration time.Duration, signingCertificateLifetime time.Duration) (*signingCA, error) {
+	// Generate a new signing cert.
+	// When configurable PKI is enabled, attempt to resolve a certificate
+	// config from the PKI profile. A nil config (Unmanaged mode) means
+	// no custom key configuration is active, so fall through to the
+	// legacy code path.
+	var newCAConfig *crypto.TLSCertificateConfig
+	var err error
+	if c.enabledFeatureGates["ConfigurablePKI"] {
+		var certificateCfg *pki.CertificateConfig
+		certificateCfg, err = pki.ResolveCertificateConfig(c.pkiProvider, pki.CertificateTypeSigner, "service-ca.service-serving-signer")
+		// TODO: This NotFound fallback may be temporary while ConfigurablePKI
+		// is in tech preview. Once the installer provides the initial "cluster"
+		// PKI resource, this fallback may no longer be needed.
+		if apierrors.IsNotFound(err) {
+			klog.V(2).Infof("PKI resource not found, using default PKI profile")
+			defaultProfile := pki.DefaultPKIProfile()
+			defaultProvider := pki.NewStaticPKIProfileProvider(&defaultProfile)
+			certificateCfg, err = pki.ResolveCertificateConfig(defaultProvider, pki.CertificateTypeSigner, "service-ca.service-serving-signer")
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve PKI certificate config: %w", err)
+		}
+		if certificateCfg != nil {
+			newCAConfig, err = crypto.NewSigningCertificate(
+				currentCACert.Subject.CommonName, certificateCfg.Key,
+				crypto.WithSubject(currentCACert.Subject),
+				crypto.WithLifetime(signingCertificateLifetime),
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	// Fall back to legacy cert generation when configurable PKI is
+	// disabled or the PKI profile is Unmanaged (nil config).
+	if newCAConfig == nil {
+		newCAConfig, err = crypto.MakeSelfSignedCAConfigForSubject(currentCACert.Subject, signingCertificateLifetime)
+	}
+	if err != nil {
+		return nil, err
+	}
+	newCACert := newCAConfig.Certs[0]
+
+	// Ensure that the intermediate cert bridging trust between the current and new CAs
+	// has an expiry that guarantees a minimum trust duration.
+	var currentCACertExpiry *time.Time
+	minimumExpiry := time.Now().Add(minimumTrustDuration)
+	if currentCACert.NotAfter.Before(minimumExpiry) {
+		currentCACertExpiry = &minimumExpiry
+	}
+
+	newCASigner, ok := newCAConfig.Key.(gocrypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("expected crypto.Signer for new CA key, got %T", newCAConfig.Key)
+	}
+
+	// Generate an intermediate cert bridging trust between the new CA and serving certs
+	// generated by the current CA for inclusion in the new CA bundle. This will ensure
+	// that clients with a post-rotation ca bundle will be able to trust pre-rotation
+	// serving certs.
+	currentCACertSignedByNewCA, err := createIntermediateCACert(currentCACert, newCACert, newCASigner, currentCACertExpiry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create intermediate certificate signed by new ca: %v", err)
+	}
+
+	bundle := []*x509.Certificate{
+		newCACert,
+		currentCACertSignedByNewCA,
+	}
+
+	// Generate an intermediate cert bridging trust between the current CA and serving
+	// certs generated by the new CA. This cert will need to be included with serving
+	// certs generated by the new CA to ensure that clients with the pre-rotation ca
+	// bundle will be able to trust post-rotation serving certs.
+	newCACertSignedByOldCA, err := createIntermediateCACert(newCACert, currentCACert, currentKey, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create intermediate certificate signed by previous ca: %v", err)
+	}
+
+	return &signingCA{
+		config:             newCAConfig,
+		bundle:             bundle,
+		intermediateCACert: newCACertSignedByOldCA,
+		oldCAExpiry:        currentCACertSignedByNewCA.NotAfter,
+	}, nil
+}
+
+// createIntermediateCACert creates a new intermediate CA cert from a template provided by
+// the target CA cert and issued by the signing cert. This ensures that certificates
+// issued by the target CA can be trusted by clients that trust the signing CA.
+func createIntermediateCACert(targetCACert, signingCACert *x509.Certificate, signingKey gocrypto.Signer, expiry *time.Time) (*x509.Certificate, error) {
+	// Copy the target cert to allow modification.
+	template, err := x509.ParseCertificate(targetCACert.Raw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy ca certificate: %v", err)
+	}
+	// Enable key identity chaining
+	template.AuthorityKeyId = signingCACert.SubjectKeyId
+
+	// Set a new serial number so that the intermediate CA cert is
+	// differentiated from the target CA cert. This ensures that a serving
+	// cert bundle that includes the issuing CA cert and an intermediate CA
+	// cert generated by this function - with the issuing CA cert as the
+	// target and the previous CA as the signer - will not result in
+	// SEC_ERROR_REUSED_ISSUER_AND_SERIAL when read by applications like curl.
+	serialGenerator := crypto.RandomSerialGenerator{}
+	serial, err := serialGenerator.Next(template)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find next serial number: %v", err)
+	}
+	template.SerialNumber = big.NewInt(serial)
+
+	// Update the expiry if necessary
+	if expiry != nil {
+		template.NotAfter = *expiry
+	}
+
+	caCert, err := util.CreateCertificate(template, signingCACert, targetCACert.PublicKey, signingKey)
+	if err != nil {
+		return nil, fmt.Errorf("error creating intermediate CA certificate: %v", err)
+	}
+
+	return caCert, nil
+}
+
+// forcedRotationRequired indicates whether the force rotation reason is not empty and
+// does not match the annotation stored on the signing secret.
+func forcedRotationRequired(secret *corev1.Secret, reason string) bool {
+	if len(reason) == 0 {
+		return false
+	}
+	seenReason := secret.Annotations[api.ForcedRotationReasonAnnotationName]
+	return reason != seenReason
+}
+
+// recordForcedRotationReason annotates the signing secret with the reason for performing
+// a forced rotation.
+func recordForcedRotationReason(secret *corev1.Secret, reason string) {
+	if secret.Annotations == nil {
+		secret.Annotations = map[string]string{}
+	}
+	secret.Annotations[api.ForcedRotationReasonAnnotationName] = reason
+}

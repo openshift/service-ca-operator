@@ -1,0 +1,9 @@
+reviewers:
+  - p0lyn0mial
+  - bertinatto
+  - xingxingxia
+approvers:
+  - p0lyn0mial
+  - bertinatto
+  - xingxingxia
+component: service-ca-tests
