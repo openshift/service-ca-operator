@@ -8,7 +8,7 @@ An OpenShift ClusterOperator that manages the **service-serving CA** — a clust
 
 Two-process architecture from a single binary (`service-ca-operator`):
 - **Operator** (`pkg/operator/`): Manages the signing CA, controller Deployment lifecycle, and ClusterOperator status
-- **Controller** (`pkg/controller/`): Signs TLS certs for annotated Services, injects CA bundles into ConfigMaps/APIServices/Webhooks/CRDs
+- **Controller** (`pkg/controller/`): Signs TLS certs for annotated Services, injects CA bundles into ConfigMaps/Secrets/APIServices/Webhooks/CRDs
 
 ## Repository Layout
 
@@ -18,7 +18,7 @@ cmd/service-ca-operator-tests-ext/ OTE e2e test binary
 pkg/operator/                      Operator process — CA lifecycle, deployment sync, status
 pkg/controller/                    Controller process — serving cert signer, CA bundle injectors
 pkg/controller/api/                Annotation constants, resource names
-pkg/controller/cabundleinjector/   CA bundle injection into ConfigMaps, webhooks, CRDs, APIServices
+pkg/controller/cabundleinjector/   CA bundle injection into ConfigMaps, Secrets, webhooks, CRDs, APIServices
 pkg/controller/servingcert/        Serving cert signing controller
 pkg/cmd/                           CLI wiring (cobra commands)
 bindata/assets/                    Embedded static manifests (Go embed.FS)

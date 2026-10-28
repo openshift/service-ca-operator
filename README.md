@@ -5,7 +5,7 @@ Controller to mint and manage serving certificates for Kubernetes services. This
 The operator runs three controllers:
 
 - **Serving cert signer** — Issues signed TLS certificates for Services annotated with `service.beta.openshift.io/serving-cert-secret-name`. [See the OKD documentation for usage.](https://docs.okd.io/latest/security/certificates/service-serving-certificate.html)
-- **ConfigMap CA bundle injector** — Injects the CA bundle into ConfigMaps annotated with `service.beta.openshift.io/inject-cabundle=true` (key: `service-ca.crt`)
+- **ConfigMap/Secret CA bundle injector** — Injects the CA bundle into ConfigMaps and Secrets annotated with `service.beta.openshift.io/inject-cabundle=true` (key: `service-ca.crt`)
 - **Generic CA bundle injector** — Injects the CA bundle into APIServices, MutatingWebhookConfigurations, ValidatingWebhookConfigurations, and CRDs annotated with the same annotation
 
 ## Quick Start

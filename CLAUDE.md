@@ -40,10 +40,11 @@ This is an OpenShift ClusterOperator with a two-process architecture running fro
 
 ### Controller Process (`service-ca-operator controller`)
 - **Package:** `pkg/controller/`
-- Started by the operator as a Deployment; runs three controllers:
+- Started by the operator as a Deployment; runs four controllers:
   1. **Serving Cert Signer** (`pkg/controller/servingcert/`): Signs TLS serving certs for Services annotated with `service.beta.openshift.io/serving-cert-secret-name`
   2. **ConfigMap CA Bundle Injector** (`pkg/controller/cabundleinjector/configmap.go`): Injects the CA bundle into ConfigMaps annotated with `service.beta.openshift.io/inject-cabundle=true`
-  3. **Generic CA Bundle Injector** (`pkg/controller/cabundleinjector/`): Injects the CA bundle into APIServices, MutatingWebhookConfigurations, ValidatingWebhookConfigurations, and CRDs with the same annotation
+  3. **Secret CA Bundle Injector** (`pkg/controller/cabundleinjector/secret.go`): Injects the CA bundle into Secrets annotated with `service.beta.openshift.io/inject-cabundle=true`, replacing all other data
+  4. **Generic CA Bundle Injector** (`pkg/controller/cabundleinjector/`): Injects the CA bundle into APIServices, MutatingWebhookConfigurations, ValidatingWebhookConfigurations, and CRDs with the same annotation
 
 ### Embedded Assets
 Static resource manifests are embedded using Go's native `embed.FS`:
@@ -56,7 +57,7 @@ Static resource manifests are embedded using Go's native `embed.FS`:
 Users interact with the controller by annotating their resources. The annotation constants are defined in `pkg/controller/api/api.go`.
 
 - **`service.beta.openshift.io/serving-cert-secret-name=<secret-name>`** — Set on a **Service** to request a TLS serving cert. The controller creates a Secret with the given name containing `tls.crt` and `tls.key` signed by the service CA.
-- **`service.beta.openshift.io/inject-cabundle=true`** — Set on a **ConfigMap**, **APIService**, **CRD**, **MutatingWebhookConfiguration**, or **ValidatingWebhookConfiguration** to inject the service CA bundle. For ConfigMaps the bundle is written to the `service-ca.crt` data key; for the others it is set in the appropriate `caBundle` spec field.
+- **`service.beta.openshift.io/inject-cabundle=true`** — Set on a **ConfigMap**, **Secret**, **APIService**, **CRD**, **MutatingWebhookConfiguration**, or **ValidatingWebhookConfiguration** to inject the service CA bundle. For ConfigMaps and Secrets the bundle is written to the `service-ca.crt` data key; for the others it is set in the appropriate `caBundle` spec field.
 
 Legacy `service.alpha.openshift.io` equivalents of both annotations are also supported.
 

@@ -31,6 +31,7 @@ The operator creates the signing CA Secret, maintains the CA bundle ConfigMap, s
 | Serving Cert Signer | `servingcert/controller/` | Services, Secrets | Creates TLS Secrets for annotated Services |
 | Serving Cert Updater | `servingcert/controller/` | Services, Secrets | Refreshes certs approaching expiry |
 | ConfigMap CA Injector | `cabundleinjector/configmap.go` | ConfigMaps | Injects CA bundle into annotated ConfigMaps |
+| Secret CA Injector | `cabundleinjector/secret.go` | Secrets | Replaces data of annotated Secrets with the CA bundle (`service-ca.crt`) |
 | APIService CA Injector | `cabundleinjector/apiservice.go` | APIServices | Sets `spec.caBundle` on annotated APIServices |
 | Webhook CA Injectors | `cabundleinjector/admissionwebhook.go` | Mutating/ValidatingWebhookConfigs | Sets `caBundle` on annotated webhooks |
 | CRD CA Injector | `cabundleinjector/crd.go` | CRDs | Sets conversion webhook `caBundle` |
@@ -71,10 +72,11 @@ Controller process (started by operator as a Deployment):
 
 ### CA Bundle Injection
 
-1. User creates a ConfigMap (or APIService/CRD/webhook) with annotation `service.beta.openshift.io/inject-cabundle=true`.
+1. User creates a ConfigMap or Secret (or APIService/CRD/webhook) with annotation `service.beta.openshift.io/inject-cabundle=true`.
 2. CA Bundle Injector controller observes the resource via informer.
 3. Controller reads the CA bundle from `openshift-service-ca/signing-key` Secret's `ca-bundle.crt` key.
 4. Controller injects the bundle into:
+   - **Secret**: `data["service-ca.crt"]`
    - **ConfigMap**: `data["service-ca.crt"]`
    - **APIService**: `spec.caBundle`
    - **CRD**: `spec.conversion.webhook.clientConfig.caBundle`
@@ -126,7 +128,7 @@ Forced rotation is supported via `unsupportedConfigOverrides` with a reason anno
 - **`service.beta.openshift.io/expiry`** — Certificate expiry time (RFC3339 format).
 
 ### CA Bundle Injection Annotations
-- **`service.beta.openshift.io/inject-cabundle=true`** — Inject the service CA bundle into this resource. Supported on ConfigMap, APIService, CRD, MutatingWebhookConfiguration, ValidatingWebhookConfiguration.
+- **`service.beta.openshift.io/inject-cabundle=true`** — Inject the service CA bundle into this resource. Supported on ConfigMap, Secret, APIService, CRD, MutatingWebhookConfiguration, ValidatingWebhookConfiguration.
 - **`service.alpha.openshift.io/inject-vulnerable-legacy-cabundle=true`** — Legacy injection for clusters upgraded from pre-4.7. Only injects into ConfigMaps named exactly `openshift-service-ca.crt`. Yields to the preferred annotation if present. **Deprecated** and cannot be enabled on new clusters.
 
 All annotations have legacy `service.alpha.openshift.io/*` equivalents that are still supported for backward compatibility.
