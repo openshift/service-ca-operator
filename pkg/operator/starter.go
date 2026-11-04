@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
@@ -54,7 +53,6 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 	configInformers := configv1informers.NewSharedInformerFactory(configClient, resyncDuration)
 	operatorConfigInformers := operatorv1informers.NewSharedInformerFactory(operatorConfigClient, resyncDuration)
 
-	kubeInformersNamespaced := informers.NewFilteredSharedInformerFactory(kubeClient, resyncDuration, operatorclient.TargetNamespace, nil)
 	kubeInformersForNamespaces := v1helpers.NewKubeInformersForNamespaces(kubeClient,
 		"",
 		operatorclient.GlobalUserSpecifiedConfigNamespace,
@@ -62,6 +60,9 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		operatorclient.OperatorNamespace,
 		operatorclient.TargetNamespace,
 	)
+	// Reuse the TargetNamespace informers already registered above instead of
+	// creating a duplicate FilteredSharedInformerFactory for the same namespace.
+	kubeInformersNamespaced := kubeInformersForNamespaces.InformersFor(operatorclient.TargetNamespace)
 
 	operatorClient := &operatorclient.OperatorClient{
 		Clock:     controllerContext.Clock,
@@ -185,7 +186,6 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 
 	for _, informerStarter := range []func(<-chan struct{}){
 		operatorConfigInformers.Start,
-		kubeInformersNamespaced.Start,
 		kubeInformersForNamespaces.Start,
 		configInformers.Start,
 	} {
