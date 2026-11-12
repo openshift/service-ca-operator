@@ -14,9 +14,17 @@ type ClusterVersionOperatorListerExpansion interface{}
 // EtcdBackupLister.
 type EtcdBackupListerExpansion interface{}
 
+// EtcdBackupPolicyListerExpansion allows custom methods to be added to
+// EtcdBackupPolicyLister.
+type EtcdBackupPolicyListerExpansion interface{}
+
 // ImageContentSourcePolicyListerExpansion allows custom methods to be added to
 // ImageContentSourcePolicyLister.
 type ImageContentSourcePolicyListerExpansion interface{}
+
+// IngressListerExpansion allows custom methods to be added to
+// IngressLister.
+type IngressListerExpansion interface{}
 
 // OLMListerExpansion allows custom methods to be added to
 // OLMLister.
