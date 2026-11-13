@@ -23,6 +23,7 @@ import (
 	"github.com/openshift/library-go/pkg/pki"
 
 	"github.com/openshift/service-ca-operator/pkg/operator/operatorclient"
+	"k8s.io/utils/clock"
 )
 
 type serviceCAOperator struct {
@@ -38,6 +39,11 @@ type serviceCAOperator struct {
 
 	minimumTrustDuration       time.Duration
 	signingCertificateLifetime time.Duration
+
+	// clock, when set, is used for rotation time reads and certificate
+	// generation on the ConfigurablePKI path. When nil, the real system
+	// clock is used.
+	clock clock.PassiveClock
 
 	enabledFeatureGates map[string]bool
 	pkiProvider         pki.PKIProfileProvider

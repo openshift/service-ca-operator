@@ -20,8 +20,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -211,6 +213,39 @@ var ciphersUnsupportedByGo = map[string]string{
 	"AES256-SHA256":             "TLS_RSA_WITH_AES_256_CBC_SHA256",
 }
 
+// tlsGroupToCurveID maps OpenShift API TLSGroup values to Go's tls.CurveID.
+var tlsGroupToCurveID = map[configv1.TLSGroup]tls.CurveID{
+	configv1.TLSGroupX25519:             tls.X25519,
+	configv1.TLSGroupSecP256r1:          tls.CurveP256,
+	configv1.TLSGroupSecP384r1:          tls.CurveP384,
+	configv1.TLSGroupSecP521r1:          tls.CurveP521,
+	configv1.TLSGroupX25519MLKEM768:     tls.X25519MLKEM768,
+	configv1.TLSGroupSecP256r1MLKEM768:  tls.SecP256r1MLKEM768,
+	configv1.TLSGroupSecP384r1MLKEM1024: tls.SecP384r1MLKEM1024,
+}
+
+// curveIDToTLSGroup is the reverse mapping of tlsGroupToCurveID.
+// Built automatically from tlsGroupToCurveID at package initialization.
+var curveIDToTLSGroup = buildCurveIDToTLSGroupMapOrDie()
+
+func buildCurveIDToTLSGroupMapOrDie() map[tls.CurveID]configv1.TLSGroup {
+	reverseMap := make(map[tls.CurveID]configv1.TLSGroup, len(tlsGroupToCurveID))
+	for group, curveID := range tlsGroupToCurveID {
+		if existing, exists := reverseMap[curveID]; exists {
+			panic(fmt.Sprintf("duplicate curve ID %d: both %q and %q map to it", curveID, existing, group))
+		}
+		reverseMap[curveID] = group
+	}
+	return reverseMap
+}
+
+// CurveIDToTLSGroup converts a curve ID to its corresponding TLS group name.
+// Returns the group name and true if found, empty string and false otherwise.
+func CurveIDToTLSGroup(curveID tls.CurveID) (configv1.TLSGroup, bool) {
+	groupName, ok := curveIDToTLSGroup[curveID]
+	return groupName, ok
+}
+
 // CipherSuitesToNamesOrDie given a list of cipher suites as ints, return their readable names
 func CipherSuitesToNamesOrDie(intVals []uint16) []string {
 	ret := []string{}
@@ -354,6 +389,71 @@ func OpenSSLToIANACipherSuites(ciphers []string) []string {
 	}
 
 	return ianaCiphers
+}
+
+// TLSGroupToCurveID returns the Go tls.CurveID for an OpenShift API TLSGroup
+// constant, or (0, false) if the group is not recognized.
+func TLSGroupToCurveID(group configv1.TLSGroup) (tls.CurveID, bool) {
+	id, ok := tlsGroupToCurveID[group]
+	return id, ok
+}
+
+// TLSGroupsToCurveIDs converts a slice of TLSGroup values to their tls.CurveID
+// codes. Returns the mapped curve IDs and a list of unrecognized groups.
+// Unrecognized groups are silently filtered — callers should log warnings.
+func TLSGroupsToCurveIDs(groups []configv1.TLSGroup) ([]tls.CurveID, []configv1.TLSGroup) {
+	var curves []tls.CurveID
+	var unrecognized []configv1.TLSGroup
+
+	for _, group := range groups {
+		id, ok := TLSGroupToCurveID(group)
+		if !ok {
+			unrecognized = append(unrecognized, group)
+			continue
+		}
+		curves = append(curves, id)
+	}
+
+	return curves, unrecognized
+}
+
+// TLSGroupsToCurvePreferences converts OpenShift TLS group names to the numeric
+// curve IDs accepted by Kubernetes SecureServingOptions. T permits both the
+// API's []TLSGroup and []string values stored in observed configuration.
+// Unrecognized groups are omitted from the curve preferences and returned to
+// the caller.
+func TLSGroupsToCurvePreferences[T ~string](groups []T) ([]int32, []T) {
+	tlsGroups := make([]configv1.TLSGroup, len(groups))
+	for i, group := range groups {
+		tlsGroups[i] = configv1.TLSGroup(group)
+	}
+
+	curveIDs, unrecognizedTLSGroups := TLSGroupsToCurveIDs(tlsGroups)
+	curvePreferences := make([]int32, len(curveIDs))
+	for i, curveID := range curveIDs {
+		curvePreferences[i] = int32(curveID)
+	}
+	// Preserve nil when every group is recognized, matching TLSGroupsToCurveIDs.
+	var unrecognizedGroups []T
+	if len(unrecognizedTLSGroups) > 0 {
+		unrecognizedGroups = make([]T, len(unrecognizedTLSGroups))
+		for i, group := range unrecognizedTLSGroups {
+			unrecognizedGroups[i] = T(group)
+		}
+	}
+	return curvePreferences, unrecognizedGroups
+}
+
+// ValidTLSGroups returns the recognized TLS group names, sorted alphabetically.
+func ValidTLSGroups() []configv1.TLSGroup {
+	groups := make([]configv1.TLSGroup, 0, len(tlsGroupToCurveID))
+	for g := range tlsGroupToCurveID {
+		groups = append(groups, g)
+	}
+	slices.SortFunc(groups, func(a, b configv1.TLSGroup) int {
+		return strings.Compare(string(a), string(b))
+	})
+	return groups
 }
 
 type TLSCertificateConfig struct {
@@ -720,6 +820,12 @@ func makeSelfSignedCAConfigForSubjectAndDuration(subject pkix.Name, currentTime 
 }
 
 func MakeCAConfigForDuration(name string, caLifetime time.Duration, issuer *CA) (*TLSCertificateConfig, error) {
+	return MakeCAConfigForDurationAtTime(name, caLifetime, time.Now, issuer)
+}
+
+// MakeCAConfigForDurationAtTime is MakeCAConfigForDuration with the current
+// time supplied by currentTime instead of the system clock.
+func MakeCAConfigForDurationAtTime(name string, caLifetime time.Duration, currentTime func() time.Time, issuer *CA) (*TLSCertificateConfig, error) {
 	// Create CA cert
 	signerPublicKey, signerPrivateKey, publicKeyHash, err := newKeyPairWithHash()
 	if err != nil {
@@ -727,7 +833,7 @@ func MakeCAConfigForDuration(name string, caLifetime time.Duration, issuer *CA) 
 	}
 	authorityKeyId := issuer.Config.Certs[0].SubjectKeyId
 	subjectKeyId := publicKeyHash
-	signerTemplate := newSigningCertificateTemplateForDuration(pkix.Name{CommonName: name}, caLifetime, time.Now, authorityKeyId, subjectKeyId)
+	signerTemplate := newSigningCertificateTemplateForDuration(pkix.Name{CommonName: name}, caLifetime, currentTime, authorityKeyId, subjectKeyId)
 	signerCert, err := issuer.SignCertificate(signerTemplate, signerPublicKey)
 	if err != nil {
 		return nil, err
@@ -856,10 +962,16 @@ func (ca *CA) MakeServerCert(hostnames sets.Set[string], lifetime time.Duration,
 }
 
 func (ca *CA) MakeServerCertForDuration(hostnames sets.Set[string], lifetime time.Duration, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
+	return ca.MakeServerCertForDurationAtTime(hostnames, lifetime, time.Now, fns...)
+}
+
+// MakeServerCertForDurationAtTime is MakeServerCertForDuration with the current
+// time supplied by currentTime instead of the system clock.
+func (ca *CA) MakeServerCertForDurationAtTime(hostnames sets.Set[string], lifetime time.Duration, currentTime func() time.Time, fns ...CertificateExtensionFunc) (*TLSCertificateConfig, error) {
 	serverPublicKey, serverPrivateKey, publicKeyHash, _ := newKeyPairWithHash()
 	authorityKeyId := ca.Config.Certs[0].SubjectKeyId
 	subjectKeyId := publicKeyHash
-	serverTemplate := newServerCertificateTemplateForDuration(pkix.Name{CommonName: sets.List(hostnames)[0]}, sets.List(hostnames), lifetime, time.Now, authorityKeyId, subjectKeyId)
+	serverTemplate := newServerCertificateTemplateForDuration(pkix.Name{CommonName: sets.List(hostnames)[0]}, sets.List(hostnames), lifetime, currentTime, authorityKeyId, subjectKeyId)
 	for _, fn := range fns {
 		if err := fn(serverTemplate); err != nil {
 			return nil, err
@@ -945,8 +1057,14 @@ func (ca *CA) MakeClientCertificate(certFile, keyFile string, u user.Info, lifet
 }
 
 func (ca *CA) MakeClientCertificateForDuration(u user.Info, lifetime time.Duration) (*TLSCertificateConfig, error) {
+	return ca.MakeClientCertificateForDurationAtTime(u, lifetime, time.Now)
+}
+
+// MakeClientCertificateForDurationAtTime is MakeClientCertificateForDuration
+// with the current time supplied by currentTime instead of the system clock.
+func (ca *CA) MakeClientCertificateForDurationAtTime(u user.Info, lifetime time.Duration, currentTime func() time.Time) (*TLSCertificateConfig, error) {
 	clientPublicKey, clientPrivateKey, _ := NewKeyPair()
-	clientTemplate := NewClientCertificateTemplateForDuration(UserToSubject(u), lifetime, time.Now)
+	clientTemplate := NewClientCertificateTemplateForDuration(UserToSubject(u), lifetime, currentTime)
 	clientCrt, err := ca.SignCertificate(clientTemplate, clientPublicKey)
 	if err != nil {
 		return nil, err
