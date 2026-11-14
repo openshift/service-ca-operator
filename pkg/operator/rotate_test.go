@@ -18,6 +18,7 @@ import (
 	"github.com/openshift/service-ca-operator/pkg/controller/api"
 	"github.com/openshift/service-ca-operator/pkg/controller/servingcert/controller"
 	"github.com/openshift/service-ca-operator/test/util"
+	clocktesting "k8s.io/utils/clock/testing"
 )
 
 const (
@@ -52,17 +53,15 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 	forceRotatedSigningSecret := newSigningSecret.DeepCopy()
 	recordForcedRotationReason(forceRotatedSigningSecret, "42")
 
-	// Create a secret whose CA expires sooner than the minimum required duration.
-	expiringCAConfig, err := RenewSelfSignedCertificate(newCAConfig, 1*time.Hour, true)
-	if err != nil {
-		t.Fatalf("error renewing ca to half-expired form: %v", err)
-	}
-	expiringSigningSecret, expiringCACert := caToSigningSecret(t, expiringCAConfig)
-
+	// Instead of re-issuing the CA with a shortened expiry to simulate the
+	// half-expired state, the operator's injected clock is advanced past the
+	// point where the CA's remaining validity no longer covers the minimum
+	// trust duration (library-go certrotation-style clock injection).
 	testCases := map[string]struct {
 		secret           *corev1.Secret
 		caCert           *x509.Certificate
 		reason           string
+		advance          time.Duration
 		rotationExpected bool
 	}{
 		"Rotation not required": {
@@ -70,8 +69,9 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 			caCert: newCACert,
 		},
 		"Time-based rotation required": {
-			secret:           expiringSigningSecret,
-			caCert:           expiringCACert,
+			secret:           newSigningSecret,
+			caCert:           newCACert,
+			advance:          time.Hour,
 			rotationExpected: true,
 		},
 		"Forced rotation required": {
@@ -81,9 +81,10 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 			rotationExpected: true,
 		},
 		"Forced rotation required when half-expired": {
-			secret:           expiringSigningSecret,
-			caCert:           expiringCACert,
+			secret:           newSigningSecret,
+			caCert:           newCACert,
 			reason:           "42",
+			advance:          time.Hour,
 			rotationExpected: true,
 		},
 		"Forced rotation not required": {
@@ -105,7 +106,9 @@ func TestMaybeRotateSigningSecret(t *testing.T) {
 				},
 			}
 			secret := tc.secret.DeepCopy()
-			operator := &serviceCAOperator{}
+			fakeClock := clocktesting.NewFakePassiveClock(time.Now())
+			fakeClock.SetTime(fakeClock.Now().Add(tc.advance))
+			operator := &serviceCAOperator{clock: fakeClock}
 			rotationMessage, err := operator.maybeRotateSigningSecret(secret, tc.caCert, serviceCAConfig, minimumTrustDuration, signingCertificateLifetime)
 			if err != nil {
 				t.Fatalf("error rotating signing secret: %v", err)
@@ -211,17 +214,16 @@ func TestRotateSigningCA(t *testing.T) {
 		t.Fatalf("error encoding old serving cert to PEM: %v", err)
 	}
 
-	// Simulate time-based rotation by renewing the current ca with an expiry that
-	// is sooner than the minimum duration. This mirrors e2e testing to reduce the
-	// cost of test maintenance.
-	renewedCAConfig, err := RenewSelfSignedCertificate(oldCAConfig, 1*time.Hour, true)
-	if err != nil {
-		t.Fatalf("error renewing ca to half-expired form: %v", err)
-	}
+	// Simulate time-based rotation by advancing the operator's injected clock
+	// past the point where the old CA's remaining validity no longer covers
+	// the minimum trust duration, instead of re-issuing the CA with a
+	// shortened expiry.
+	fakeClock := clocktesting.NewFakePassiveClock(time.Now())
+	fakeClock.SetTime(fakeClock.Now().Add(2 * time.Hour))
+	operator := &serviceCAOperator{clock: fakeClock}
 
 	// Rotate the CA
-	operator := &serviceCAOperator{}
-	newSigningCA, err := operator.rotateSigningCA(renewedCAConfig.Certs[0], renewedCAConfig.Key.(gocrypto.Signer), minimumTrustDuration, signingCertificateLifetime)
+	newSigningCA, err := operator.rotateSigningCA(oldCAConfig.Certs[0], oldCAConfig.Key.(gocrypto.Signer), minimumTrustDuration, signingCertificateLifetime)
 	if err != nil {
 		t.Fatalf("Error rotating signing ca: %v", err)
 	}
@@ -251,10 +253,10 @@ func TestRotateSigningCA(t *testing.T) {
 		t.Fatalf("The AuthorityKeyId of the serving cert does not match the SubjectKeyId of the CA cert")
 	}
 
-	// Check that trust for the old CA was extended past its renewed expiry (which
-	// did not ensure the minimum trust duration).
-	if !newSigningCA.oldCAExpiry.After(renewedCAConfig.Certs[0].NotAfter) {
-		t.Fatalf("Trust for the old CA was not extended from the renewed expiry")
+	// Check that trust for the old CA was extended past its original expiry (which
+	// no longer ensured the minimum trust duration at the advanced clock time).
+	if !newSigningCA.oldCAExpiry.After(oldCAConfig.Certs[0].NotAfter) {
+		t.Fatalf("Trust for the old CA was not extended from the original expiry")
 	}
 
 	dnsName := oldServingCert.Certs[0].Subject.CommonName

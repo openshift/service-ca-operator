@@ -55,11 +55,19 @@ func (ca *signingCA) updateSigningSecret(secret *corev1.Secret) error {
 // non-empty rotation message will be returned.  Rotation will not be performed if the
 // current CA is not more than half-way expired or if a forced rotation was not
 // requested, and in this case an empty rotation message will be returned.
+// now returns the injected clock's time, or the real system clock when nil.
+func (c *serviceCAOperator) now() time.Time {
+	if c.clock != nil {
+		return c.clock.Now()
+	}
+	return time.Now()
+}
+
 func (c *serviceCAOperator) maybeRotateSigningSecret(secret *corev1.Secret, currentCACert *x509.Certificate, serviceCAConfig unsupportedServiceCAConfig, minimumTrustDuration time.Duration, signingCertificateLifetime time.Duration) (string, error) {
 	reason := serviceCAConfig.ForceRotation.Reason
 	forcedRotation := forcedRotationRequired(secret, reason)
 
-	minimumExpiry := time.Now().Add(minimumTrustDuration)
+	minimumExpiry := c.now().Add(minimumTrustDuration)
 	timeBasedRotation := currentCACert.NotAfter.Before(minimumExpiry)
 
 	if !(forcedRotation || timeBasedRotation) {
@@ -141,6 +149,7 @@ func (c *serviceCAOperator) rotateSigningCA(currentCACert *x509.Certificate, cur
 				currentCACert.Subject.CommonName, certificateCfg.Key,
 				crypto.WithSubject(currentCACert.Subject),
 				crypto.WithLifetime(signingCertificateLifetime),
+				crypto.WithClock(c.clock),
 			)
 			if err != nil {
 				return nil, err
@@ -160,7 +169,7 @@ func (c *serviceCAOperator) rotateSigningCA(currentCACert *x509.Certificate, cur
 	// Ensure that the intermediate cert bridging trust between the current and new CAs
 	// has an expiry that guarantees a minimum trust duration.
 	var currentCACertExpiry *time.Time
-	minimumExpiry := time.Now().Add(minimumTrustDuration)
+	minimumExpiry := c.now().Add(minimumTrustDuration)
 	if currentCACert.NotAfter.Before(minimumExpiry) {
 		currentCACertExpiry = &minimumExpiry
 	}

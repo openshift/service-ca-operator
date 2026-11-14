@@ -344,18 +344,22 @@ func (NodeExporterCollectorBuddyInfoConfig) SwaggerDoc() map[string]string {
 }
 
 var map_NodeExporterCollectorConfig = map[string]string{
-	"":           "NodeExporterCollectorConfig defines settings for individual collectors of the node-exporter agent. Each collector can be individually set to collect or not collect metrics. At least one collector must be specified.",
-	"cpuFreq":    "cpuFreq configures the cpufreq collector, which collects CPU frequency statistics. cpuFreq is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Consider enabling when you need to observe CPU frequency scaling; expect higher CPU usage on many-core nodes when collectionPolicy is Collect.",
-	"tcpStat":    "tcpStat configures the tcpstat collector, which collects TCP connection statistics. tcpStat is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable when debugging TCP connection behavior or capacity at the node level.",
-	"ethtool":    "ethtool configures the ethtool collector, which collects ethernet device statistics. ethtool is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable when you need NIC driver-level ethtool metrics beyond generic netdev counters.",
-	"netDev":     "netDev configures the netdev collector, which collects network device statistics. netDev is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is enabled. Turn off if you must reduce per-interface metric cardinality on hosts with many virtual interfaces.",
-	"netClass":   "netClass configures the netclass collector, which collects information about network devices. netClass is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is enabled with netlink mode active. Use statsGatherer when sysfs vs netlink implementation matters or when matching node_exporter tuning.",
-	"buddyInfo":  "buddyInfo configures the buddyinfo collector, which collects statistics about memory fragmentation from the node_buddyinfo_blocks metric. This metric collects data from /proc/buddyinfo. buddyInfo is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable when investigating kernel memory fragmentation; typically for advanced troubleshooting only.",
-	"mountStats": "mountStats configures the mountstats collector, which collects statistics about NFS volume I/O activities. mountStats is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enabling this collector may produce metrics with high cardinality. If you enable this collector, closely monitor the prometheus-k8s deployment for excessive memory usage. Enable when you care about per-mount NFS client statistics.",
-	"ksmd":       "ksmd configures the ksmd collector, which collects statistics from the kernel same-page merger daemon. ksmd is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable on nodes where KSM is in use and you want visibility into merging activity.",
-	"processes":  "processes configures the processes collector, which collects statistics from processes and threads running in the system. processes is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable for process/thread-level insight; can be expensive on busy nodes.",
-	"systemd":    "systemd configures the systemd collector, which collects statistics on the systemd daemon and its managed services. systemd is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enabling this collector with a long list of selected units may produce metrics with high cardinality. If you enable this collector, closely monitor the prometheus-k8s deployment for excessive memory usage. Enable when you need metrics for specific units; scope units carefully.",
-	"softirqs":   "softirqs configures the softirqs collector, which exposes detailed softirq statistics from /proc/softirqs. softirqs is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable when you need visibility into kernel softirq processing across CPUs.",
+	"":                      "NodeExporterCollectorConfig defines settings for individual collectors of the node-exporter agent. Each collector can be individually set to collect or not collect metrics. At least one collector must be specified.",
+	"cpuFreq":               "cpuFreq configures the cpufreq collector, which collects CPU frequency statistics. cpuFreq is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Consider enabling when you need to observe CPU frequency scaling; expect higher CPU usage on many-core nodes when collectionPolicy is Collect.",
+	"tcpStat":               "tcpStat configures the tcpstat collector, which collects TCP connection statistics. tcpStat is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable when debugging TCP connection behavior or capacity at the node level.",
+	"ethtool":               "ethtool configures the ethtool collector, which collects ethernet device statistics. ethtool is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable when you need NIC driver-level ethtool metrics beyond generic netdev counters.",
+	"netDev":                "netDev configures the netdev collector, which collects network device statistics. netDev is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is enabled. Turn off if you must reduce per-interface metric cardinality on hosts with many virtual interfaces.",
+	"netClass":              "netClass configures the netclass collector, which collects information about network devices. netClass is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is enabled with netlink mode active. Use statsGatherer when sysfs vs netlink implementation matters or when matching node_exporter tuning.",
+	"buddyInfo":             "buddyInfo configures the buddyinfo collector, which collects statistics about memory fragmentation from the node_buddyinfo_blocks metric. This metric collects data from /proc/buddyinfo. buddyInfo is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable when investigating kernel memory fragmentation; typically for advanced troubleshooting only.",
+	"mountStats":            "mountStats configures the mountstats collector, which collects statistics about NFS volume I/O activities. mountStats is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enabling this collector may produce metrics with high cardinality. If you enable this collector, closely monitor the prometheus-k8s deployment for excessive memory usage. Enable when you care about per-mount NFS client statistics.",
+	"ksmd":                  "ksmd configures the ksmd collector, which collects statistics from the kernel same-page merger daemon. ksmd is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable on nodes where KSM is in use and you want visibility into merging activity.",
+	"processes":             "processes configures the processes collector, which collects statistics from processes and threads running in the system. processes is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable for process/thread-level insight; can be expensive on busy nodes.",
+	"systemd":               "systemd configures the systemd collector, which collects statistics on the systemd daemon and its managed services. systemd is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enabling this collector with a long list of selected units may produce metrics with high cardinality. If you enable this collector, closely monitor the prometheus-k8s deployment for excessive memory usage. Enable when you need metrics for specific units; scope units carefully.",
+	"softirqs":              "softirqs configures the softirqs collector, which exposes detailed softirq statistics from /proc/softirqs. softirqs is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. Enable when you need visibility into kernel softirq processing across CPUs.",
+	"deviceMapperMultipath": "deviceMapperMultipath configures the dmmultipath collector, which collects statistics about DM-Multipath devices. deviceMapperMultipath is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is enabled.",
+	"zoneinfo":              "zoneinfo configures the zoneinfo collector, which exposes per-zone memory page counts, watermarks, and protection thresholds from /proc/zoneinfo. zoneinfo is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is to not collect zoneinfo metrics. Enable when you need visibility into kernel memory zone allocation and pressure.",
+	"nvmExpressSubsystem":   "nvmExpressSubsystem configures the nvmesubsystem collector, which collects statistics about NVM Express (NVMe) subsystem devices. nvmExpressSubsystem is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is enabled.",
+	"interrupts":            "interrupts configures the interrupts collector, which exposes interrupt counts from /proc/interrupts. interrupts is optional. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is disabled. The interrupts collector can produce a large number of metrics depending on the hardware and interrupt sources present. When enabled, the collect field with at least one include pattern is required to explicitly select which interrupt lines are collected.",
 }
 
 func (NodeExporterCollectorConfig) SwaggerDoc() map[string]string {
@@ -371,6 +375,15 @@ func (NodeExporterCollectorCpufreqConfig) SwaggerDoc() map[string]string {
 	return map_NodeExporterCollectorCpufreqConfig
 }
 
+var map_NodeExporterCollectorDeviceMapperMultipathConfig = map[string]string{
+	"":                 "NodeExporterCollectorDeviceMapperMultipathConfig provides configuration for the dmmultipath collector of the node-exporter agent. The dmmultipath collector collects statistics about DM-Multipath devices. It is enabled by default.",
+	"collectionPolicy": "collectionPolicy declares whether the dmmultipath collector collects metrics. This field is required. Valid values are \"Collect\" and \"DoNotCollect\". When set to \"Collect\", the dmmultipath collector is active and DM-Multipath device statistics are collected. When set to \"DoNotCollect\", the dmmultipath collector is inactive and the corresponding metrics become unavailable.",
+}
+
+func (NodeExporterCollectorDeviceMapperMultipathConfig) SwaggerDoc() map[string]string {
+	return map_NodeExporterCollectorDeviceMapperMultipathConfig
+}
+
 var map_NodeExporterCollectorEthtoolConfig = map[string]string{
 	"":                 "NodeExporterCollectorEthtoolConfig provides configuration for the ethtool collector of the node-exporter agent. The ethtool collector collects ethernet device statistics. It is disabled by default.",
 	"collectionPolicy": "collectionPolicy declares whether the ethtool collector collects metrics. This field is required. Valid values are \"Collect\" and \"DoNotCollect\". When set to \"Collect\", the ethtool collector is active and ethernet device statistics are collected. When set to \"DoNotCollect\", the ethtool collector is inactive.",
@@ -378,6 +391,25 @@ var map_NodeExporterCollectorEthtoolConfig = map[string]string{
 
 func (NodeExporterCollectorEthtoolConfig) SwaggerDoc() map[string]string {
 	return map_NodeExporterCollectorEthtoolConfig
+}
+
+var map_NodeExporterCollectorInterruptsCollectConfig = map[string]string{
+	"":        "NodeExporterCollectorInterruptsCollectConfig holds configuration options for the interrupts collector when it is actively collecting metrics. At least one field must be specified.",
+	"include": "include is a list of regular expression patterns that select which interrupt lines to collect. This field is required. Each line in /proc/interrupts is matched against the same string node-exporter uses: the IRQ name, info, and devices fields joined with \";\", for example \"LOC;77;IO-APIC 2-edge ...\". Patterns are combined with OR into a single expression anchored on both ends, so each pattern must match the entire string (use \".*\" where needed). Each entry must be at least 1 character, at most 1024 characters, and only contain printable ASCII characters. Maximum length for this list is 50. Minimum length for this list is 1. Entries in this list must be unique.",
+}
+
+func (NodeExporterCollectorInterruptsCollectConfig) SwaggerDoc() map[string]string {
+	return map_NodeExporterCollectorInterruptsCollectConfig
+}
+
+var map_NodeExporterCollectorInterruptsConfig = map[string]string{
+	"":                 "NodeExporterCollectorInterruptsConfig provides configuration for the interrupts collector of the node-exporter agent. The interrupts collector exposes interrupt counts from /proc/interrupts. It is disabled by default. The interrupts collector can produce a large number of metrics depending on the hardware and interrupt sources present. When enabled, the collect field with at least one include pattern is required to explicitly select which interrupt lines are collected. When collectionPolicy is Collect, the collect field must be set with at least one include pattern. When collectionPolicy is DoNotCollect, the collect field must not be set.",
+	"collectionPolicy": "collectionPolicy declares whether the interrupts collector collects metrics. This field is required. Valid values are \"Collect\" and \"DoNotCollect\". When set to \"Collect\", the interrupts collector is active and the collect field must be set with at least one include pattern to select which interrupt lines are collected. When set to \"DoNotCollect\", the interrupts collector is inactive and the collect field must not be set.",
+	"collect":          "collect contains configuration options that apply only when the interrupts collector is actively collecting metrics (i.e. when collectionPolicy is Collect). collect is required when collectionPolicy is Collect and must contain at least one include pattern to explicitly select which interrupt lines are collected. collect must not be set when collectionPolicy is DoNotCollect. When set, at least one field must be specified within collect.",
+}
+
+func (NodeExporterCollectorInterruptsConfig) SwaggerDoc() map[string]string {
+	return map_NodeExporterCollectorInterruptsConfig
 }
 
 var map_NodeExporterCollectorKSMDConfig = map[string]string{
@@ -396,6 +428,15 @@ var map_NodeExporterCollectorMountStatsConfig = map[string]string{
 
 func (NodeExporterCollectorMountStatsConfig) SwaggerDoc() map[string]string {
 	return map_NodeExporterCollectorMountStatsConfig
+}
+
+var map_NodeExporterCollectorNVMExpressSubsystemConfig = map[string]string{
+	"":                 "NodeExporterCollectorNVMExpressSubsystemConfig provides configuration for the nvmesubsystem collector of the node-exporter agent. The nvmesubsystem collector collects statistics about NVM Express (NVMe) subsystem devices. It is enabled by default.",
+	"collectionPolicy": "collectionPolicy declares whether the nvmesubsystem collector collects metrics. This field is required. Valid values are \"Collect\" and \"DoNotCollect\". When set to \"Collect\", the nvmesubsystem collector is active and NVMe subsystem statistics are collected. When set to \"DoNotCollect\", the nvmesubsystem collector is inactive and the corresponding metrics become unavailable.",
+}
+
+func (NodeExporterCollectorNVMExpressSubsystemConfig) SwaggerDoc() map[string]string {
+	return map_NodeExporterCollectorNVMExpressSubsystemConfig
 }
 
 var map_NodeExporterCollectorNetClassCollectConfig = map[string]string{
@@ -470,6 +511,15 @@ var map_NodeExporterCollectorTcpStatConfig = map[string]string{
 
 func (NodeExporterCollectorTcpStatConfig) SwaggerDoc() map[string]string {
 	return map_NodeExporterCollectorTcpStatConfig
+}
+
+var map_NodeExporterCollectorZoneinfoConfig = map[string]string{
+	"":                 "NodeExporterCollectorZoneinfoConfig provides configuration for the zoneinfo collector of the node-exporter agent. The zoneinfo collector exposes per-zone memory page counts, watermarks, and protection thresholds from /proc/zoneinfo. By default, the zoneinfo collector does not collect metrics.",
+	"collectionPolicy": "collectionPolicy declares whether the zoneinfo collector collects metrics. This field is required. Valid values are \"Collect\" and \"DoNotCollect\". When set to \"Collect\", the zoneinfo collector is active and zone memory statistics are collected. When set to \"DoNotCollect\", the zoneinfo collector is inactive.",
+}
+
+func (NodeExporterCollectorZoneinfoConfig) SwaggerDoc() map[string]string {
+	return map_NodeExporterCollectorZoneinfoConfig
 }
 
 var map_NodeExporterConfig = map[string]string{
@@ -635,6 +685,7 @@ var map_RemoteWriteSpec = map[string]string{
 	"":                     "RemoteWriteSpec represents configuration for remote write endpoints.",
 	"url":                  "url is the URL of the remote write endpoint. Must be a valid URL with http or https scheme and a non-empty hostname. Query parameters, fragments, and user information (e.g. user:password@host) are not allowed. Empty string is invalid. Must be between 1 and 2048 characters in length.",
 	"name":                 "name is a required identifier for this remote write configuration (name is the list key for the remoteWrite list). This name is used in metrics and logging to differentiate remote write queues. Must contain only alphanumeric characters, hyphens, and underscores. Must be between 1 and 63 characters in length.",
+	"messageVersion":       "messageVersion defines the Remote Write message's version to use when writing to the endpoint. When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The default value is \"V1.0\". When set to \"V1.0\", Prometheus uses the `prometheus.WriteRequest` protobuf message introduced in Remote Write 1.0. When set to \"V2.0\", Prometheus uses the `io.prometheus.write.v2.Request` protobuf message introduced in Remote Write 2.0.",
 	"authorization":        "authorization defines the authorization method for the remote write endpoint. When omitted, no authorization is performed. When set, type must be one of Authorization, BasicAuth, OAuth2, SigV4, or ServiceAccount; the corresponding nested config must be set (ServiceAccount has no config).",
 	"headers":              "headers specifies the custom HTTP headers to be sent along with each remote write request. Sending custom headers makes the configuration of a proxy in between optional and helps the receiver recognize the given source better. Clients MAY allow users to send custom HTTP headers; they MUST NOT allow users to configure them in such a way as to send reserved headers. Headers set by Prometheus cannot be overwritten. When omitted, no custom headers are sent. Maximum of 50 headers can be specified. Each header name must be unique. Each header name must contain only alphanumeric characters, hyphens, and underscores, and must not be a reserved Prometheus header (Host, Authorization, Content-Encoding, Content-Type, X-Prometheus-Remote-Write-Version, User-Agent, Connection, Keep-Alive, Proxy-Authenticate, Proxy-Authorization, WWW-Authenticate).",
 	"metadataConfig":       "metadataConfig configures the sending of series metadata to remote storage. When omitted, no metadata is sent. When set to sendPolicy: Default, metadata is sent using platform-chosen defaults (e.g. send interval 30 seconds). When set to sendPolicy: Custom, metadata is sent using the settings in the custom field (e.g. custom.sendIntervalSeconds).",
@@ -760,42 +811,33 @@ func (UserDefinedMonitoring) SwaggerDoc() map[string]string {
 	return map_UserDefinedMonitoring
 }
 
-var map_CRIOCredentialProviderConfig = map[string]string{
-	"":         "CRIOCredentialProviderConfig holds cluster-wide singleton resource configurations for CRI-O credential provider, the name of this instance is \"cluster\". CRI-O credential provider is a binary shipped with CRI-O that provides a way to obtain container image pull credentials from external sources. For example, it can be used to fetch mirror registry credentials from secrets resources in the cluster within the same namespace the pod will be running in. CRIOCredentialProviderConfig configuration specifies the pod image sources registries that should trigger the CRI-O credential provider execution, which will resolve the CRI-O mirror configurations and obtain the necessary credentials for pod creation. Note: Configuration changes will only take effect after the kubelet restarts, which is automatically managed by the cluster during rollout.\n\nThe resource is a singleton named \"cluster\".\n\nCompatibility level 4: No compatibility is provided, the API can change at any point for any reason. These capabilities should not be used by applications needing long term support.",
+var map_ControllerManager = map[string]string{
+	"":         "ControllerManager holds cluster-wide configuration shared by the controller managers in the system, among them especially kube-controller-manager. The resource is a singleton named \"cluster\".\n\nCompatibility level 4: No compatibility is provided, the API can change at any point for any reason. These capabilities should not be used by applications needing long term support.",
 	"metadata": "metadata is the standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata",
-	"spec":     "spec defines the desired configuration of the CRI-O Credential Provider. This field is required and must be provided when creating the resource.",
-	"status":   "status represents the current state of the CRIOCredentialProviderConfig. When omitted or nil, it indicates that the status has not yet been set by the controller. The controller will populate this field with validation conditions and operational state.",
+	"spec":     "spec holds user settable values for configuration. This field is required but the spec may be empty to express no opinion.",
 }
 
-func (CRIOCredentialProviderConfig) SwaggerDoc() map[string]string {
-	return map_CRIOCredentialProviderConfig
+func (ControllerManager) SwaggerDoc() map[string]string {
+	return map_ControllerManager
 }
 
-var map_CRIOCredentialProviderConfigList = map[string]string{
-	"":         "CRIOCredentialProviderConfigList contains a list of CRIOCredentialProviderConfig resources\n\nCompatibility level 4: No compatibility is provided, the API can change at any point for any reason. These capabilities should not be used by applications needing long term support.",
+var map_ControllerManagerList = map[string]string{
+	"":         "ControllerManagerList is a collection of ControllerManager resources.\n\nCompatibility level 4: No compatibility is provided, the API can change at any point for any reason. These capabilities should not be used by applications needing long term support.",
 	"metadata": "metadata is the standard list's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata",
+	"items":    "items is a list of ControllerManager resources",
 }
 
-func (CRIOCredentialProviderConfigList) SwaggerDoc() map[string]string {
-	return map_CRIOCredentialProviderConfigList
+func (ControllerManagerList) SwaggerDoc() map[string]string {
+	return map_ControllerManagerList
 }
 
-var map_CRIOCredentialProviderConfigSpec = map[string]string{
-	"":            "CRIOCredentialProviderConfigSpec defines the desired configuration of the CRI-O Credential Provider.",
-	"matchImages": "matchImages is a list of string patterns used to determine whether the CRI-O credential provider should be invoked for a given image. This list is passed to the kubelet CredentialProviderConfig, and if any pattern matches the requested image, CRI-O credential provider will be invoked to obtain credentials for pulling that image or its mirrors. Depending on the platform, the CRI-O credential provider may be installed alongside an existing platform specific provider. Conflicts between the existing platform specific provider image match configuration and this list will be handled by the following precedence rule: credentials from built-in kubelet providers (e.g., ECR, GCR, ACR) take precedence over those from the CRIOCredentialProviderConfig when both match the same image. To avoid uncertainty, it is recommended to avoid configuring your private image patterns to overlap with existing platform specific provider config(e.g., the entries from https://github.com/openshift/machine-config-operator/blob/main/templates/common/aws/files/etc-kubernetes-credential-providers-ecr-credential-provider.yaml). You can check the resource's Status conditions to see if any entries were ignored due to exact matches with known built-in provider patterns.\n\nThis field is optional, the items of the list must contain between 1 and 50 entries. The list is treated as a set, so duplicate entries are not allowed.\n\nFor more details, see: https://kubernetes.io/docs/tasks/administer-cluster/kubelet-credential-provider/ https://github.com/cri-o/crio-credential-provider#architecture\n\nEach entry in matchImages is a pattern which can optionally contain a port and a path. Each entry must be no longer than 512 characters. Wildcards ('*') are supported for full subdomain labels, such as '*.k8s.io' or 'k8s.*.io', and for top-level domains, such as 'k8s.*' (which matches 'k8s.io' or 'k8s.net'). A global wildcard '*' (matching any domain) is not allowed. Wildcards may replace an entire hostname label (e.g., *.example.com), but they cannot appear within a label (e.g., f*oo.example.com) and are not allowed in the port or path. For example, 'example.*.com' is valid, but 'exa*mple.*.com' is not. Each wildcard matches only a single domain label, so '*.io' does **not** match '*.k8s.io'.\n\nA match exists between an image and a matchImage when all of the below are true: Both contain the same number of domain parts and each part matches. The URL path of an matchImages must be a prefix of the target image URL path. If the matchImages contains a port, then the port must match in the image as well.\n\nExample values of matchImages: - 123456789.dkr.ecr.us-east-1.amazonaws.com - *.azurecr.io - gcr.io - *.*.registry.io - registry.io:8080/path",
+var map_ControllerManagerSpec = map[string]string{
+	"":                  "ControllerManagerSpec defines the desired state of the controller managers",
+	"volumeForceDetach": "volumeForceDetach controls the conditions under which kube-controller-manager force detaches volumes from a node that is not healthy. Volumes are always force detached when a node is marked out-of-service via the \"node.kubernetes.io/out-of-service\" taint, as part of the non-graceful node shutdown procedure. This field controls whether force detach is also triggered when the maximum unmount time is exceeded (6 minutes). Valid values are \"OnUnmountTimeout\" and \"OnOutOfServiceTaintOnly\". When set to \"OnUnmountTimeout\", volumes are force detached from unhealthy nodes once the maximum unmount time is exceeded, so that workloads using them can start on other nodes. Force detaching a volume that is still in use by the node can corrupt its data. When set to \"OnOutOfServiceTaintOnly\", volumes are force detached only via the out-of-service taint, and remain attached to an unhealthy node until it recovers or the \"node.kubernetes.io/out-of-service\" taint is applied as part of the non-graceful node shutdown procedure. When omitted, this means the user has no opinion and the platform is left to choose a reasonable default, which is subject to change over time. The current default is \"OnUnmountTimeout\". Changing this field causes kube-controller-manager to be redeployed with the new setting. Rollout progress is reported by the kube-controller-manager cluster operator.",
 }
 
-func (CRIOCredentialProviderConfigSpec) SwaggerDoc() map[string]string {
-	return map_CRIOCredentialProviderConfigSpec
-}
-
-var map_CRIOCredentialProviderConfigStatus = map[string]string{
-	"":           "CRIOCredentialProviderConfigStatus defines the observed state of CRIOCredentialProviderConfig",
-	"conditions": "conditions represent the latest available observations of the configuration state. When omitted, it indicates that no conditions have been reported yet. The maximum number of conditions is 16. Conditions are stored as a map keyed by condition type, ensuring uniqueness.\n\nExpected condition types include: \"Validated\": indicates whether the matchImages configuration is valid",
-}
-
-func (CRIOCredentialProviderConfigStatus) SwaggerDoc() map[string]string {
-	return map_CRIOCredentialProviderConfigStatus
+func (ControllerManagerSpec) SwaggerDoc() map[string]string {
+	return map_ControllerManagerSpec
 }
 
 var map_GatherConfig = map[string]string{
