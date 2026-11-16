@@ -36,6 +36,21 @@ const (
 
 var targetDeploymentNames = sets.NewString(api.ServiceCADeploymentName)
 
+func clusterOperatorRelatedObjects() []configv1.ObjectReference {
+	return []configv1.ObjectReference{
+		{Group: operatorv1.GroupName, Resource: "servicecas", Name: api.OperatorConfigInstanceName},
+		{Resource: "namespaces", Name: operatorclient.GlobalUserSpecifiedConfigNamespace},
+		{Resource: "namespaces", Name: operatorclient.GlobalMachineSpecifiedConfigNamespace},
+		{Resource: "namespaces", Name: operatorclient.OperatorNamespace},
+		{Resource: "namespaces", Name: operatorclient.TargetNamespace},
+		{
+			Group:    "rbac.authorization.k8s.io",
+			Resource: "clusterrolebindings",
+			Name:     "system:openshift:operator:service-ca-operator",
+		},
+	}
+}
+
 func RunOperator(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
 
 	// This kube client uses protobuf, do not use it for CRs
@@ -73,13 +88,7 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 
 	clusterOperatorStatus := status.NewClusterOperatorStatusController(
 		clusterOperatorName,
-		[]configv1.ObjectReference{
-			{Group: operatorv1.GroupName, Resource: "servicecas", Name: api.OperatorConfigInstanceName},
-			{Resource: "namespaces", Name: operatorclient.GlobalUserSpecifiedConfigNamespace},
-			{Resource: "namespaces", Name: operatorclient.GlobalMachineSpecifiedConfigNamespace},
-			{Resource: "namespaces", Name: operatorclient.OperatorNamespace},
-			{Resource: "namespaces", Name: operatorclient.TargetNamespace},
-		},
+		clusterOperatorRelatedObjects(),
 		configClient.ConfigV1(),
 		configInformers.Config().V1().ClusterOperators(),
 		operatorClient,
