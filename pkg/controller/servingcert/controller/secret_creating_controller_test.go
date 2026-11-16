@@ -378,6 +378,33 @@ func TestServiceServingCertControllerSync(t *testing.T) {
 			},
 		},
 		{
+			// OCPBUGS-61981: a previously-invalid annotation left stale error
+			// annotations on the service after the failure counter had already
+			// reached maxRetries (10). Once the annotation is valid again and the
+			// secret already holds a good cert, those error annotations must be
+			// cleared even though no cert (re)generation is required. The counter
+			// is set to maxRetries on purpose so this case also guards that the
+			// cleanup runs before the maxRetries bail in Sync.
+			name:       "stale error annotations are cleared when secret already contains the right cert",
+			secretName: testSecretName,
+			serviceAnnotations: map[string]string{
+				api.ServingCertSecretAnnotation:        testSecretName,
+				api.ServingCertErrorAnnotation:         `Secret "overwrito " is invalid: metadata.name`,
+				api.AlphaServingCertErrorAnnotation:    `Secret "overwrito " is invalid: metadata.name`,
+				api.ServingCertErrorNumAnnotation:      "10",
+				api.AlphaServingCertErrorNumAnnotation: "10",
+			},
+			secretAnnotations: map[string]string{
+				api.ServiceUIDAnnotation:  testServiceUID,
+				api.ServiceNameAnnotation: testServiceName,
+			},
+			secretData: generateServerCertPemForCA(t, ca, false),
+			expectedServiceAnnotations: map[string]string{
+				api.ServingCertSecretAnnotation: testSecretName,
+			},
+			updateService: true,
+		},
+		{
 			name:       "secret already contains the right cert - headless",
 			secretName: testSecretName,
 			serviceAnnotations: map[string]string{

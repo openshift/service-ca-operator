@@ -136,6 +136,16 @@ func (sc *serviceServingCertController) Sync(ctx context.Context, syncContext fa
 		return fmt.Errorf("unable to get service %s/%s: %v", serviceNS, serviceName, err)
 	}
 
+	// If the serving cert is already satisfied (the secret exists, belongs to
+	// this service and is valid for the current CA), make sure no stale error
+	// annotations linger from a previously-invalid annotation value, and reset
+	// the failure counter. This must run before the maxRetries bail below so a
+	// service that previously exhausted retries can recover once its annotation
+	// is valid again. See OCPBUGS-61981.
+	if sc.servingCertSatisfied(sharedService) {
+		return sc.clearErrorAnnotations(ctx, sharedService)
+	}
+
 	// bail early if we already hit maxRetries.
 	// checking at this point in time avoid hotloops when creating the
 	// secret errors.
@@ -241,6 +251,63 @@ func (sc *serviceServingCertController) requiresCertGeneration(service *corev1.S
 	// the secret exists but the service was either not updated to include the correct created
 	// by annotation or it does not match what we expect (i.e. the certificate has been rotated)
 	return true
+}
+
+// servingCertSatisfied reports whether the secret named by the service's
+// annotation already exists, belongs to this service, and holds a certificate
+// valid for the current CA. Unlike requiresCertGeneration it intentionally
+// ignores the failure counter, so it reflects the true current state even for a
+// service that previously exhausted maxRetries.
+func (sc *serviceServingCertController) servingCertSatisfied(service *corev1.Service) bool {
+	secretName := service.Annotations[api.ServingCertSecretAnnotation]
+	if len(secretName) == 0 {
+		secretName = service.Annotations[api.AlphaServingCertSecretAnnotation]
+		if len(secretName) == 0 {
+			return false
+		}
+	}
+
+	secret, err := sc.secretLister.Secrets(service.Namespace).Get(secretName)
+	if err != nil {
+		return false
+	}
+	if !uidsEqual(secret, service) {
+		return false
+	}
+	return !sc.secretRequiresCertGeneration(service, secret)
+}
+
+// hasErrorAnnotations reports whether the service carries any serving-cert error
+// annotation (alpha or beta, message or counter).
+func hasErrorAnnotations(service *corev1.Service) bool {
+	for _, a := range []string{
+		api.ServingCertErrorAnnotation,
+		api.AlphaServingCertErrorAnnotation,
+		api.ServingCertErrorNumAnnotation,
+		api.AlphaServingCertErrorNumAnnotation,
+	} {
+		if _, ok := service.Annotations[a]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// clearErrorAnnotations removes stale serving-cert error annotations (and the
+// failure counter) left over from a previously-invalid annotation value. It only
+// issues an update when there is something to remove, to avoid hot-looping on
+// service update events.
+func (sc *serviceServingCertController) clearErrorAnnotations(ctx context.Context, sharedService *corev1.Service) error {
+	if !hasErrorAnnotations(sharedService) {
+		return nil
+	}
+	serviceCopy := sharedService.DeepCopy()
+	delete(serviceCopy.Annotations, api.AlphaServingCertErrorAnnotation)
+	delete(serviceCopy.Annotations, api.AlphaServingCertErrorNumAnnotation)
+	delete(serviceCopy.Annotations, api.ServingCertErrorAnnotation)
+	delete(serviceCopy.Annotations, api.ServingCertErrorNumAnnotation)
+	_, err := sc.serviceClient.Services(serviceCopy.Namespace).Update(ctx, serviceCopy, metav1.UpdateOptions{})
+	return err
 }
 
 // Returns false if pre-existing secret is appropriate for service and the current CA,
