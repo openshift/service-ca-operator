@@ -466,6 +466,38 @@ type NodeExporterCollectorConfig struct {
 	// Enable when you need visibility into kernel softirq processing across CPUs.
 	// +optional
 	Softirqs NodeExporterCollectorSoftirqsConfig `json:"softirqs,omitempty,omitzero"`
+	// deviceMapperMultipath configures the dmmultipath collector, which collects statistics
+	// about DM-Multipath devices.
+	// deviceMapperMultipath is optional.
+	// When omitted, this means no opinion and the platform is left to choose a reasonable default,
+	// which is subject to change over time. The current default is enabled.
+	// +optional
+	DeviceMapperMultipath NodeExporterCollectorDeviceMapperMultipathConfig `json:"deviceMapperMultipath,omitzero"`
+	// zoneinfo configures the zoneinfo collector, which exposes per-zone memory page counts,
+	// watermarks, and protection thresholds from /proc/zoneinfo.
+	// zoneinfo is optional.
+	// When omitted, this means no opinion and the platform is left to choose a reasonable default,
+	// which is subject to change over time. The current default is to not collect zoneinfo metrics.
+	// Enable when you need visibility into kernel memory zone allocation and pressure.
+	// +optional
+	Zoneinfo NodeExporterCollectorZoneinfoConfig `json:"zoneinfo,omitzero"`
+	// nvmExpressSubsystem configures the nvmesubsystem collector, which
+	// collects statistics about NVM Express (NVMe) subsystem devices.
+	// nvmExpressSubsystem is optional.
+	// When omitted, this means no opinion and the platform is left to choose a reasonable default,
+	// which is subject to change over time. The current default is enabled.
+	// +optional
+	NVMExpressSubsystem NodeExporterCollectorNVMExpressSubsystemConfig `json:"nvmExpressSubsystem,omitzero"`
+	// interrupts configures the interrupts collector, which exposes interrupt counts
+	// from /proc/interrupts.
+	// interrupts is optional.
+	// When omitted, this means no opinion and the platform is left to choose a reasonable default,
+	// which is subject to change over time. The current default is disabled.
+	// The interrupts collector can produce a large number of metrics depending on the hardware
+	// and interrupt sources present. When enabled, the collect field with at least one include
+	// pattern is required to explicitly select which interrupt lines are collected.
+	// +optional
+	Interrupts NodeExporterCollectorInterruptsConfig `json:"interrupts,omitempty,omitzero"`
 }
 
 // NodeExporterCollectorCpufreqConfig provides configuration for the cpufreq collector
@@ -526,7 +558,7 @@ type NodeExporterCollectorNetDevConfig struct {
 // such as network speed, MTU, and carrier status.
 // It is enabled by default.
 // When collectionPolicy is DoNotCollect, the collect field must not be set.
-// +kubebuilder:validation:XValidation:rule="has(self.collectionPolicy) && self.collectionPolicy == 'Collect' ? true : !has(self.collect)",message="collect is forbidden when collectionPolicy is not Collect"
+// +kubebuilder:validation:XValidation:rule="has(self.collectionPolicy) && self.collectionPolicy == 'Collect' ? true : !has(self.collect)",message="collect may be set when collectionPolicy is Collect, and forbidden otherwise"
 // +union
 type NodeExporterCollectorNetClassConfig struct {
 	// collectionPolicy declares whether the netclass collector collects metrics.
@@ -627,7 +659,7 @@ type NodeExporterCollectorProcessesConfig struct {
 // cardinality. If you enable this collector, closely monitor the prometheus-k8s deployment
 // for excessive memory usage.
 // When collectionPolicy is DoNotCollect, the collect field must not be set.
-// +kubebuilder:validation:XValidation:rule="has(self.collectionPolicy) && self.collectionPolicy == 'Collect' ? true : !has(self.collect)",message="collect is forbidden when collectionPolicy is not Collect"
+// +kubebuilder:validation:XValidation:rule="has(self.collectionPolicy) && self.collectionPolicy == 'Collect' ? true : !has(self.collect)",message="collect may be set when collectionPolicy is Collect, and forbidden otherwise"
 // +union
 type NodeExporterCollectorSystemdConfig struct {
 	// collectionPolicy declares whether the systemd collector collects metrics.
@@ -688,6 +720,111 @@ type NodeExporterCollectorSoftirqsConfig struct {
 	// +required
 	CollectionPolicy NodeExporterCollectorCollectionPolicy `json:"collectionPolicy,omitempty"`
 }
+
+// NodeExporterCollectorDeviceMapperMultipathConfig provides configuration for the dmmultipath collector
+// of the node-exporter agent. The dmmultipath collector collects statistics about
+// DM-Multipath devices.
+// It is enabled by default.
+type NodeExporterCollectorDeviceMapperMultipathConfig struct {
+	// collectionPolicy declares whether the dmmultipath collector collects metrics.
+	// This field is required.
+	// Valid values are "Collect" and "DoNotCollect".
+	// When set to "Collect", the dmmultipath collector is active and DM-Multipath device statistics are collected.
+	// When set to "DoNotCollect", the dmmultipath collector is inactive and the corresponding metrics become unavailable.
+	// +required
+	CollectionPolicy NodeExporterCollectorCollectionPolicy `json:"collectionPolicy,omitempty"`
+}
+
+// NodeExporterCollectorZoneinfoConfig provides configuration for the zoneinfo collector
+// of the node-exporter agent. The zoneinfo collector exposes per-zone memory page counts,
+// watermarks, and protection thresholds from /proc/zoneinfo.
+// By default, the zoneinfo collector does not collect metrics.
+type NodeExporterCollectorZoneinfoConfig struct {
+	// collectionPolicy declares whether the zoneinfo collector collects metrics.
+	// This field is required.
+	// Valid values are "Collect" and "DoNotCollect".
+	// When set to "Collect", the zoneinfo collector is active and zone memory statistics are collected.
+	// When set to "DoNotCollect", the zoneinfo collector is inactive.
+	// +required
+	CollectionPolicy NodeExporterCollectorCollectionPolicy `json:"collectionPolicy,omitempty"`
+}
+
+// NodeExporterCollectorNVMExpressSubsystemConfig provides configuration for
+// the nvmesubsystem collector of the node-exporter agent. The nvmesubsystem
+// collector collects statistics about NVM Express (NVMe) subsystem devices.
+// It is enabled by default.
+type NodeExporterCollectorNVMExpressSubsystemConfig struct {
+	// collectionPolicy declares whether the nvmesubsystem collector collects metrics.
+	// This field is required.
+	// Valid values are "Collect" and "DoNotCollect".
+	// When set to "Collect", the nvmesubsystem collector is active and NVMe subsystem statistics are collected.
+	// When set to "DoNotCollect", the nvmesubsystem collector is inactive and the corresponding metrics become unavailable.
+	// +required
+	CollectionPolicy NodeExporterCollectorCollectionPolicy `json:"collectionPolicy,omitempty"`
+}
+
+// NodeExporterCollectorInterruptsConfig provides configuration for the interrupts collector
+// of the node-exporter agent. The interrupts collector exposes interrupt counts
+// from /proc/interrupts.
+// It is disabled by default.
+// The interrupts collector can produce a large number of metrics depending on the hardware
+// and interrupt sources present. When enabled, the collect field with at least one include
+// pattern is required to explicitly select which interrupt lines are collected.
+// When collectionPolicy is Collect, the collect field must be set with at least one include pattern.
+// When collectionPolicy is DoNotCollect, the collect field must not be set.
+// +kubebuilder:validation:XValidation:rule="has(self.collectionPolicy) && self.collectionPolicy == 'Collect' ? has(self.collect) : !has(self.collect)",message="collect is required when collectionPolicy is Collect, and forbidden otherwise"
+// +union
+type NodeExporterCollectorInterruptsConfig struct {
+	// collectionPolicy declares whether the interrupts collector collects metrics.
+	// This field is required.
+	// Valid values are "Collect" and "DoNotCollect".
+	// When set to "Collect", the interrupts collector is active and the collect field must be set
+	// with at least one include pattern to select which interrupt lines are collected.
+	// When set to "DoNotCollect", the interrupts collector is inactive and the collect field must not be set.
+	// +unionDiscriminator
+	// +required
+	CollectionPolicy NodeExporterCollectorCollectionPolicy `json:"collectionPolicy,omitempty"`
+	// collect contains configuration options that apply only when the interrupts collector is actively collecting metrics
+	// (i.e. when collectionPolicy is Collect).
+	// collect is required when collectionPolicy is Collect and must contain at least one include pattern
+	// to explicitly select which interrupt lines are collected.
+	// collect must not be set when collectionPolicy is DoNotCollect.
+	// When set, at least one field must be specified within collect.
+	// +unionMember
+	// +optional
+	Collect NodeExporterCollectorInterruptsCollectConfig `json:"collect,omitzero,omitempty"`
+}
+
+// NodeExporterCollectorInterruptsCollectConfig holds configuration options for the interrupts collector
+// when it is actively collecting metrics. At least one field must be specified.
+// +kubebuilder:validation:MinProperties=1
+type NodeExporterCollectorInterruptsCollectConfig struct {
+	// include is a list of regular expression patterns that select which interrupt lines to collect.
+	// This field is required.
+	// Each line in /proc/interrupts is matched against the same string node-exporter uses:
+	// the IRQ name, info, and devices fields joined with ";", for example "LOC;77;IO-APIC 2-edge ...".
+	// Patterns are combined with OR into a single expression anchored on both ends,
+	// so each pattern must match the entire string (use ".*" where needed).
+	// Each entry must be at least 1 character, at most 1024 characters, and only contain printable ASCII characters.
+	// Maximum length for this list is 50.
+	// Minimum length for this list is 1.
+	// Entries in this list must be unique.
+	// +kubebuilder:validation:MaxItems=50
+	// +kubebuilder:validation:MinItems=1
+	// +listType=set
+	// +required
+	Include []NodeExporterInterruptsIncludePattern `json:"include,omitempty"`
+}
+
+// NodeExporterInterruptsIncludePattern is a string that is interpreted as a Go regular expression
+// pattern by the controller to match interrupt line names.
+// Invalid regular expressions will cause a controller-level error at runtime.
+// Must be at least 1 character and at most 1024 characters.
+// Must contain only printable ASCII characters (no control characters).
+// +kubebuilder:validation:MinLength=1
+// +kubebuilder:validation:MaxLength=1024
+// +kubebuilder:validation:XValidation:rule="self.matches('^[\\\\x20-\\\\x7E]+$')",message="must contain only printable ASCII characters (no control characters)"
+type NodeExporterInterruptsIncludePattern string
 
 // MonitoringPluginConfig provides configuration options for the monitoring plugin
 // that runs as a dynamic plugin of the OpenShift web console.
@@ -1479,17 +1616,19 @@ type AdditionalAlertmanagerConfig struct {
 	// The current default value is `HTTP`.
 	// +optional
 	Scheme AlertmanagerScheme `json:"scheme,omitempty"`
-	// staticConfigs is a list of statically configured Alertmanager endpoints in the form
-	// of `<host>:<port>`. Each entry must be a valid hostname, IPv4 address, or IPv6 address
-	// (in brackets) followed by a colon and a valid port number (1-65535).
-	// Examples: "alertmanager.example.com:9093", "192.168.1.100:9093", "[::1]:9093"
+	// staticConfigs is a list of statically configured Alertmanager endpoints.
+	// Each entry must be a valid hostname, IPv4 address, or IPv6 address (in brackets),
+	// optionally followed by a colon and a port number (1-65535).
+	// When the port is omitted, Prometheus uses the default port for the configured scheme
+	// (80 for HTTP, 443 for HTTPS).
+	// Examples: "alertmanager.example.com", "alertmanager.example.com:9093", "192.168.1.100:9093", "[::1]:9093"
 	// At least one endpoint must be specified (minimum 1, maximum 10 endpoints).
 	// Each entry must be unique and non-empty (empty string is invalid).
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=10
 	// +kubebuilder:validation:items:MinLength=1
 	// +kubebuilder:validation:items:MaxLength=255
-	// +kubebuilder:validation:items:XValidation:rule="isURL('http://' + self) && size(url('http://' + self).getHostname()) > 0 && size(url('http://' + self).getPort()) > 0 && int(url('http://' + self).getPort()) >= 1 && int(url('http://' + self).getPort()) <= 65535",message="must be a valid 'host:port' where host is a DNS name, IPv4, or IPv6 address (in brackets), and port is 1-65535"
+	// +kubebuilder:validation:items:XValidation:rule="isURL('http://' + self) && size(url('http://' + self).getHostname()) > 0 && (size(url('http://' + self).getPort()) == 0 || (int(url('http://' + self).getPort()) >= 1 && int(url('http://' + self).getPort()) <= 65535))",message="must be a valid host or host:port where host is a DNS name, IPv4, or IPv6 address (in brackets), and port (if specified) is 1-65535"
 	// +listType=set
 	// +required
 	StaticConfigs []string `json:"staticConfigs,omitempty"`
@@ -1529,7 +1668,7 @@ type Label struct {
 type RemoteWriteSpec struct {
 	// url is the URL of the remote write endpoint.
 	// Must be a valid URL with http or https scheme and a non-empty hostname.
-	// Query parameters, fragments, and user information (e.g. user:password@host) are not allowed.
+	// Query parameters are allowed. Fragments and user information (e.g. user:password@host) are not allowed.
 	// Empty string is invalid. Must be between 1 and 2048 characters in length.
 	// +required
 	// +kubebuilder:validation:MaxLength=2048
@@ -1537,9 +1676,8 @@ type RemoteWriteSpec struct {
 	// +kubebuilder:validation:XValidation:rule="isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:XValidation:rule="!isURL(self) || url(self).getScheme() == 'http' || url(self).getScheme() == 'https'",message="must use http or https scheme"
 	// +kubebuilder:validation:XValidation:rule="!isURL(self) || size(url(self).getHostname()) > 0",message="must have a non-empty hostname"
-	// +kubebuilder:validation:XValidation:rule="!isURL(self) || url(self).getQuery().size() == 0",message="query parameters are not allowed"
 	// +kubebuilder:validation:XValidation:rule="!self.matches('.*#.*')",message="fragments are not allowed"
-	// +kubebuilder:validation:XValidation:rule="!self.matches('.*@.*')",message="user information (e.g. user:password@host) is not allowed"
+	// +kubebuilder:validation:XValidation:rule="!self.matches('^[^:]+://[^/?#]*@')",message="user information (e.g. user:password@host) is not allowed"
 	URL string `json:"url,omitempty"`
 	// name is a required identifier for this remote write configuration (name is the list key for the remoteWrite list).
 	// This name is used in metrics and logging to differentiate remote write queues.
@@ -1550,6 +1688,13 @@ type RemoteWriteSpec struct {
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:XValidation:rule="self.matches('^[a-zA-Z0-9_-]+$')",message="must contain only alphanumeric characters, hyphens, and underscores"
 	Name string `json:"name,omitempty"`
+	// messageVersion defines the Remote Write message's version to use when writing to the endpoint.
+	// When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time.
+	// The default value is "V1.0".
+	// When set to "V1.0", Prometheus uses the `prometheus.WriteRequest` protobuf message introduced in Remote Write 1.0.
+	// When set to "V2.0", Prometheus uses the `io.prometheus.write.v2.Request` protobuf message introduced in Remote Write 2.0.
+	// +optional
+	MessageVersion RemoteWriteMessageVersion `json:"messageVersion,omitempty,omitzero"`
 	// authorization defines the authorization method for the remote write endpoint.
 	// When omitted, no authorization is performed.
 	// When set, type must be one of Authorization, BasicAuth, OAuth2, SigV4, or ServiceAccount; the corresponding nested config must be set (ServiceAccount has no config).
@@ -1746,6 +1891,17 @@ type RemoteWriteAuthorization struct {
 	// +optional
 	// SafeAuthorization *v1.SecretKeySelector `json:"safeAuthorization,omitempty"`
 }
+
+// RemoteWriteMessageVersion defines the version of the remote-write protocol.
+// +kubebuilder:validation:Enum=V1.0;V2.0
+type RemoteWriteMessageVersion string
+
+const (
+	// RemoteWriteMessageVersion1_0 indicates the version 1.0 of the remote-write protocol.
+	RemoteWriteMessageVersion1_0 RemoteWriteMessageVersion = "V1.0"
+	// RemoteWriteMessageVersion2_0 indicates the version 2.0 of the remote-write protocol.
+	RemoteWriteMessageVersion2_0 RemoteWriteMessageVersion = "V2.0"
+)
 
 // MetadataConfigSendPolicy defines whether to send metadata with platform defaults or with custom settings.
 // +kubebuilder:validation:Enum=Default;Custom
@@ -1971,7 +2127,10 @@ type RelabelConfig struct {
 	// When omitted, the rule operates without extracting source labels (useful for actions like labelmap).
 	// Minimum of 1 and maximum of 10 source labels can be specified, each between 1 and 128 characters.
 	// Each entry must be unique.
-	// Label names beginning with "__" (two underscores) are reserved for internal Prometheus use and are not allowed.
+	// Labels beginning with "__" (two underscores) are Prometheus internal/meta labels
+	// (e.g., __name__, __address__) and are valid in sourceLabels because relabeling reads
+	// from them before they are stripped. Using __name__ in sourceLabels is the standard way
+	// to filter metrics by name in writeRelabelConfigs.
 	// Label names SHOULD start with a letter (a-z, A-Z) or underscore (_), followed by zero or more letters, digits (0-9), or underscores for best compatibility.
 	// While Prometheus supports UTF-8 characters in label names (since v3.0.0), using the recommended character set
 	// ensures better compatibility with the wider ecosystem (tooling, third-party instrumentation, etc.).
@@ -1980,7 +2139,6 @@ type RelabelConfig struct {
 	// +kubebuilder:validation:MaxItems=10
 	// +kubebuilder:validation:items:MinLength=1
 	// +kubebuilder:validation:items:MaxLength=128
-	// +kubebuilder:validation:items:XValidation:rule="!self.startsWith('__')",message="label names beginning with '__' (two underscores) are reserved for internal Prometheus use and are not allowed"
 	// +listType=set
 	SourceLabels []string `json:"sourceLabels,omitempty"`
 
@@ -1998,10 +2156,10 @@ type RelabelConfig struct {
 	// Must be a valid RE2 regular expression (https://github.com/google/re2/wiki/Syntax).
 	// When omitted, this means no opinion and the platform is left to choose a reasonable default, which is subject to change over time.
 	// The default value is "(.*)" to match everything.
-	// Must be between 1 and 1000 characters in length when specified.
+	// Must be between 1 and 8192 characters in length when specified.
 	// +optional
 	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=1000
+	// +kubebuilder:validation:MaxLength=8192
 	Regex string `json:"regex,omitempty"`
 
 	// action defines the action to perform on the matched labels and its configuration.
