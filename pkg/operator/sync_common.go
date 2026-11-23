@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
 	"github.com/openshift/library-go/pkg/pki"
@@ -237,7 +236,15 @@ func (c *serviceCAOperator) manageSignerCABundle(ctx context.Context, forceUpdat
 func (c *serviceCAOperator) manageControllerConfig(ctx context.Context, operatorConfig *operatorv1.ServiceCA) (bool, error) {
 	required := resourceread.ReadConfigMapV1OrDie(bindata.MustAsset("assets/controller-config.yaml"))
 
-	var observedConfig map[string]interface{}
+	// The observed config has already made a round trip through JSON, so decode/validate it
+	// against the expected shape.
+	var observedConfig struct {
+		ServingInfo struct {
+			MinTLSVersion    string   `json:"minTLSVersion"`
+			CipherSuites     []string `json:"cipherSuites"`
+			CurvePreferences []int32  `json:"curvePreferences"`
+		} `json:"servingInfo"`
+	}
 	if len(operatorConfig.Spec.ObservedConfig.Raw) > 0 {
 		if err := json.Unmarshal(operatorConfig.Spec.ObservedConfig.Raw, &observedConfig); err != nil {
 			return false, fmt.Errorf("failed to unmarshal observedConfig: %w", err)
@@ -249,12 +256,17 @@ func (c *serviceCAOperator) manageControllerConfig(ctx context.Context, operator
 		"kind":       "GenericOperatorConfig",
 	}
 
+	// Only set the fields that were actually observed, leaving unobserved
+	// fields at their current/default value.
 	servingInfo := map[string]interface{}{}
-	if minTLSVersion, found, err := unstructured.NestedString(observedConfig, "servingInfo", "minTLSVersion"); err == nil && found && minTLSVersion != "" {
-		servingInfo["minTLSVersion"] = minTLSVersion
+	if observedConfig.ServingInfo.MinTLSVersion != "" {
+		servingInfo["minTLSVersion"] = observedConfig.ServingInfo.MinTLSVersion
 	}
-	if cipherSuites, found, err := unstructured.NestedStringSlice(observedConfig, "servingInfo", "cipherSuites"); err == nil && found && len(cipherSuites) > 0 {
-		servingInfo["cipherSuites"] = cipherSuites
+	if len(observedConfig.ServingInfo.CipherSuites) > 0 {
+		servingInfo["cipherSuites"] = observedConfig.ServingInfo.CipherSuites
+	}
+	if len(observedConfig.ServingInfo.CurvePreferences) > 0 {
+		servingInfo["curvePreferences"] = observedConfig.ServingInfo.CurvePreferences
 	}
 
 	if len(servingInfo) > 0 {
