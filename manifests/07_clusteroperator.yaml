@@ -11,3 +11,7 @@ status:
   versions:
   - name: operator
     version: "0.0.1-snapshot"
+  relatedObjects:
+  - group: rbac.authorization.k8s.io
+    resource: clusterrolebindings
+    name: system:openshift:operator:service-ca-operator
