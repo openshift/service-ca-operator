@@ -3,11 +3,13 @@ package configobservation
 import (
 	"k8s.io/client-go/tools/cache"
 
+	features "github.com/openshift/api/features"
 	configinformers "github.com/openshift/client-go/config/informers/externalversions"
 	configlistersv1 "github.com/openshift/client-go/config/listers/config/v1"
 	"github.com/openshift/library-go/pkg/controller/factory"
 	"github.com/openshift/library-go/pkg/operator/configobserver"
 	libgoapiserver "github.com/openshift/library-go/pkg/operator/configobserver/apiserver"
+	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/resourcesynccontroller"
 	"github.com/openshift/library-go/pkg/operator/v1helpers"
@@ -40,6 +42,7 @@ func NewConfigObserverController(
 	operatorClient v1helpers.OperatorClient,
 	configInformer configinformers.SharedInformerFactory,
 	resourceSyncer resourcesynccontroller.ResourceSyncer,
+	featureGateAccessor featuregates.FeatureGateAccess,
 	eventRecorder events.Recorder,
 ) factory.Controller {
 	informers := []factory.Informer{
@@ -60,6 +63,22 @@ func NewConfigObserverController(
 			},
 		},
 		informers,
-		libgoapiserver.ObserveTLSSecurityProfile,
+		observeTLSSecurityProfile(featureGateAccessor),
 	)
+}
+
+// observeTLSSecurityProfile returns the right APIServer.Spec.TLSSecurityProfile observer, depending on TLSGroupPreferences feature gate
+func observeTLSSecurityProfile(featureGateAccessor featuregates.FeatureGateAccess) configobserver.ObserveConfigFunc {
+	return func(listers configobserver.Listers, recorder events.Recorder, existingConfig map[string]interface{}) (map[string]interface{}, []error) {
+		featureGates, err := featureGateAccessor.CurrentFeatureGates()
+		if err != nil {
+			// Keep the existing config rather than observing TLS settings based on
+			// unavailable feature gate information.
+			return existingConfig, []error{err}
+		}
+		if featureGates.Enabled(features.FeatureGateTLSGroupPreferences) {
+			return libgoapiserver.ObserveTLSSecurityProfileWithGroupsConversion(listers, recorder, existingConfig)
+		}
+		return libgoapiserver.ObserveTLSSecurityProfile(listers, recorder, existingConfig)
+	}
 }

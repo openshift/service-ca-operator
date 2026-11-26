@@ -12,11 +12,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/clock"
 	kubediff "k8s.io/utils/diff"
+	"sigs.k8s.io/yaml"
 
 	operatorv1 "github.com/openshift/api/operator/v1"
+	operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/openshift/library-go/pkg/operator/loglevel"
@@ -221,4 +224,111 @@ func (w *deploymentWrapper) withOperatorVersionEnv(value string) *deploymentWrap
 		}
 	}
 	return w
+}
+
+func TestManageControllerConfig(t *testing.T) {
+	tests := []struct {
+		name                     string
+		observedConfig           string
+		expectedMinTLSVersion    string
+		expectedCipherSuites     []string
+		expectedCurvePreferences []int32
+		expectedError            string
+	}{
+		{
+			name:           "no observed config",
+			observedConfig: "",
+		},
+		{
+			name:                  "min tls version and cipher suites only",
+			observedConfig:        `{"servingInfo":{"minTLSVersion":"VersionTLS12","cipherSuites":["TLS_AES_128_GCM_SHA256"]}}`,
+			expectedMinTLSVersion: "VersionTLS12",
+			expectedCipherSuites:  []string{"TLS_AES_128_GCM_SHA256"},
+		},
+		{
+			name:                     "curve preferences are propagated",
+			observedConfig:           `{"servingInfo":{"minTLSVersion":"VersionTLS12","curvePreferences":[4588,29,23,24]}}`,
+			expectedMinTLSVersion:    "VersionTLS12",
+			expectedCurvePreferences: []int32{4588, 29, 23, 24},
+		},
+		{
+			name:           "empty curve preferences are ignored",
+			observedConfig: `{"servingInfo":{"curvePreferences":[]}}`,
+		},
+		{
+			name:           "non-integral curve preference is rejected",
+			observedConfig: `{"servingInfo":{"curvePreferences":[29.5]}}`,
+			expectedError:  "cannot unmarshal number 29.5 into Go struct field .servingInfo.curvePreferences of type int32",
+		},
+		{
+			name:           "curve preference of the wrong type is rejected",
+			observedConfig: `{"servingInfo":{"curvePreferences":["X25519"]}}`,
+			expectedError:  "cannot unmarshal string into Go struct field .servingInfo.curvePreferences of type int32",
+		},
+		{
+			name:           "out of int32 range curve preference is rejected",
+			observedConfig: `{"servingInfo":{"curvePreferences":[4294967296]}}`,
+			expectedError:  "cannot unmarshal number 4294967296 into Go struct field .servingInfo.curvePreferences of type int32",
+		},
+		{
+			name:           "cipher suites of the wrong type are rejected",
+			observedConfig: `{"servingInfo":{"cipherSuites":"TLS_AES_128_GCM_SHA256"}}`,
+			expectedError:  "cannot unmarshal string into Go struct field .servingInfo.cipherSuites of type []string",
+		},
+		{
+			name:                  "unknown observed fields are ignored",
+			observedConfig:        `{"servingInfo":{"minTLSVersion":"VersionTLS12"},"somethingElse":{"a":1}}`,
+			expectedMinTLSVersion: "VersionTLS12",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := fake.NewSimpleClientset()
+			operator := &serviceCAOperator{
+				corev1Client:  client.CoreV1(),
+				eventRecorder: events.NewInMemoryRecorder("managecontrollerconfig_test", clock.RealClock{}),
+			}
+			serviceCA := &operatorv1.ServiceCA{}
+			if len(test.observedConfig) > 0 {
+				serviceCA.Spec.ObservedConfig = runtime.RawExtension{Raw: []byte(test.observedConfig)}
+			}
+
+			_, err := operator.manageControllerConfig(context.Background(), serviceCA)
+			if len(test.expectedError) > 0 {
+				if err == nil {
+					t.Fatalf("expected an error containing %q, got none", test.expectedError)
+				}
+				if !strings.Contains(err.Error(), test.expectedError) {
+					t.Fatalf("expected an error containing %q, got %v", test.expectedError, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			expectedConfigMap := resourceread.ReadConfigMapV1OrDie(bindata.MustAsset("assets/controller-config.yaml"))
+			configMap, err := client.CoreV1().ConfigMaps(expectedConfigMap.Namespace).Get(context.Background(), expectedConfigMap.Name, metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Parse as the type the controller process actually decodes the config into.
+			config := &operatorv1alpha1.GenericOperatorConfig{}
+			if err := yaml.Unmarshal([]byte(configMap.Data["controller-config.yaml"]), config); err != nil {
+				t.Fatalf("failed to unmarshal the generated controller config: %v", err)
+			}
+
+			if config.ServingInfo.MinTLSVersion != test.expectedMinTLSVersion {
+				t.Errorf("expected minTLSVersion %q, got %q", test.expectedMinTLSVersion, config.ServingInfo.MinTLSVersion)
+			}
+			if !equality.Semantic.DeepEqual(test.expectedCipherSuites, config.ServingInfo.CipherSuites) {
+				t.Errorf("expected cipherSuites %v, got %v", test.expectedCipherSuites, config.ServingInfo.CipherSuites)
+			}
+			if !equality.Semantic.DeepEqual(test.expectedCurvePreferences, config.ServingInfo.CurvePreferences) {
+				t.Errorf("expected curvePreferences %v, got %v", test.expectedCurvePreferences, config.ServingInfo.CurvePreferences)
+			}
+		})
+	}
 }

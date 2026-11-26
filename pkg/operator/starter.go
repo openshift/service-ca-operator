@@ -108,13 +108,6 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		controllerContext.EventRecorder,
 	)
 
-	configObserver := configobservation.NewConfigObserverController(
-		operatorClient,
-		configInformers,
-		resourceSyncController,
-		controllerContext.EventRecorder,
-	)
-
 	klog.Infof("Fetching FeatureGates")
 	stopChan := ctx.Done()
 	featureGateAccessor := featuregates.NewFeatureGateAccess(
@@ -133,6 +126,14 @@ func RunOperator(ctx context.Context, controllerContext *controllercmd.Controlle
 		klog.Errorf("timed out waiting for FeatureGate detection")
 		return fmt.Errorf("timed out waiting for FeatureGate detection")
 	}
+
+	configObserver := configobservation.NewConfigObserverController(
+		operatorClient,
+		configInformers,
+		resourceSyncController,
+		featureGateAccessor,
+		controllerContext.EventRecorder,
+	)
 
 	// The minimum remaining duration of the service CA needs to exceeds the maximum
 	// supported upgrade interval (currently 12 months). A duration of 26 months
